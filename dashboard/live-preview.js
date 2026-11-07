@@ -1,3 +1,4 @@
+import { setText } from './i18n.js';
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
 
@@ -19,7 +20,7 @@ export class RhythmPreview {
     this.needsRender = true;
     for (const event of ['seeked', 'loadeddata', 'playing']) video.addEventListener(event, () => { this.needsRender = true; });
     video.addEventListener('play', () => { this.lastSecond = performance.now(); this.frames = 0; this.frameTimes = []; this.previousRenderAt = null; });
-    video.addEventListener('pause', () => { if (this.enabled) this.performanceLabel.textContent = 'Live 3D · paused'; });
+    video.addEventListener('pause', () => { if (this.enabled) setText(this.performanceLabel, 'Live 3D · paused'); });
     this.renderer = new THREE.WebGLRenderer({canvas, antialias: true, alpha: false});
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -74,8 +75,8 @@ export class RhythmPreview {
     const generation = ++this.generation;
     this.enabled = false;
     this.canvas.hidden = true;
-    if (!run.live) { this.disposeScene(); this.performanceLabel.textContent = 'Saved 3D video · original autoplay'; return; }
-    this.performanceLabel.textContent = 'Loading live 3D…';
+    if (!run.live) { this.disposeScene(); setText(this.performanceLabel, 'Saved 3D video · original autoplay'); return; }
+    setText(this.performanceLabel, 'Loading live 3D…');
     const [gltf, response] = await Promise.all([
       new GLTFLoader().loadAsync(run.live.scene), fetch(run.live.motion)
     ]);
@@ -127,7 +128,7 @@ export class RhythmPreview {
     this.canvas.hidden = false;
     this.resize();
     this.pose(this.video.currentTime);
-    this.performanceLabel.textContent = 'Live 3D';
+    setText(this.performanceLabel, 'Live 3D');
     this.canvas.dataset.alignmentErrorM = String(error);
     this.canvas.dataset.sceneRevision = run.presentation?.revision || 'legacy';
     this.canvas.dataset.triangles = String(this.renderer.info.render.triangles);
@@ -188,8 +189,8 @@ export class RhythmPreview {
           this.canvas.dataset.movingFps = String(1000*this.frameTimes.length/this.frameTimes.reduce((a,b)=>a+b,0));
           this.canvas.dataset.frameP95Ms = String(sorted[Math.floor(sorted.length*.95)]);
         }
-        this.performanceLabel.textContent = this.video.paused ? 'Live 3D · paused' :
-          'Live 3D · ' + Math.round(this.frames * 1000 / (now - this.lastSecond)) + ' fps';
+        setText(this.performanceLabel, this.video.paused ? 'Live 3D · paused' :
+          'Live 3D · ' + Math.round(this.frames * 1000 / (now - this.lastSecond)) + ' fps');
         this.frames = 0; this.lastSecond = now;
       }
     }
