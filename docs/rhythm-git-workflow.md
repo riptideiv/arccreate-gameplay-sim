@@ -36,3 +36,5 @@
 ## 后续修复分支
 
 `fix/negative-audio-start-60fps` 从中文化分支创建，包含 Arghena 负音频起点修复、真正保留原生 60 fps、浏览器 30／60 fps 导出选项及完整重跑验证。未改 main，也未改动保存的规划设置；详见[调查记录](arghena-negative-offset-60fps.md)。
+
+`feature/native-results-ending` 基于上述修复分支，单独加入原生结果场景、Pure Memory 判定、局部导出和不重渲染正文的拼接流程。

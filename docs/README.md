@@ -8,6 +8,7 @@
 | [环境迁移指南](ipad-rhythm-environment-porting.md) | 场景接口、材质、坐标、缓存、部署与迁移经验 |
 | [缓存层说明](cache-layers.md) | 哪些操作重算、缓存键和共享姿态复用 |
 | [搜索优化报告](ipad-rhythm-planner-optimization.md) | 不改变计分规则的优化、基准和正确性证据 |
+| [原生结算片尾](native-results-ending.md) | Pure Memory、原生结果场景与仅重渲染末尾 |
 | [WebGL 视频导出](ipad-rhythm-webgl-export.md) | 当前画面与音频录制、兼容性、取消和验证 |
 | [Arghena 负音频起点与 60 fps](arghena-negative-offset-60fps.md) | 导出失败原因、保持原设置重跑与成片验证 |
 | [Arghena 漏键与动作调查](arghena-end-miss-and-idle-motion.md) | 计划漏键原因、原生验证和待机／避让限速 |
