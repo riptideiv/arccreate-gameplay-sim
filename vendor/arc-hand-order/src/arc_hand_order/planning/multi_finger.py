@@ -619,6 +619,8 @@ class Regions:
         self.sky_half_x = sky_half_x
         w, h = projection.width_m, projection.height_m
         self.screen = [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]
+        self._polygon_cache = {}
+        self._geometry_refs = {}  # Prevent id reuse for temporary/split occupations.
         self.lanes = {}
         for lane, (x0, x1) in LANE_X.items():
             corners = [projection.ground_to_device(x, z) for x, z in
@@ -626,6 +628,21 @@ class Regions:
             self.lanes[lane] = _inner(list(self.screen), corners, 0.0)
 
     def polygon(self, occupation, time_ms):
+        # Scope is one Regions/projection/region-settings instance. Split jobs
+        # may select different source notes even when their parent ID matches.
+        now = min(max(time_ms, occupation.start_ms), occupation.end_ms)
+        key = (id(occupation), now)
+        if key not in self._polygon_cache:
+            if len(self._polygon_cache) >= 65536:
+                self._polygon_cache.clear()
+                self._geometry_refs.clear()
+            self._geometry_refs[id(occupation)] = occupation
+            polygon = self._polygon(occupation, now)
+            self._polygon_cache[key] = None if polygon is None else tuple(polygon)
+        polygon = self._polygon_cache[key]
+        return None if polygon is None else list(polygon)
+
+    def _polygon(self, occupation, time_ms):
         region = occupation.region_at(min(max(time_ms, occupation.start_ms), occupation.end_ms))
         if region.lane is not None:
             return self.lanes[region.lane]
@@ -780,6 +797,8 @@ class _Graph:
         self.touches: list[Touch] = []
         self.interned: dict = {}
         self.targets = {}
+        self.scoring_extensions = {}  # (old touch, candidate) -> ordered physical variants, including failures
+        self.extension_prefix_speed = {}
         self.trace_preference = None
         if options.scoring_arcs and options.prefer_arc_trace and options.arc_trace_weight:
             from .arc_scoring import TracePreference
@@ -1502,6 +1521,48 @@ class _Graph:
 
     # transitions --------------------------------------------------------
 
+    def _scoring_extensions(self, t, c):
+        """Only state-independent geometry. _finish still checks both hands and all locks/costs."""
+        from .arc_scoring import covers
+        key = (t.id, c.id)
+        if key in self.scoring_extensions:
+            return self.scoring_extensions[key]
+        end=max(t.up,c.up_frame)
+        paths=[t.path+(t.last_xy,)*(end-t.up)]
+        if c.down_frame>=t.up:
+            span=c.down_frame-t.up+1
+            a,b=t.last_xy,c.first_xy
+            slide=tuple((a[0]+(b[0]-a[0])*(j+1)/span,a[1]+(b[1]-a[1])*(j+1)/span) for j in range(span))
+            paths.append(t.path+slide+self._target_path(c)[1:])
+            if self.trace_preference is not None:
+                from .arc_scoring import trace_position
+                centre = tuple(trace_position(c.occupation, f, self.offset, self.projection)
+                               for f in range(t.up, end))
+                straight = paths[-1][len(t.path):]
+                for amount in (.25, .5, .75, 1):
+                    tail = tuple((x+(u-x)*amount, y+(v-y)*amount)
+                                 for (x,y),(u,v) in zip(straight, centre))
+                    paths.append(t.path+tail)
+        limit = self.options.speed_max_m_s*1.00001
+        if t.id not in self.extension_prefix_speed:
+            self.extension_prefix_speed[t.id] = all(math.dist(a,b)*60 <= limit for a,b in zip(t.path,t.path[1:]))
+        variants=[]
+        for path in paths:
+            path = self.native_geometry.guard_path(c.occupation,path,t.down,fixed_prefix=len(t.path))
+            if len(path)!=end-t.down:continue
+            # The prefix is unchanged by the guard. Validate it once at this
+            # branch's exact tolerance, then include the prefix/tail boundary.
+            if not self.extension_prefix_speed[t.id]:continue
+            tail=path[max(0,len(t.path)-1):]
+            if any(math.dist(a,b)*60>limit for a,b in zip(tail,tail[1:])):continue
+            # A newly introduced tick can be caught on an earlier prefix frame.
+            if covers(c.occupation,path,t.down,self.offset,self.projection) is None:continue
+            bridges=t.bridges+(((t.up,c.down_frame),) if c.down_frame>t.up else ())
+            variants.append(self._intern(t.parts+(Part(c,c.down_frame,c.up_frame),),bridges,path))
+        result=tuple(variants)
+        self.scoring_extensions[key]=result
+        return result
+
     def steps(self, state, c: Candidate, hand: str):
         """(new state, cost increment, changes) for each way ``hand`` can take candidate ``c``."""
         h = 0 if hand == "left" else 2
@@ -1530,29 +1591,7 @@ class _Graph:
             for k,t in enumerate(mine):
                 if t is None or c.down_frame<t.down: continue
                 if t.end_part.candidate.occupation.parent_occupation_id != c.occupation.parent_occupation_id:continue
-                end=max(t.up,c.up_frame)
-                paths=[t.path+(t.last_xy,)*(end-t.up)]
-                if c.down_frame>=t.up:
-                    span=c.down_frame-t.up+1
-                    a,b=t.last_xy,c.first_xy
-                    slide=tuple((a[0]+(b[0]-a[0])*(j+1)/span,a[1]+(b[1]-a[1])*(j+1)/span) for j in range(span))
-                    paths.append(t.path+slide+self._target_path(c)[1:])
-                    if self.trace_preference is not None:
-                        from .arc_scoring import trace_position
-                        centre = tuple(trace_position(c.occupation, f, self.offset, self.projection)
-                                       for f in range(t.up, end))
-                        straight = paths[-1][len(t.path):]
-                        for amount in (.25, .5, .75, 1):
-                            tail = tuple((x+(u-x)*amount, y+(v-y)*amount)
-                                         for (x,y),(u,v) in zip(straight, centre))
-                            paths.append(t.path+tail)
-                for path in paths:
-                    path = self.native_geometry.guard_path(c.occupation,path,t.down,fixed_prefix=len(t.path))
-                    if len(path)!=end-t.down:continue
-                    if any(math.dist(a,b)*60>self.options.speed_max_m_s*1.00001 for a,b in zip(path,path[1:])):continue
-                    if covers(c.occupation,path,t.down,self.offset,self.projection) is None:continue
-                    bridges=t.bridges+(((t.up,c.down_frame),) if c.down_frame>t.up else ())
-                    new=self._intern(t.parts+(Part(c,c.down_frame,c.up_frame),),bridges,path)
+                for new in self._scoring_extensions(t, c):
                     step=self._finish(state,h,k,mine,theirs,new,t,hand,self.part_cost(c,hand),bridge=True)
                     if step is not None:yield step
         # Continue following the actual arc between scoring ticks, without a new
