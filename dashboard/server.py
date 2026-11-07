@@ -22,8 +22,10 @@ from typing import Literal
 
 if __package__:
     from .chart_library import load_catalog, chart_paths
+    from .red_notes import prepare_project
 else:
     from chart_library import load_catalog, chart_paths
+    from red_notes import prepare_project
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +62,8 @@ class Settings(BaseModel):
     full_ground_hold: bool = True
     partial_ground_hold_weight: float = Field(default=500, ge=0, le=10000)
     allow_misses: bool = True
+    enable_red_notes: bool = True
+    target_all_red_notes: bool = False
     search_width: int = Field(default=256, ge=32, le=2048)
     camera_distance_m: float = Field(default=0.29, ge=0.22, le=0.5)
     camera_elevation_deg: float = Field(default=52, ge=25, le=80)
@@ -344,26 +348,28 @@ class RenderQueue:
             replay = {"width_mm": plan["device"]["screen_mm"][0], "height_mm": plan["device"]["screen_mm"][1],
                       "chart_start_ms": plan["preview"]["chart_start_ms"],
                       "audio_offset_ms": plan["chart"]["audio_offset_ms"],
+                      "source_audio_offset_ms": plan["chart"].get("source_audio_offset_ms", plan["chart"]["audio_offset_ms"]),
                       "touches": [{"id": t["id"],
                                    "down_frame": t["down_frame"], "up_frame": t["up_frame"],
                                    "points": [{"x": x, "y": y} for x, y in t["path_mm"]]} for t in plan["touches"]]}
             write_json(directory / "replay.json", replay)
+            game_chart, game_aff, game_project = prepare_project(chart, aff, project_path, directory, settings.enable_red_notes)
             digest = hashlib.sha256((directory / "replay.json").read_bytes() +
-                                    str((audio_start, frames)).encode() + aff.read_bytes())
-            project = re.sub(r"(?m)^\s*lastWorkingTiming:.*\n", "", project_path.read_text())
+                                    str((audio_start, frames)).encode() + game_aff.read_bytes())
+            project = re.sub(r"(?m)^\s*lastWorkingTiming:.*\n", "", game_project.read_text())
             digest.update(project.encode())
-            for asset in sorted(chart.rglob("*")):
+            for asset in sorted(game_chart.rglob("*")):
                 if ".rendering" not in asset.parts and asset.suffix.lower() in (".ogg", ".mp3", ".wav", ".flac", ".png", ".jpg", ".jpeg", ".lua"):
-                    digest.update(asset.relative_to(chart).as_posix().encode())
+                    digest.update(asset.relative_to(game_chart).as_posix().encode())
                     digest.update(asset.read_bytes())
-            for source in ("Export.cs", "Replay.cs", "Patch.cs", "export.sh"):
+            for source in ("Export.cs", "Replay.cs", "RedNotes.cs", "Patch.cs", "export.sh"):
                 digest.update((ROOT / "arc-create-export" / source).read_bytes())
             cache = ROOT / "output/gameplay/replays"
             cache.mkdir(parents=True, exist_ok=True)
             cached = cache / (digest.hexdigest() + ".mp4")
             clip = directory / "gameplay.mp4"
             if not cached.exists() or not Path(str(cached) + ".judgements.json").exists():
-                self.command([ROOT / "arc-create-export/export.sh", project_path, cached,
+                self.command([ROOT / "arc-create-export/export.sh", game_project, cached,
                               audio_start, audio_start+math.ceil((frames+2)*1000/30), directory / "replay.json"],
                              directory, "ArcCreate judging the two-hand replay", 35)
             clip.symlink_to(os.path.relpath(cached, directory))
@@ -387,7 +393,7 @@ class RenderQueue:
             self.update(status="complete", stage="Ready to play", progress=100, metrics=report,
                         live={"scene": media_url(directory / "scene.glb"), "motion": media_url(directory / "motion.json")},
                         presentation=json.loads((directory / "presentation-result.json").read_text()),
-                        judgements={k: v for k, v in judgments.items() if k not in ("judgements", "arc_ticks")},
+                        judgements={k: v for k, v in judgments.items() if k not in ("judgements", "red_judgements", "arc_ticks")},
                         judgement_timeline=media_url(directory / "judgements.json"),
                         planned_misses=plan["misses"], video=media_url(clip),
                         planning=plan["planning"], arc_tick_validation=tick_validation,

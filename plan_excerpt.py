@@ -59,6 +59,16 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     report({'phase': 'loading', 'completed': None, 'total': None})
     loaded = api.load_chart(chart_path)
     chart = loaded.chart.model_copy(deep=True)
+    source_offset_ms = chart.audio_offset_ms
+    # A negative source offset must not put visible excerpt contacts in negative
+    # animation frames. Keep source audio timing separate from the sample grid.
+    chart.audio_offset_ms = max(0, source_offset_ms)
+    red_arcs = {e.event_id for e in chart.events if e.type == 'arc' and e.is_designant}
+    red_taps = {e.event_id for e in chart.events if e.type == 'arctap' and e.parent_arc_id in red_arcs}
+    enable_red = settings.get('enable_red_notes', True)
+    target_red = enable_red and settings.get('target_all_red_notes', False)
+    chart.events = [e for e in chart.events if (enable_red or e.event_id not in red_arcs)
+                    and (target_red or e.event_id not in red_taps)]
     events = [
         event for event in chart.events
         if (event.type == "timing" and event.start_time_ms < end_ms)
@@ -155,6 +165,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=occupations, progress=report)
     report({'phase': 'writing', 'completed': None, 'total': None})
     output = api.plan_to_dict(result)
+    output['chart']['source_audio_offset_ms'] = source_offset_ms
     # A point at the excerpt boundary may have an early press in frame -1.
     # Keep only the visible portion of that contact in the playback timeline.
     for touch in output["touches"]:
@@ -165,7 +176,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             for part in touch["parts"]:
                 part["from_frame"] = max(0, part["from_frame"])
                 part["from_ms"] = max(-chart.audio_offset_ms, part["from_ms"])
-    output["misses"] = [{"events": list(o.source_event_ids), "kind": "arc_tick" if o.parent_occupation_id else o.kind,
+    output["misses"] = [{"events": list(o.source_event_ids), "kind": "red_sky" if o.is_red else "arc_tick" if o.parent_occupation_id else o.kind,
                          "tick_id": o.occupation_id if o.parent_occupation_id else None,
                          "parent_occupation_id": o.parent_occupation_id,
                          "start_ms": o.first_tick.time_ms if o.parent_occupation_id else o.start_ms,
@@ -195,15 +206,19 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     output["planning"] = {"arc_path_mode": 'score' if scoring else 'trace',
                           "input_model": 'native-screen-world-camera-envelope' if scoring else 'legacy-trace',
                           "skipped_ticks": result.plan.cost.missed_ticks,
+                          "red_notes_enabled": enable_red, "target_all_red_notes": target_red,
+                          "skipped_red_notes": result.plan.cost.missed_red_notes,
+                          "planned_red_notes": sum(o.is_red for o in native_items) - result.plan.cost.missed_red_notes,
                           "tick_contacts": result.plan.multi.tick_contacts,
                           "arc_reacquisitions": sum(len(ids)-1 for ids in parents.values()),
                           "contact_exclusions": list(avoid_contacts),
                           "pruned_items": result.plan.pruned_items,
-                          "policy": "score ticks first, then movement cost; bounded candidate search"}
+                          "policy": ("score ticks first, then red catches, then movement cost; bounded candidate search" if target_red
+                                     else "score ticks first, then movement cost; bounded candidate search")}
     output["preview"] = {
         "chart_start_ms": start_ms,
         "chart_end_ms": end_ms,
-        "audio_start_ms": start_ms + chart.audio_offset_ms,
+        "audio_start_ms": start_ms + source_offset_ms,
         "duration_ms": end_ms - start_ms,
     }
     return output

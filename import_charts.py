@@ -100,13 +100,15 @@ def import_collection(collection, root=ROOT):
                 offset = re.search(r"(?m)^AudioOffset\s*:\s*(-?\d+)", text)
                 offset_ms = int(offset[1]) if offset else 0
                 warnings, reason, last_ms = {}, None, 0
+                red_notes = 0
                 try:
                     loaded = load_chart(source)
+                    red_arcs = {e.event_id for e in loaded.chart.events if e.type == 'arc' and e.is_designant}
+                    red_notes = sum(e.type == 'arctap' and e.parent_arc_id in red_arcs for e in loaded.chart.events)
                     warnings = dict(Counter(d.code for d in loaded.parsed.diagnostics if d.severity != "info"))
                     last_ms = max((e.end_time_ms for e in loaded.chart.events if e.type in ("tap", "hold", "arc", "arctap")), default=0)
                 except ValueError as error:
-                    reason = ("Uses unsupported 'designant' arc type; requires newer chart-format support."
-                              if re.search(r",\s*designant\s*\)", text) else str(error).split("could not be parsed", 1)[-1].strip())
+                    reason = str(error).split("could not be parsed", 1)[-1].strip()
                 duration = math.ceil(max(durations[audio] - offset_ms / 1000, last_ms / 1000, .5) * 1000) / 1000
                 directory = base / "library" / key
                 directory.mkdir(parents=True, exist_ok=True)
@@ -133,6 +135,7 @@ def import_collection(collection, root=ROOT):
                          "source": source.relative_to(root).as_posix(),
                          "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                          "available": reason is None, "unavailable_reason": reason, "warnings": warnings}
+                entry['red_notes'] = red_notes
                 chart_paths(root, key, entry)
                 entries[key] = entry
             except (KeyError, ValueError, OSError, subprocess.CalledProcessError) as error:

@@ -46,6 +46,12 @@
       </details>
     </section>
     <section>
+      <h2>Red sky notes</h2>
+      <label class="check"><input type="checkbox" name="enable_red_notes"> Enable red notes</label>
+      <label class="check"><input type="checkbox" name="target_all_red_notes" id="target-red"> Target every red note</label>
+      <p class="hint">Red notes award no score and never break combo. With targeting off, hands focus on scoring notes; incidental red catches still register. With targeting on, the planner seeks every feasible red catch after protecting normal score.</p>
+    </section>
+    <section>
       <h2>Hand motion</h2>
       <div class="knob"><label for="speed">Max move speed</label><span class="input-unit"><input id="speed" name="max_speed_m_s" type="number" min="0.1" max="4" step="0.05" required><span>m/s</span></span><input aria-label="Max move speed slider" data-for="max_speed_m_s" type="range" min="0.1" max="4" step="0.05"></div>
       <p class="hint">Checked on the full glove, including movement from wrist turns.</p>

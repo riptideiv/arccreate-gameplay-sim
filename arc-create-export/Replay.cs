@@ -14,10 +14,10 @@ using UnityEngine;
 public static class Replay
 {
     [Serializable] public class Contact { public int id, down_frame, up_frame; public Vector2[] points; }
-    [Serializable] public class InputFile { public float width_mm, height_mm; public int chart_start_ms, audio_offset_ms, diagnostics_start_ms, diagnostics_end_ms; public Contact[] touches; }
+    [Serializable] public class InputFile { public float width_mm, height_mm; public int chart_start_ms, audio_offset_ms, diagnostics_start_ms, diagnostics_end_ms; public int? source_audio_offset_ms; public Contact[] touches; }
     [Serializable] public class Judge { public int chart_ms; public string result; }
     [Serializable] public class ArcTick { public int chart_ms, arc_start_ms, arc_end_ms, color, request_start_ms, auto_ms, expiry_ms; public float x_start, x_end, y_start, y_end; public string result; }
-    [Serializable] public class Result { public int hits, misses, score, combo; public string engine = "ArcCreate touch judgement"; public List<Judge> judgements = new List<Judge>(); public List<ArcTick> arc_ticks = new List<ArcTick>(); }
+    [Serializable] public class Result { public int hits, misses, score, combo, red_hits, red_misses; public string engine = "ArcCreate touch judgement"; public List<Judge> judgements = new List<Judge>(); public List<Judge> red_judgements = new List<Judge>(); public List<ArcTick> arc_ticks = new List<ArcTick>(); }
     private class Sound { public int timing; public AudioClip clip; }
     public static bool Enabled;
     private static IGameplayControl gameplay;
@@ -140,10 +140,18 @@ public static class Replay
 
     public static void Judged(JudgementResult value)
     {
-        if (!Active) return;
+        if (!Active || RedNotes.SuppressScore) return;
         string name = value.ToString();
         if (name.StartsWith("Miss")) result.misses++; else result.hits++;
         result.judgements.Add(new Judge { chart_ms = gameplay.Audio.ChartTiming, result = name });
+    }
+
+    public static void RedJudged(int timing, JudgementResult value)
+    {
+        if (!Active) return;
+        string name = value.ToString();
+        if (name.StartsWith("Miss")) result.red_misses++; else result.red_hits++;
+        result.red_judgements.Add(new Judge { chart_ms = timing, result = name });
     }
 
     public static void Tap(int timing) { Hit("tap:" + timing, gameplay == null ? null : gameplay.Audio.TapHitsoundClip); }
@@ -174,7 +182,7 @@ public static class Replay
         {
             float[] samples;
             if (!cache.TryGetValue(sound.clip, out samples)) { samples = new float[sound.clip.samples * sound.clip.channels]; sound.clip.GetData(samples, 0); cache[sound.clip] = samples; }
-            int at = Mathf.RoundToInt((sound.timing + input.audio_offset_ms - from) / 1000f * rate);
+            int at = Mathf.RoundToInt((sound.timing + (input.source_audio_offset_ms ?? input.audio_offset_ms) - from) / 1000f * rate);
             int frames = Mathf.CeilToInt(sound.clip.samples * (float)rate / sound.clip.frequency);
             for (int f = 0; f < frames; f++)
             {

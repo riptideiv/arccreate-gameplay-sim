@@ -431,6 +431,7 @@ class MultiCost:
     crossing_depth: float = 0.0  # metre-seconds crossed beyond the margin (MultiFingerOptions.crossing_depth_weight)
     missed_ticks: int = 0
     arc_trace_deviation_s: float = 0.0
+    missed_red_notes: int = 0
 
     def __add__(self, other):
         return MultiCost(self.base + other.base, self.shares + other.shares,
@@ -445,7 +446,8 @@ class MultiCost:
                          self.collision_s + other.collision_s, self.arc_takeovers + other.arc_takeovers,
                          self.preference + other.preference, self.accel_over + other.accel_over,
                          self.crossing_depth + other.crossing_depth, self.missed_ticks + other.missed_ticks,
-                         self.arc_trace_deviation_s + other.arc_trace_deviation_s)
+                         self.arc_trace_deviation_s + other.arc_trace_deviation_s,
+                         self.missed_red_notes + other.missed_red_notes)
 
     def weighted(self, options: PlannerOptions, multi: MultiFingerOptions):
         extra = (self.shares * multi.share_weight + self.second_touches * multi.second_finger_weight
@@ -2683,7 +2685,7 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
               (MultiCost(), None)}
     visited, pruned = 1, 0
     def rank(cost):
-        return (cost.missed_ticks, cost.weighted(options, multi))
+        return (cost.missed_ticks, cost.missed_red_notes, cost.weighted(options, multi))
     present = {c.occupation.occupation_id for group in groups for c in group}
     empty_items = iter(o for o in occupations.items if o.occupation_id not in present)
     earliest = [min((c.down_frame for c in group),default=math.inf) for group in groups]
@@ -2697,8 +2699,8 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
             progress('search', k, len(groups), chart_ms=item.first_tick.time_ms,
                      states=len(states), states_completed=state_index,
                      candidates=len(group), visited=visited)
-            if multi.allow_misses:
-                increment = MultiCost(missed_ticks=item.score_weight)
+            if multi.allow_misses or item.is_red:
+                increment = MultiCost(missed_ticks=item.score_weight, missed_red_notes=int(item.is_red))
                 total = cost + increment
                 key = state if options.crossing_pass_s else (tuple(graph.future(i, f0) for i in state[:4]) + graph.tail_key(state, f0))
                 weight = rank(total)

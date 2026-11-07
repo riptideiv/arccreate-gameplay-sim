@@ -138,10 +138,15 @@ function fill(values) {
   }
   syncSliders();
   updateChartCompatibility();
+  updateRedNotes();
   updateClickInterval();
   updateReleasePolicy();
   live?.setCamera(settings());
   markDirty();
+}
+
+function updateRedNotes() {
+  $('target-red').disabled = !byName('enable_red_notes').checked;
 }
 
 function populateCharts() {
@@ -158,7 +163,7 @@ function populateCharts() {
     }
     const option = document.createElement('option');
     option.value = key;
-    option.textContent = chart.title + (chart.available === false ? ' · unavailable (designant arcs)' : '');
+    option.textContent = chart.title + (chart.available === false ? ' · unavailable' : '');
     option.disabled = chart.available === false;
     if (chart.unavailable_reason) option.title = chart.unavailable_reason;
     group.append(option);
@@ -235,6 +240,7 @@ for (const slider of form.querySelectorAll("[data-for]")) {
     slider.addEventListener("input", () => { byName(slider.dataset.for).value = slider.value; live?.setCamera(settings()); markDirty(); });
 }
 form.addEventListener("input", event => {
+  updateRedNotes();
   if (event.target.name) syncSliders();
   updateClickInterval();
   updateReleasePolicy();
@@ -409,12 +415,14 @@ function showTake(run, restoreControls = false) {
   if (run.judgements) {
     const j = run.judgements;
     $("judgement-summary").textContent = j.hits + ' hits · ' + j.misses + ' misses · score ' + j.score.toLocaleString()
+      + ((j.red_hits || j.red_misses) ? ` · red: ${j.red_hits || 0} caught / ${j.red_misses || 0} missed (no score)` : '')
       + (run.planning?.arc_reacquisitions ? ' · ' + run.planning.arc_reacquisitions + ' planned arc reacquisitions' : '');
     $("skipped-targets").replaceChildren();
     for (const miss of run.planned_misses || []) {
       const li = document.createElement('li'), button = document.createElement('button');
       button.type = 'button';
-      button.textContent = (run.settings.start_s + miss.start_ms / 1000).toFixed(2) + ' s · ' + (miss.kind === 'arc_tick' ? 'arc tick' : miss.kind) + ' · ' + miss.scoring_ticks + ' scoring tick' + (miss.scoring_ticks === 1 ? '' : 's');
+      button.textContent = (run.settings.start_s + miss.start_ms / 1000).toFixed(2) + ' s · ' +
+        (miss.kind === 'red_sky' ? 'red sky note · no score' : (miss.kind === 'arc_tick' ? 'arc tick' : miss.kind) + ' · ' + miss.scoring_ticks + ' scoring tick' + (miss.scoring_ticks === 1 ? '' : 's'));
       button.title = miss.reason || '';
       button.addEventListener('click', () => { video.currentTime = Math.max(0, miss.start_ms / 1000 - 1); $("preview").scrollIntoView({block:'start'}); });
       li.append(button); $("skipped-targets").append(li);

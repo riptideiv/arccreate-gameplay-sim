@@ -5,7 +5,7 @@ if [ "$#" -ne 4 ] && [ "$#" -ne 5 ]; then
     exit 2
 fi
 adapter_dir=$(cd "$(dirname "$0")" && pwd)
-app="$adapter_dir/../.tools/ArcCreate/ArcCreate-export.app/Contents/MacOS/ArcCreate"
+app="${ARCCREATE_EXPORT_APP:-$adapter_dir/../.tools/ArcCreate/ArcCreate-red-notes.app}/Contents/MacOS/ArcCreate"
 project="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 mkdir -p "$(dirname "$2")"
 output="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
