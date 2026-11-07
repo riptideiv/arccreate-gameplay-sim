@@ -2,12 +2,12 @@
 
 Use the prototype's Python environment. No Blender/ArcCreate/native replay or video encode is involved. Keep the dashboard and other heavy jobs idle, but **do not restart or cancel them to benchmark**. Defer trials if they are busy.
 
-From this prototype directory, set `WORKSPACE` to the root of this repository:
+From this prototype directory, set `WORKSPACE` to this independent simulator repository:
 
 ```sh
-WORKSPACE=/Users/xingrui/Documents/dafeiyu/dafeiyu-3d-room
-OUT="$WORKSPACE/prototypes/ipad-rhythm/output/benchmark/contact-planner-recheck"
-PYTHON="$WORKSPACE/prototypes/ipad-rhythm/.venv/bin/python"
+WORKSPACE="$PWD"
+OUT="$WORKSPACE/output/benchmark/contact-planner-recheck"
+PYTHON="$WORKSPACE/.venv/bin/python"
 "$PYTHON" benchmarks/run.py --workspace "$WORKSPACE" --output "$OUT" --stage snapshot
 "$PYTHON" benchmarks/run.py --workspace "$WORKSPACE" --output "$OUT" --stage all
 "$PYTHON" benchmarks/run.py --workspace "$WORKSPACE" --output "$OUT" --stage profiles
@@ -20,4 +20,4 @@ Headline trials run in fresh processes, sequentially interleaved baseline/optimi
 
 `report.json` compares the entire output plan across all 18 trials, removing **only `stats.elapsed_s`**. Touch samples, hand assignments, misses, tick coverage, all cost components, and visited-state counts must match. A mismatch stops the script. No native replay rerender is needed for byte-equivalent contact plans.
 
-Raw configurations, logs, JSON plans, source hashes, timings and `.prof` files are retained under the output directory. Summary data and the interpretation are committed under `benchmarks/results/` and `docs/ipad-rhythm-planner-optimization.md` at repository root.
+Raw configurations, logs, JSON plans, source hashes, timings and `.prof` files are retained under the output directory. Summary data and the interpretation are committed under `benchmarks/results/` and `docs/ipad-rhythm-planner-optimization.md` at this repository root.

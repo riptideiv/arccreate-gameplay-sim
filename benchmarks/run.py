@@ -3,7 +3,9 @@ import argparse,hashlib,json,os,platform,shutil,statistics,subprocess,sys,time,t
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 p=argparse.ArgumentParser();p.add_argument('--workspace',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--stage',choices=['snapshot','baseline-first','all','profiles','cache-hits','report'],default='all');p.add_argument('--baseline-revision',default='25f6003');a=p.parse_args()
-original=a.workspace.resolve()/'prototypes/ipad-rhythm';optimized=HERE.parent
+workspace=a.workspace.resolve()
+original=workspace if (workspace/'plan_excerpt.py').is_file() else workspace/'prototypes/ipad-rhythm'
+optimized=HERE.parent
 out=a.output.resolve();out.mkdir(parents=True,exist_ok=True);baseline=out/'baseline-source'
 windows=[(20,30),(65,75),(90,100)]
 def fingerprint(source):
