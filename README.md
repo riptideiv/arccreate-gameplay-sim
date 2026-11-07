@@ -11,7 +11,7 @@ Earlier offline exports (retained for comparison):
 
 The packages and their extracted projects are under `charts/imported/`. The Blender files use relative paths to their ArcCreate footage under `output/gameplay/`. Keep that folder next to the scenes when moving them. The MP4s include ArcCreate's source audio and hit sounds.
 
-The local chart selector also contains all 268 difficulties from the 77-song `10plus-import-novedio` collection, grouped by song. See [chart import and compatibility](charts/README.md) for regeneration, source assets and the eight unavailable difficulties. Charts with known feature limitations show a notice when selected.
+The local chart selector also contains all 268 difficulties from the 77-song `10plus-import-novedio` collection, grouped by song. See [chart import and compatibility](charts/README.md) for regeneration and source assets. Charts with known feature limitations show a notice when selected. Designant/Lament Rain red notes are supported: **Enable red notes** controls visibility (on by default); **Target every red note** adds them to the planner (off by default). Red catches are optimized after scoring notes and before movement cost. Unreachable red notes can still be skipped; they never count as lost scoring ticks or break native combo, and have separate replay hit/miss counts.
 
 ## Tune in the dashboard
 

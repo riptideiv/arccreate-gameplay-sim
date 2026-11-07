@@ -32,15 +32,15 @@ def test_bulk_import_preserves_sources_and_is_repeatable(tmp_path, monkeypatch):
     original = {p: p.read_bytes() for p in pack.rglob('*') if p.is_file()}
     monkeypatch.setattr(import_charts, 'audio_duration', lambda path: 12 if path.name == '3.ogg' else 10)
     result = import_charts.import_collection(pack, tmp_path)
-    assert (result['songs'], result['charts'], result['available']) == (1, 2, 1)
+    assert (result['songs'], result['charts'], result['available']) == (1, 2, 2)
     assert all(path.read_bytes() == data for path, data in original.items())
     charts = load_catalog(tmp_path)
     easy = charts['test-pack--example--0']
     hard = charts['test-pack--example--3']
     assert easy['duration'] == 9.75
     assert hard['duration'] == 12
-    assert hard['available'] is False
-    assert 'designant' in hard['unavailable_reason']
+    assert hard['available'] is True
+    assert hard['unavailable_reason'] is None
     directory, aff, project = chart_paths(tmp_path, 'test-pack--example--3', hard)
     assert aff.is_symlink() and aff.read_bytes() == (pack/'example/3.aff').read_bytes()
     text = project.read_text()
