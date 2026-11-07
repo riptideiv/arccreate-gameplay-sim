@@ -137,10 +137,44 @@ function fill(values) {
     else field.value = values[field.name];
   }
   syncSliders();
+  updateChartCompatibility();
   updateClickInterval();
   updateReleasePolicy();
   live?.setCamera(settings());
   markDirty();
+}
+
+function populateCharts() {
+  const select = byName('chart');
+  select.replaceChildren();
+  const groups = new Map();
+  const entries = Object.entries(bootstrap.charts);
+  for (const [key, chart] of entries) {
+    const groupName = chart.group || 'Original projects';
+    let group = groups.get(groupName);
+    if (!group) {
+      group = document.createElement('optgroup'); group.label = groupName;
+      groups.set(groupName, group); select.append(group);
+    }
+    const option = document.createElement('option');
+    option.value = key;
+    option.textContent = chart.title + (chart.available === false ? ' · unavailable (designant arcs)' : '');
+    option.disabled = chart.available === false;
+    if (chart.unavailable_reason) option.title = chart.unavailable_reason;
+    group.append(option);
+  }
+  const unavailable = entries.filter(([, chart]) => chart.available === false).length;
+  $('chart-library-info').textContent = `${entries.length} charts · grouped by song and difficulty` +
+    (unavailable ? ` · ${unavailable} require newer chart-format support.` : '.');
+}
+
+function updateChartCompatibility() {
+  const chart = bootstrap?.charts[byName('chart').value];
+  const warnings = Object.entries(chart?.warnings || {});
+  $('chart-compatibility').hidden = !warnings.length && !chart?.unavailable_reason;
+  $('chart-compatibility').textContent = chart?.unavailable_reason || (warnings.length ?
+    'Compatibility notice: this chart uses features the planner may not fully model (' +
+    warnings.map(([code]) => code.replace(/^unsupported_/, '').replaceAll('_', ' ')).join(', ') + ').' : '');
 }
 
 function syncSliders() {
@@ -213,6 +247,7 @@ byName("chart").addEventListener("change", () => {
   byName("start_s").value = chart.start_s;
   byName("end_s").value = chart.end_s;
   chartRange.sync(chart.duration);
+  updateChartCompatibility();
   markDirty();
 });
 $("reset").addEventListener("click", () => fill(bootstrap.defaults));
@@ -240,7 +275,7 @@ form.addEventListener("submit", async event => {
       live?.setCamera(settings()); setRenderDisabled(false); return;
     }
     const run = await api("/api/render", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings())
     });
     displayJob(normalizeRun(run));
     if (matchMedia("(max-width: 700px)").matches) $("preview").scrollIntoView({ block: "start" });
@@ -478,6 +513,7 @@ async function poll() {
 async function start() {
   try {
     bootstrap = await api("/api/bootstrap");
+    populateCharts();
     bootstrap.history = bootstrap.history.map(normalizeRun);
     fill(bootstrap.defaults);
     const latest = bootstrap.history.find(run => run.status === "complete");

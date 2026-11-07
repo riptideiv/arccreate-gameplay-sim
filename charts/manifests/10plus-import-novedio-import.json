@@ -1,0 +1,43 @@
+{
+  "collection": "10plus-import-novedio",
+  "songs": 77,
+  "charts": 268,
+  "available": 260,
+  "unavailable": [
+    {
+      "id": "10plus-import-novedio--designant-11+--0",
+      "reason": "Uses unsupported 'designant' arc type; requires newer chart-format support."
+    },
+    {
+      "id": "10plus-import-novedio--designant-11+--1",
+      "reason": "Uses unsupported 'designant' arc type; requires newer chart-format support."
+    },
+    {
+      "id": "10plus-import-novedio--designant-11+--2",
+      "reason": "Uses unsupported 'designant' arc type; requires newer chart-format support."
+    },
+    {
+      "id": "10plus-import-novedio--designant-11+--3",
+      "reason": "Uses unsupported 'designant' arc type; requires newer chart-format support."
+    },
+    {
+      "id": "10plus-import-novedio--lamentrain-11--0",
+      "reason": "Uses unsupported 'designant' arc type; requires newer chart-format support."
+    },
+    {
+      "id": "10plus-import-novedio--lamentrain-11--1",
+      "reason": "Uses unsupported 'designant' arc type; requires newer chart-format support."
+    },
+    {
+      "id": "10plus-import-novedio--lamentrain-11--2",
+      "reason": "Uses unsupported 'designant' arc type; requires newer chart-format support."
+    },
+    {
+      "id": "10plus-import-novedio--lamentrain-11--3",
+      "reason": "Uses unsupported 'designant' arc type; requires newer chart-format support."
+    }
+  ],
+  "warning_charts": 40,
+  "catalog": "charts/imported/catalog.json",
+  "regenerate_command": ".venv/bin/python import_charts.py charts/imported/10plus-import-novedio"
+}
