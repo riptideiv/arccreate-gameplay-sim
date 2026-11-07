@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arc-hand-order"
+version = "1.0.1"
+description = "Arcaea hand-order planner (multi-finger DP, on4/on5 presets)"
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy==2.5.3",
+    "pydantic==2.13.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1"]
+
+[project.scripts]
+arc-hand-order = "arc_hand_order.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+arc_hand_order = ["devices/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

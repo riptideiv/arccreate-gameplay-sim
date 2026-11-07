@@ -1,0 +1,6 @@
+{
+ "schema_version": "1.0",
+ "profile_id": "ipad_pro_11_m2_landscape",
+ "description": "iPad Pro 11-inch (4th generation, M2), landscape: 2388 x 1668 px at 264 ppi, 229.7 x 160.5 mm",
+ "screen": {"width_m": 0.2297, "height_m": 0.1605, "pixel_width": 2388, "pixel_height": 1668}
+}

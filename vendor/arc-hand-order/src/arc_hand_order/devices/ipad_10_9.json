@@ -1,0 +1,6 @@
+{
+ "schema_version": "1.0",
+ "profile_id": "ipad_air_5_10_9_landscape",
+ "description": "iPad Air (5th generation), 10.9-inch, landscape: 2360 x 1640 px at 264 ppi, 227.1 x 157.8 mm",
+ "screen": {"width_m": 0.2271, "height_m": 0.1578, "pixel_width": 2360, "pixel_height": 1640}
+}

@@ -1,0 +1,6 @@
+.venv/
+output/frames/
+*.egg-info/
+
+charts/imported/
+.tools/

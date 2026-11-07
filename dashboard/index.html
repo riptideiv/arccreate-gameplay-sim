@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rhythm workbench</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+<header>
+  <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 22V12M10 26V6M16 21V11M22 26V6M28 22V12"/></svg><div><h1>Rhythm workbench</h1><p>Give the hands a rhythm that feels right.</p></div></div>
+  <span class="connection"><span></span>Local renderer</span>
+</header>
+<nav class="mobile-nav" aria-label="Workbench views">
+  <a href="#preview">Preview</a>
+  <a href="#settings">Settings</a>
+  <button id="mobile-render" type="submit" form="settings">Build</button>
+</nav>
+<main>
+  <form id="settings" class="controls">
+    <section>
+      <h2>Chart window</h2>
+      <label for="chart">Chart</label>
+      <select name="chart" id="chart"><option value="ex-otogibanashi">Ex-Otogibanashi</option><option value="bibideba">BIBBIDIBA</option></select>
+      <div class="range-heading"><span>Selected window</span><button id="full-chart" type="button">Full chart</button></div>
+      <div id="chart-range" class="chart-range" role="group" aria-label="Chart window">
+        <div class="range-track" aria-hidden="true"><span></span></div>
+        <input id="range-start" type="range" min="0" max="1" step="0.001" value="0" aria-label="Chart start slider">
+        <input id="range-end" type="range" min="0" max="1" step="0.001" value="1" aria-label="Chart end slider">
+      </div>
+      <div class="range-scale" aria-hidden="true"><span>0:00</span><span id="range-duration"></span></div>
+      <output id="range-selection" class="range-summary"></output>
+      <div class="time-fields">
+        <label>Start <span class="input-unit"><input name="start_s" type="number" min="0" step="0.001" required><span>s</span></span></label>
+        <label>End <span class="input-unit"><input name="end_s" type="number" min="0.5" step="0.001" required><span>s</span></span></label>
+      </div>
+      <p class="hint">Any window within the chart, including the full song. One index finger per hand.</p>
+      <label><input name="allow_misses" type="checkbox"> Allow missed notes when a perfect path is infeasible</label>
+      <details><summary>Search effort</summary>
+        <label>Search width <input name="search_width" type="number" min="32" max="2048" step="1" required></label>
+        <p class="hint">More states explore more hand orders. The bounded search prioritizes scoring ticks, then comfortable movement. Arcs can release and resume, skipping individual ticks.</p>
+      </details>
+    </section>
+    <section>
+      <h2>Hand motion</h2>
+      <div class="knob"><label for="speed">Max move speed</label><span class="input-unit"><input id="speed" name="max_speed_m_s" type="number" min="0.1" max="4" step="0.05" required><span>m/s</span></span><input aria-label="Max move speed slider" data-for="max_speed_m_s" type="range" min="0.1" max="4" step="0.05"></div>
+      <p class="hint">Checked on the full glove, including movement from wrist turns.</p>
+      <div class="knob"><label for="turn">Max wrist turn</label><span class="input-unit"><input id="turn" name="angular_limit_deg_s" type="number" min="30" max="1440" step="30" required><span>°/s</span></span><input aria-label="Max wrist turn slider" data-for="angular_limit_deg_s" type="range" min="30" max="1440" step="30"></div>
+      <div class="knob"><label for="lift">Finger lift</label><span class="input-unit"><input id="lift" name="lift_mm" type="number" min="0" max="30" step="1" required><span>mm</span></span><input aria-label="Finger lift slider" data-for="lift_mm" type="range" min="0" max="30" step="1"></div>
+      <div class="knob"><label for="clearance">Preferred hand clearance</label><span class="input-unit"><input id="clearance" name="clearance_mm" type="number" min="0.5" max="8" step="0.5" required><span>mm</span></span><input aria-label="Hand clearance slider" data-for="clearance_mm" type="range" min="0.5" max="8" step="0.5"></div>
+      <p class="hint">Hands pivot around their touch points to avoid overlap. Released hands can lift or move around the other hand. Contacts stay fixed; unresolved overlap is reported without blocking playback.</p>
+      <details>
+        <summary>Planner preferences</summary>
+        <label>Comfort speed <span class="input-unit"><input name="comfort_speed_m_s" type="number" min="0.1" max="2" step="0.05" required><span>m/s</span></span></label>
+        <label>Crossing cost <input name="crossing_weight" type="number" min="0" max="30" step="0.5" required></label>
+        <label>Acceleration preference <span class="input-unit"><input name="planner_accel_m_s2" type="number" min="1" max="200" step="1" required><span>m/s²</span></span></label>
+        <p class="hint">Acceleration is an upstream planner preference. Move and turn speeds above are enforced on the animation.</p>
+      </details>
+    </section>
+    <section id="click-timing">
+      <h2>Click timing</h2>
+      <div class="knob"><label for="repeat-gap">Comfortable repeat gap</label><span class="input-unit"><input id="repeat-gap" name="repeat_comfort_ms" type="number" min="1" max="1000" step="1" required><span>ms</span></span><input aria-label="Comfortable repeat gap slider" data-for="repeat_comfort_ms" type="range" min="1" max="1000" step="1"></div>
+      <p class="hint">Preferred time from releasing to pressing again with the same hand. Faster repeats add cost.</p>
+      <label for="repeat-cost">Fast-repeat cost</label><input id="repeat-cost" name="repeat_weight" type="number" min="0" max="100" step="1" required>
+      <p class="hint">Higher costs encourage switching hands. Zero disables this penalty.</p>
+      <p class="hint" id="repeat-disabled" hidden>Repeat-gap penalties are currently off because Fast-repeat cost is zero.</p>
+      <details>
+        <summary>Fast runs of repeated taps</summary>
+        <label for="jack-gap">Fast-run gap <span class="input-unit"><input id="jack-gap" name="jack_gap_ms" type="number" min="0" max="1000" step="1" required><span>ms</span></span></label>
+        <p class="hint">Presses this close together on the same hand extend a fast run, measured from press to press.</p>
+        <label for="jack-free">Unpenalized taps per run <input id="jack-free" name="jack_free" type="number" min="1" max="32" step="1" required></label>
+        <label for="jack-cost">Extra cost per tap <input id="jack-cost" name="jack_weight" type="number" min="0" max="100" step="1" required></label>
+        <p class="hint" id="jack-disabled" hidden>Fast-run penalties are currently off because Extra cost per tap is zero.</p>
+      </details>
+      <details>
+        <summary>Hard timing limits</summary>
+        <label for="tap-frames">Tap duration <span class="input-unit"><input id="tap-frames" name="point_contact_frames" type="number" min="1" max="12" step="1" required><span>frames</span></span></label>
+        <label for="air-frames">Minimum release gap <span class="input-unit"><input id="air-frames" name="min_air_frames" type="number" min="0" max="30" step="1" required><span>frames</span></span></label>
+        <label for="hold-air-frames">Release gap after a hold or arc <span class="input-unit"><input id="hold-air-frames" name="held_release_air_frames" type="number" min="0" max="30" step="1" required><span>frames</span></span></label>
+        <p class="hint">The planner runs at 60 Hz. One frame is 16.7 ms. These durations are required.</p>
+      </details>
+      <p class="hint" id="click-interval" aria-live="polite"></p>
+    </section>
+    <section id="arc-release">
+      <h2>Arc paths and release</h2>
+      <label for="arc-path">Arc path</label>
+      <select id="arc-path" name="arc_path_mode"><option value="score">Score-aware · catch ticks with less movement</option><option value="trace">Trace · follow the snake centre</option></select>
+      <p class="hint">Score-aware paths can wait inside a hitbox and cut between catches. ArcCreate judges the resulting touches; colour locks still apply.</p>
+      <label><input name="prefer_arc_trace" type="checkbox"> Prefer tracing arc geometry</label>
+      <label for="arc-trace-cost">Geometry deviation cost <span class="input-unit"><input id="arc-trace-cost" name="arc_trace_weight" type="number" min="0" max="10000" step="50" required><span>/s</span></span></label>
+      <p class="hint">In Score-aware mode, higher costs favour tracing the centreline throughout the snake, including its tail and release gaps. Full cost applies at 20 mm away or while released; closer offsets cost proportionally less. Scoring and speed limits take priority. The full-hold cost below is additional when enabled.</p>
+      <p class="hint" id="arc-release-summary" aria-live="polite"></p>
+      <label><input name="full_arc_hold" type="checkbox"> Prefer holding arcs to the visual end</label>
+      <p class="hint">Leave off to free the hand once the final scoring tick is secured. If a whole snake is infeasible, the planner can release and reacquire it around individual ticks, respecting ArcCreate’s colour lock and grace periods.</p>
+      <label for="arc-tail-cost">Early arc-release cost <span class="input-unit"><input id="arc-tail-cost" name="partial_hold_weight" type="number" min="0" max="10000" step="50" required><span>/s</span></span></label>
+      <p class="hint">Applies when full holding is preferred. Higher costs favor following the whole arc; early release remains a fallback.</p>
+      <details>
+        <summary>Ground holds</summary>
+        <label><input name="full_ground_hold" type="checkbox"> Prefer holding ground holds to the visual end</label>
+        <label for="hold-tail-cost">Early ground-release cost <span class="input-unit"><input id="hold-tail-cost" name="partial_ground_hold_weight" type="number" min="0" max="10000" step="50" required><span>/s</span></span></label>
+        <p class="hint">Turn off full holding to release ground holds once their final scoring tick is secured too.</p>
+      </details>
+      <p class="hint">Release times are rounded to 60 Hz and used by both movement planning and animation. The extra release gap after a hold applies only to contacts held through their visual end.</p>
+    </section>
+    <section>
+      <h2>Camera</h2>
+      <div class="knob"><label for="distance">Distance</label><span class="input-unit"><input id="distance" name="camera_distance_m" type="number" min="0.22" max="0.5" step="0.01" required><span>m</span></span><input aria-label="Camera distance slider" data-for="camera_distance_m" type="range" min="0.22" max="0.5" step="0.01"></div>
+      <div class="knob"><label for="angle">View angle</label><span class="input-unit"><input id="angle" name="camera_elevation_deg" type="number" min="25" max="80" step="1" required><span>°</span></span><input aria-label="Camera view angle slider" data-for="camera_elevation_deg" type="range" min="25" max="80" step="1"></div>
+      <details>
+        <summary>Lens and horizontal angle</summary>
+        <label>Lens <span class="input-unit"><input name="camera_lens_mm" type="number" min="20" max="55" step="1" required><span>mm</span></span></label>
+        <label>Horizontal angle <span class="input-unit"><input name="camera_yaw_deg" type="number" min="-35" max="35" step="1" required><span>°</span></span></label>
+      </details>
+    </section>
+    <div class="render-controls">
+      <label for="quality">Live preview detail</label>
+      <select name="quality" id="quality"><option value="draft">Draft · lighter on phones</option><option value="final">High · sharper display</option></select>
+      <button id="render" type="submit"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6z"/></svg>Build live preview</button>
+      <button type="button" class="text-button" id="reset">Reset controls</button>
+    </div>
+  </form>
+  <div class="workspace" id="preview">
+    <div class="preview-heading"><div><h2 id="preview-title">Your motion preview</h2><p id="preview-description">Choose a window, adjust the motion, and render.</p></div><span id="preview-tag" class="tag">Waiting for a render</span></div>
+    <div class="player">
+      <canvas id="live-scene" hidden aria-label="Live 3D hand animation"></canvas>
+      <video id="video" controls playsinline preload="metadata" aria-label="Rendered hand animation"></video>
+      <div id="empty"><svg viewBox="0 0 80 60" aria-hidden="true"><path d="M10 48 24 12h44L54 48Z"/><path d="m21 40 8-22h29L49 40Z"/><circle cx="24" cy="36" r="8"/><circle cx="51" cy="25" r="8"/></svg><p>The next take starts here.</p><span>ArcCreate gameplay, two hands, your settings.</span></div>
+    </div>
+    <div class="live-transport" id="live-transport" hidden>
+      <button type="button" id="play-preview" aria-label="Play preview">Play</button>
+      <input id="seek-preview" type="range" min="0" max="1" step="0.001" value="0" aria-label="Preview position">
+      <span id="preview-time">0:00 / 0:00</span>
+    </div>
+    <div class="playback"><label for="playback-speed">Playback</label><select id="playback-speed"><option value="1">1× · chart speed</option><option value="0.5">0.5× · inspect</option><option value="0.25">0.25× · inspect</option></select><span id="live-performance">Playback speed helps inspection. Motion limits apply at 1×.</span></div>
+    <section class="video-export" id="presentation-set" hidden aria-label="Presentation set">
+      <div><h2>Presentation set</h2><p id="presentation-hint" class="hint" aria-live="polite"></p></div>
+      <div class="export-actions"><button id="refresh-scene" type="button">Update presentation</button></div>
+    </section>
+    <section class="video-export" id="video-export" hidden aria-label="Video export">
+      <div><h2>Export video</h2><p id="export-hint" class="hint" aria-live="polite">Export this take with the current camera and audio.</p></div>
+      <div class="export-actions"><button id="export-video" type="button">Export MP4</button><a id="download-export" download hidden>Download MP4</a></div>
+    </section>
+    <section class="analysis" id="judgement-report" hidden>
+      <h2>ArcCreate results</h2><p id="judgement-summary"></p><p id="arc-tick-summary" class="hint" hidden></p><a id="arc-tick-report" hidden target="_blank" rel="noopener">Native arc-tick report</a>
+      <p class="hint">Score, combo, effects and hit sounds follow the two-hand touch replay. Window boundaries can also cause misses.</p>
+      <details><summary>Planned missed ticks and notes</summary><ul id="skipped-targets"></ul></details>
+    </section>
+    <div id="job" class="job" hidden role="status" aria-live="polite"><div><strong id="job-stage"></strong><button type="button" id="cancel" class="text-button">Cancel</button></div><progress id="progress" max="100" value="0" aria-label="Render progress"></progress><section id="planning-status" hidden><p id="planning-label"></p><progress id="planning-progress" max="100" aria-label="Touchpoint planning progress"></progress><p id="planning-detail"></p></section><p id="job-detail"></p></div>
+    <div id="error" class="error" hidden role="alert"><strong>Preview needs attention.</strong><p id="error-message"></p><a id="error-log" target="_blank" rel="noopener">View build log</a></div>
+    <section class="analysis" id="analysis" hidden>
+      <div class="analysis-heading"><h2>Measured motion</h2><span class="legend"><i class="left"></i>Left hand <i class="right"></i>Right hand</span></div>
+      <div class="metrics">
+        <div><span>Peak glove speed</span><strong id="peak-speed"></strong><small id="speed-limit"></small></div>
+        <div><span>Peak wrist turn</span><strong id="peak-turn"></strong><small id="turn-limit"></small></div>
+        <div><span id="gap-label">Closest hand gap</span><strong id="gap"></strong><small id="gap-note">Sampled at quarter steps</small></div>
+        <div><span>Planned touches</span><strong id="contacts"></strong><small>Single index per hand</small></div>
+      </div>
+      <svg id="speed-chart" viewBox="0 0 800 155" role="img" aria-label="Left and right glove speeds through the preview"><path id="limit-line"/><path id="left-line"/><path id="right-line"/><line id="playhead" y1="10" y2="132"/><text id="axis-limit" x="8" y="15"></text><text x="8" y="147">0 s</text><text id="axis-end" x="755" y="147"></text></svg>
+      <div class="result-actions"><a id="blend-link">Open Blender scene</a><a id="video-link" download>Download gameplay only</a><a id="run-log" target="_blank" rel="noopener">Build log</a></div>
+    </section>
+    <section class="takes"><div class="analysis-heading"><h2>Recent takes</h2><span id="take-count">Saved locally</span></div><div id="history"><p class="hint">Completed previews will appear here for comparison.</p></div></section>
+    <p class="footnote">Live previews use verified hand motion and ArcCreate touch-replay footage. Older saved videos use their original autoplay footage. Move and turn limits apply at 1× playback speed.</p>
+  </div>
+</main>
+</body>
+</html>

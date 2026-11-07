@@ -1,0 +1,164 @@
+Optimize the rhythm simulator’s contact planner while preserving its scoring rules and search quality. Benchmark the improvements on three 10-second Bibideba windows:
+
+1. 20–30 seconds.
+2. 65–75 seconds.
+3. 90–100 seconds.
+
+Keep the current DP approach. Prioritize eliminating repeated work before changing candidate generation, pruning, or search width. Do not restart the dashboard or interrupt active jobs just to benchmark.
+
+Evidence from preliminary profiling
+-----------------------------------
+A cProfile run on Bibideba 69–72s with search_width=64 produced approximately:
+- 36 million function calls.
+- 32,000 hitbox-polygon calculations.
+- 173,000 coordinate projections.
+- Repeated reconstruction of an unchanged camera projection matrix.
+
+Important locations:
+- vendor/arc-hand-order/src/arc_hand_order/planning/multi_finger.py
+  - Regions.polygon
+  - _Graph.steps
+  - _Graph._intern
+  - _Graph.bound_frames
+  - _Graph.steals
+  - _Graph.future
+  - _Graph._finish
+  - _plan_items
+- planning/projection.py
+- camera.py
+- planning/arc_scoring.py
+- planning/native_input.py
+- plan_excerpt.py
+
+Paths above are relative to prototypes/ipad-rhythm unless otherwise indicated.
+
+Establish the baseline first
+----------------------------
+Before editing, preserve a runnable snapshot of the relevant planner code. Do not rely on Git being available or reset unrelated changes. Keep baseline and optimized runs isolated so imports cannot accidentally mix versions.
+
+Use the same chart file and identical settings for every baseline/optimized comparison.
+
+Start from:
+output/runs/20261107-000550-9a4498/settings.json
+
+Use its planner settings, explicitly confirming:
+- max_speed_m_s=4
+- search_width=256
+- arc_path_mode="score"
+- prefer_arc_trace=false
+- allow_misses=true
+
+Preserve its other timing, release, hold-preference, and cost settings. Substitute only the selected start/end window. Save the complete benchmark configuration and source fingerprints with the results.
+
+Benchmark contact planning only: chart loading, preprocessing, search, and plan serialization. Exclude Blender, hand posing, ArcCreate rendering, and MP4 export.
+
+Implement in measured stages
+---------------------------
+
+1. Cache invariant geometry.
+
+Precompute the fixed camera projection matrix rather than rebuilding it for every projected point.
+
+Cache hitbox polygons by the inputs that actually determine them: geometry identity, effective chart time/frame, projection, and region settings.
+
+Keep caches local to a planning invocation or otherwise rigorously scoped. Account for split tick occupations, clamped source times, and camera variants. Avoid mutating shared cached polygons if consumers expect mutable lists.
+
+There are already several geometry caches; inspect and extend them rather than introducing conflicting duplicate caches.
+
+2. Reuse physical contact extensions.
+
+The scoring-arc branch in _Graph.steps can construct the same extension of an old touch to a candidate repeatedly across different DP states.
+
+Cache reusable extension geometry and validity by the complete relevant inputs, including old touch, candidate, and extension variant.
+
+Keep state-dependent decisions separate:
+- Other-hand interactions.
+- Colour ownership and release locks.
+- Repeat/jack history.
+- Crossing costs and other coupled costs.
+
+A cached physical extension must not bypass those checks. Cache infeasible extensions too when infeasibility is independent of the surrounding state.
+
+3. Make contact histories incremental.
+
+Long snake extensions currently copy accumulated paths and repeatedly scan their prefixes.
+
+Investigate representing an extension as a shared immutable prefix plus a new segment. Check speed only across the new segment and its boundary when the prefix is already validated.
+
+Accumulate reusable costs and validation summaries where correct, including colour-binding history and geometry-tracing costs.
+
+Materialize full frame-by-frame paths when required for output or final animation. Preserve efficient random access for checks that need it; do not replace copying with an equally expensive chain traversal.
+
+Do not assume only the newest frames matter for every constraint. Audit checks whose interaction with the other hand or newly introduced ticks may require earlier frames.
+
+Implement this larger refactor only if profiling supports it. Prefer a smaller verified improvement over a risky rewrite.
+
+4. Add completed-plan reuse.
+
+Cache plans using chart content, device/projection, selected window, planner-relevant settings, exclusions, and planner implementation version.
+
+Presentation, camera framing, and export settings should not invalidate contact planning unless they genuinely affect planner inputs. Preserve downstream invalidation for hand posing and scene generation independently.
+
+Use atomic writes and validate cached entries. Do not publish partial or cancelled plans.
+
+Measure cache-hit performance separately. A cache hit is not evidence that the underlying search became faster.
+
+Correctness requirements
+-----------------------
+Keep scoring windows, native screen/world hitboxes, camera-envelope checks, colour locks, grace behavior, missed-tick handling, and release timing intact.
+
+Retain both geometry-tracing preference and visual-end hold preference.
+
+For optimizations intended to preserve behavior, compare baseline and optimized output:
+- Touch times, hand assignments, and sampled paths.
+- Planned misses and scoring-tick coverage.
+- Cost components.
+
+Ignore elapsed-time metadata when comparing. Investigate differences rather than relaxing comparisons until they pass. If tie-breaking changes, explain why, and verify that score and cost do not regress.
+
+Run the relevant existing planner and prototype tests. Add focused regression coverage for invalid cache reuse, prefix-extension boundaries, and any representation changes.
+
+If benchmark contacts remain identical, native gameplay need not be rerendered just for the benchmark. If contacts change, validate the changed replays against native ArcCreate before calling the result equivalent.
+
+Preserve the planning-progress reporting recently added in the side conversation.
+
+Benchmark protocol
+------------------
+Create a reproducible benchmark command/script and save its outputs under a dedicated output/benchmark directory.
+
+For each interval and each implementation:
+- Run at least three timed trials in fresh processes.
+- Use the same machine, interpreter, dependencies, and settings.
+- Run baseline and optimized trials sequentially, preferably interleaved to reduce timing drift.
+- Avoid overlapping heavy renders or exports. Record any contention.
+- Use identical progress-reporting behavior in both versions.
+- Record wall time and, where practical, CPU time and peak resident memory.
+- Save output plans and correctness comparisons.
+
+Fresh processes should start without in-memory planner caches, and completed-plan disk caching must be disabled or bypassed for these search benchmarks. Ordinary within-run memoization remains enabled.
+
+Use unprofiled runs for headline timings. Run cProfile separately on representative baseline/optimized cases to explain which costs disappeared. Do not use profiling or tracemalloc timings as normal-runtime measurements.
+
+Report:
+- Median baseline and optimized time for each interval.
+- Trial ranges.
+- Speedup = baseline median / optimized median.
+- Peak memory where measured.
+- Whether contacts, misses, and costs match.
+
+Also report aggregate speedup as:
+sum(baseline interval medians) / sum(optimized interval medians)
+
+Measure repeated-request cache hits in a separate table, clearly labeled.
+
+Deliverables
+------------
+Provide:
+- The implemented optimizations and their rationale.
+- A repeatable benchmark command.
+- Saved configurations, raw timings, profiles, and comparison results.
+- A three-row before/after benchmark table.
+- Test results and any behavioral differences.
+- Remaining bottlenecks.
+
+Do not claim a target speedup in advance. If an optimization fails to help or increases memory excessively, revise or remove it. Do not silently reduce search width, candidates, scoring accuracy, or validation to obtain faster results.
