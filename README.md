@@ -135,3 +135,9 @@ curl -fsS http://127.0.0.1:8765/api/presentation \
 This asynchronous operation updates the take metadata as well as its versioned `.blend` and `.glb`. Poll `/api/state` or watch the dashboard, then use **Export MP4**. Avoid invoking `animate.py` for an environment-only change: that entry point builds a new animation, while `refresh_scene.py` preserves the existing baked keys. The porting guide includes direct Blender audit commands.
 
 The upstream planner suite passed 81 tests during setup. The one-index configuration rejected three disjoint simultaneous holds. Targeted motion checks verify that movement obeys the glove speed cap and wrist turns obey the angular cap. A Blender regression check confirms that identical, overlapping glove paths preserve their touch points and finish successfully; excessive speed still fails.
+
+## Planner performance and completed-plan reuse
+
+The contact planner now memoizes fixed projection/polygon geometry and state-independent arc extensions while retaining the same DP candidates, scoring checks, costs and search width. Three-window fresh-process benchmarks measured a 1.92× aggregate search speedup, with identical complete plans (apart from elapsed-time metadata). See [the optimization report](../../docs/ipad-rhythm-planner-optimization.md) and [repeatable benchmark commands](benchmarks/README.md).
+
+CLI/dashboard planning reuses validated completed results under `output/contact-plans/`. The key includes chart/device/rule implementation, window, planner settings and exclusions; camera, presentation, hand posing and export settings do not invalidate contact planning. Use `--no-plan-cache` for uncached search measurements or `--plan-cache-dir PATH` for isolation. Library calls remain uncached unless `cache_dir` is supplied. Cache hits preserve the actual plan and emit `cache_hit=true` through the existing progress stream; corrupt/incompatible entries trigger normal search.
