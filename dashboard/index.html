@@ -46,6 +46,15 @@
       </details>
     </section>
     <section>
+      <h2>Scroll and audio</h2>
+      <div class="knob"><label for="scroll-speed">Chart scroll speed</label><input id="scroll-speed" name="scroll_speed" type="number" min="1" max="10" step="0.1" required><input aria-label="Chart scroll speed slider" data-for="scroll_speed" type="range" min="1" max="10" step="0.1"></div>
+      <p class="hint">ArcCreate scale 1–10. Higher values bring notes toward you faster. Note timing and song tempo stay unchanged.</p>
+      <div class="knob"><label for="song-delay">Song audio delay</label><span class="input-unit"><input id="song-delay" name="song_delay_ms" type="number" min="-2000" max="2000" step="1" required><span>ms</span></span><input aria-label="Song audio delay slider" data-for="song_delay_ms" type="range" min="-2000" max="2000" step="10"></div>
+      <p class="hint">Positive = song later than video; negative = earlier. Video, hand contacts and hit sounds stay fixed.</p>
+      <label><input name="hit_sounds" type="checkbox"> Hit sounds</label>
+      <p class="hint">Clicks for caught block notes and snake scoring ticks. Missed notes stay silent. Build to apply; these controls reuse contact plans.</p>
+    </section>
+    <section>
       <h2>Red sky notes</h2>
       <label class="check"><input type="checkbox" name="enable_red_notes"> Enable red notes</label>
       <label class="check"><input type="checkbox" name="target_all_red_notes" id="target-red"> Target every red note</label>
@@ -155,6 +164,7 @@
       <div class="export-actions"><button id="export-video" type="button">Export Blender MP4</button><a id="download-export" download hidden>Download Blender MP4</a></div>
     </details>
     <section class="analysis" id="judgement-report" hidden>
+      <p id="hit-audio-report" class="hint" hidden><span id="hit-audio-counts"></span> <a id="hit-audio-download" download>Download hit sounds (WAV)</a></p>
       <h2>ArcCreate results</h2><p id="judgement-summary"></p><p id="arc-tick-summary" class="hint" hidden></p><a id="arc-tick-report" hidden target="_blank" rel="noopener">Native arc-tick report</a>
       <p class="hint">Score, combo, effects and hit sounds follow the two-hand touch replay. Window boundaries can also cause misses.</p>
       <details><summary>Planned missed ticks and notes</summary><ul id="skipped-targets"></ul></details>

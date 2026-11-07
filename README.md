@@ -15,6 +15,10 @@ The local chart selector also contains all 268 difficulties from the 77-song `10
 
 ## Tune in the dashboard
 
+**Scroll and audio** contains the chart scroll-speed control (ArcCreate scale 1–10, default 5), song audio delay (−2000 to +2000 ms, default 0), and one **Hit sounds** toggle (on by default). Scroll speed changes note approach distance, with note times and tempo unchanged. Positive audio delay makes the song play later relative to the video; negative plays it earlier. Hand contacts, gameplay timing and hit clicks stay fixed. Build to apply these controls; contact planning is cached independently, and audio changes reuse cached native footage.
+
+The single hit-sound toggle covers ground/sky block hits, hold heads and successful snake scoring ticks. The ArcCreate replay adapter captures actual native catches rather than scheduling autoplay clicks. Misses stay silent. New takes provide **Download hit sounds (WAV)** under ArcCreate results, plus counts of block and snake clicks. The WAV remains available when the mix's hit-sound toggle is off. The delayed song and selected hit sounds are included in both the live preview and its WebGL/Blender video exports. Older saved takes keep their original media until rebuilt.
+
 This folder is its own Git repository; the parent dafeiyu room repository ignores it. Simulator code, documentation, charts and runtime output belong here.
 
 Run `./dashboard.sh`, then open [Rhythm workbench](http://127.0.0.1:8765). The dashboard uses the two copied chart packages and runs the planner, ArcCreate, and Blender on this Mac. It binds to loopback and saves each take under `output/runs/`.

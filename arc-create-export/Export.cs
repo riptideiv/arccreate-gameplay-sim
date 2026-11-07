@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using Newtonsoft.Json;
 using ArcCreate;
 using ArcCreate.Compose;
 using ArcCreate.Compose.Components;
@@ -16,6 +17,7 @@ using UnityEngine;
 
 public static class Export
 {
+    private class ViewOptions { public float scroll_speed = 5; }
     public static void Start(ComposeManager manager)
     {
         string[] args = Environment.GetCommandLineArgs();
@@ -37,6 +39,7 @@ public static class Export
         string previousFfmpeg = Settings.FFmpegPath.Value;
         int previousInputMode = Settings.InputMode.Value;
         int previousOffset = Settings.GlobalAudioOffset.Value;
+        int previousDropRate = Settings.DropRate.Value;
         Settings.GlobalAudioOffset.Value = 0;
         Settings.FFmpegPath.Value = ffmpeg;
         Settings.InputMode.Value = (int)InputMode.Auto;
@@ -64,6 +67,7 @@ public static class Export
             Settings.FFmpegPath.Value = previousFfmpeg;
             Settings.InputMode.Value = previousInputMode;
             Settings.GlobalAudioOffset.Value = previousOffset;
+            Settings.DropRate.Value = previousDropRate;
             (export as IDisposable)?.Dispose();
         }
     }
@@ -71,6 +75,12 @@ public static class Export
     private static IEnumerator Run(string output, int from, int to)
     {
         Application.runInBackground = true;
+        string[] optionsArgs = Environment.GetCommandLineArgs();
+        int inputFlag = Array.IndexOf(optionsArgs, "--touch-replay");
+        var view = inputFlag >= 0 ? JsonConvert.DeserializeObject<ViewOptions>(File.ReadAllText(optionsArgs[inputFlag + 1])) : new ViewOptions();
+        if (float.IsNaN(view.scroll_speed) || view.scroll_speed < 1 || view.scroll_speed > 10)
+            throw new Exception("Scroll speed must be between 1 and 10.");
+        Settings.DropRate.Value = (int)Math.Round(view.scroll_speed * 30);
         output = Path.GetFullPath(output);
         var service = UnityEngine.Object.FindObjectOfType<VideoRenderService>(true);
         var fields = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -121,7 +131,7 @@ public static class Export
                 yield return null;
             task.GetAwaiter().GetResult();
         }
-        if (replay >= 0) Replay.Finish(output, from, to);
+        if (replay >= 0) Replay.Finish(output, from, to, data.AudioClip.Value);
         bool wroteVideo = File.Exists(output) && new FileInfo(output).Length > 1000;
         Debug.Log(wroteVideo ? "AFF export complete: " + output : "AFF export did not produce a video.");
         Application.Quit(wroteVideo ? 0 : 1);

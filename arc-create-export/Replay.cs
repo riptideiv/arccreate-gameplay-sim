@@ -18,7 +18,7 @@ public static class Replay
     [Serializable] public class Judge { public int chart_ms; public string result; }
     [Serializable] public class ArcTick { public int chart_ms, arc_start_ms, arc_end_ms, color, request_start_ms, auto_ms, expiry_ms; public float x_start, x_end, y_start, y_end; public string result; }
     [Serializable] public class Result { public int hits, misses, score, combo, red_hits, red_misses; public string engine = "ArcCreate touch judgement"; public List<Judge> judgements = new List<Judge>(); public List<Judge> red_judgements = new List<Judge>(); public List<ArcTick> arc_ticks = new List<ArcTick>(); }
-    private class Sound { public int timing; public AudioClip clip; }
+    private class Sound { public int timing; public AudioClip clip; public string kind; }
     public static bool Enabled;
     private static IGameplayControl gameplay;
     private static InputFile input;
@@ -134,6 +134,8 @@ public static class Replay
             result.arc_ticks.Add(new ArcTick { chart_ms = now, arc_start_ms = arc.Timing, arc_end_ms = arc.EndTiming,
                 color = arc.Color, x_start = arc.XStart, x_end = arc.XEnd, y_start = arc.YStart, y_end = arc.YEnd,
                 request_start_ms = request.StartAtTiming, auto_ms = request.AutoAtTiming, expiry_ms = request.ExpireAtTiming, result = verdict });
+            if (judgement && !expired && verdict != "NoScore" && !verdict.StartsWith("Miss"))
+                Hit("arc-tick:" + arc.GetHashCode() + ":" + request.AutoAtTiming, gameplay.Audio.ArcHitsoundClip, "arc_ticks");
             request.Receiver.ProcessArcJudgement(expired, judgement, props);
         }
     }
@@ -154,20 +156,23 @@ public static class Replay
         result.red_judgements.Add(new Judge { chart_ms = timing, result = name });
     }
 
-    public static void Tap(int timing) { Hit("tap:" + timing, gameplay == null ? null : gameplay.Audio.TapHitsoundClip); }
-    public static void Arc(int timing) { Hit("arc:" + timing, gameplay == null ? null : gameplay.Audio.ArcHitsoundClip); }
+    public static void Tap(int timing) { Hit("tap:" + timing, gameplay == null ? null : gameplay.Audio.TapHitsoundClip, "blocks"); }
+    // Native arc-head sounds are not scoring ticks. Sky taps are captured by
+    // ArcTap below; scored snake ticks are captured by the native receiver above.
+    public static void Arc(int timing) { }
     public static void ArcTap(int timing, string sfx, bool fromJudgement)
     {
-        if (!Active || !fromJudgement || string.IsNullOrEmpty(sfx) || sfx == "none") return;
-        AudioClip clip;
-        if (gameplay.Audio.SfxAudioClips.TryGetValue(sfx, out clip)) Hit("sfx:" + sfx + ":" + timing, clip);
+        if (!Active || !fromJudgement) return;
+        AudioClip clip = null;
+        if (!string.IsNullOrEmpty(sfx)) gameplay.Audio.SfxAudioClips.TryGetValue(sfx, out clip);
+        Hit("sky:" + sfx + ":" + timing, clip ?? gameplay.Audio.ArcHitsoundClip, "blocks");
     }
-    private static void Hit(string key, AudioClip clip)
+    private static void Hit(string key, AudioClip clip, string kind)
     {
-        if (Active && clip != null && soundKeys.Add(key)) sounds.Add(new Sound { timing = gameplay.Audio.ChartTiming, clip = clip });
+        if (Active && clip != null && soundKeys.Add(key)) sounds.Add(new Sound { timing = gameplay.Audio.ChartTiming, clip = clip, kind = kind });
     }
 
-    public static void Finish(string output, int from, int to)
+    public static void Finish(string output, int from, int to, AudioClip music)
     {
         if (!Enabled) return;
         var score = UnityEngine.Object.FindObjectOfType<ArcCreate.Gameplay.Score.ScoreService>(true);
@@ -175,6 +180,22 @@ public static class Replay
         File.WriteAllText(output + ".judgements.json", JsonConvert.SerializeObject(result, Formatting.Indented));
         if (diagnosticFrames.Count > 0)
             File.WriteAllText(output + ".diagnostics.json", JsonConvert.SerializeObject(diagnosticFrames, Formatting.Indented));
+        WriteHitTrack(output + ".hits.wav", from, to);
+        WriteMusic(output + ".music.wav", from - 2000, to + 2000, music);
+        var events = new List<object>(); int blocks = 0, ticks = 0;
+        foreach (var sound in sounds)
+        {
+            if (sound.kind == "blocks") blocks++; else ticks++;
+            events.Add(new { kind = sound.kind, chart_ms = sound.timing,
+                video_ms = sound.timing + (input.source_audio_offset_ms ?? input.audio_offset_ms) - from });
+        }
+        File.WriteAllText(output + ".sounds.json", JsonConvert.SerializeObject(new { block_hits = blocks, arc_tick_hits = ticks, music_margin_ms = 2000, events }, Formatting.Indented));
+        Debug.Log("REPLAY RESULT: " + result.hits + " hits, " + result.misses + " misses");
+        Enabled = false;
+    }
+
+    private static void WriteHitTrack(string output, int from, int to)
+    {
         const int rate = 48000, channels = 2;
         float[] mixed = new float[Mathf.CeilToInt((to - from) / 1000f * rate) * channels];
         var cache = new Dictionary<AudioClip, float[]>();
@@ -192,7 +213,28 @@ public static class Replay
                 for (int c = 0; c < channels; c++) mixed[destination + c] += samples[source + Math.Min(c, sound.clip.channels - 1)] * .16f;
             }
         }
-        using (var writer = new BinaryWriter(File.Create(output + ".hits.wav")))
+        WriteWave(output, mixed);
+    }
+
+    private static void WriteMusic(string output, int from, int to, AudioClip clip)
+    {
+        int rate = clip.frequency; const int channels = 2;
+        float[] original = new float[clip.samples * clip.channels]; clip.GetData(original, 0);
+        float[] samples = new float[Mathf.CeilToInt((to-from)/1000f*rate)*channels];
+        int first = (int)Math.Round(from / 1000.0 * rate);
+        for (int f = 0; f < samples.Length / channels; f++)
+        {
+            int at = first + f;
+            if (at < 0 || at >= clip.samples) continue;
+            for (int c = 0; c < channels; c++) samples[f*channels+c] = original[at*clip.channels+Math.Min(c,clip.channels-1)];
+        }
+        WriteWave(output, samples, rate);
+    }
+
+    private static void WriteWave(string output, float[] mixed, int rate = 48000)
+    {
+        const int channels = 2;
+        using (var writer = new BinaryWriter(File.Create(output)))
         {
             writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF")); writer.Write(36 + mixed.Length * 2);
             writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt ")); writer.Write(16); writer.Write((short)1);
@@ -200,7 +242,5 @@ public static class Replay
             writer.Write(System.Text.Encoding.ASCII.GetBytes("data")); writer.Write(mixed.Length * 2);
             foreach (float sample in mixed) writer.Write((short)(Mathf.Clamp(sample, -1, 1) * short.MaxValue));
         }
-        Debug.Log("REPLAY RESULT: " + result.hits + " hits, " + result.misses + " misses");
-        Enabled = false;
     }
 }
