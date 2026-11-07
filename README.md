@@ -134,3 +134,5 @@ node tests/check_webgl_alignment.mjs output/runs/TAKE
 几何、Blender 对齐与实际视频的完整检查命令见[迁移指南](docs/ipad-rhythm-environment-porting.md)。搜索优化在三段 Bibideba 基准上取得 **1.92×** 总体加速，完整规划除计时字段外一致；共享姿态缓存也已独立验证。各缓存的键和失效条件见[缓存说明](docs/cache-layers.md)。
 
 [文档目录](docs/README.md) · [Git 分支与合并记录](docs/rhythm-git-workflow.md) · [中文化维护](docs/i18n.md) · [视频导出](docs/ipad-rhythm-webgl-export.md) · [Arghena 漏键调查](docs/arghena-end-miss-and-idle-motion.md)
+
+双臂现在默认限制袖口连线的累计缠绕角为 **±260°**；可在「手部动作」调整。松手后可绕远路主动解缠，运动代价仍计入轨迹选择，所有按住的触点保持固定。旧演奏会提示需要更新动作。详见[双臂缠绕与 Dantalion 验证](docs/arm-winding.md)。

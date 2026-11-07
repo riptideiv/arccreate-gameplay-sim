@@ -1,5 +1,12 @@
 // 简体中文消息表；英文原文作为稳定消息键。
 export const zhCN = {
+  "±": "±",
+  "Verified arm winding: {minimum}° to {maximum}°; limit ±{limit}°.": "已验证袖口累计转角：{minimum}° 至 {maximum}°；上限 ±{limit}°。",
+  "Arm winding limit": "双臂缠绕角上限",
+  "Arm winding limit slider": "双臂缠绕角上限滑块",
+  "Limits accumulated rotation between the cuffs from idle. Released hands take longer routes to unwind; lifting or returning home never resets the angle. Required unwinds may use the main move-speed limit.": "限制双侧袖口连线相对待机位置的累计转角。松开的手可绕远路解缠；抬手或回位不会清零。必要的解缠动作可使用主移动速度上限。",
+  "This saved take predates the winding constraint. Generate a new preview to apply it.": "此历史演奏尚未应用缠绕角限制，重新生成预览后生效。",
+
   "Rhythm workbench": "iPad 音游模拟工作台",
   "Give the hands a rhythm that feels right.": "调出自然的双手演奏动作。",
   "Local renderer": "本机渲染服务",
