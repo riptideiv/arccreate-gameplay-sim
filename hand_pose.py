@@ -68,7 +68,7 @@ def margins(points, angles, parts):
 
 
 def air_paths(
-    points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None
+    points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None, idle_speed=math.inf
 ):
     """Lift only free portions of a hand path; preserve every contact sample."""
     result = points.copy()
@@ -169,6 +169,12 @@ def air_paths(
             ).reshape(-1, b - a + 1, 3)
             candidates = np.concatenate((result[a : b + 1, h][None], candidates))
             speed = np.linalg.norm(np.diff(candidates, axis=1), axis=-1) * 60
+            # Optional avoidance must not spend the full contact-travel budget.
+            # If the fixed contacts already demand faster travel, preserve that
+            # baseline allowance rather than dropping a note to slow a detour.
+            required = np.linalg.norm(np.diff(base, axis=0), axis=-1).max(initial=0) * 60
+            free_cap = min(max_speed, max(idle_speed, required))
+            valid_translation = speed.max(axis=1) <= free_cap + 1e-5
             if poses is not None:
                 speed += (
                     radius
@@ -177,7 +183,7 @@ def air_paths(
                         * 60
                     )[None, :]
                 )
-            valid = speed.max(axis=1) <= max_speed + 1e-5
+            valid = valid_translation & (speed.max(axis=1) <= max_speed + 1e-5)
             penalty = penalty_for(candidates, other, a, b, h)
             penalty[~valid] = np.inf
             choice = int(np.argmin(penalty))
@@ -200,6 +206,7 @@ def solve(
     gap=0.001,
     beam=96,
     stride=6,
+    idle_speed=math.inf,
 ):
     points = np.asarray(points, dtype=float)
     active = np.asarray(active, dtype=bool)
@@ -207,7 +214,7 @@ def solve(
     # the final 60 Hz interpolation still respects each frame's turn budget.
     stride = max(stride, math.ceil(30 * 60 / max(angular_limit, 1)))
     original = points.copy()
-    points, lifts = air_paths(points, active, max_speed, gap=gap)
+    points, lifts = air_paths(points, active, max_speed, gap=gap, idle_speed=idle_speed)
     count = len(points)
     # Each state is a pair of pitch/yaw choices. The pad centre is the pivot.
     pitches = (10, 25, 40, 55, 70, 85) if angular_limit < 200 else (10, 30, 50, 70, 85)
@@ -336,7 +343,7 @@ def solve(
         )
         poses[a : b + 1] = route[k] + (route[k + 1] - route[k]) * alpha[:, :, None]
     points, body_lifts = air_paths(
-        points, active, max_speed, gap=gap, poses=poses, parts=parts
+        points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed
     )
     lifts += body_lifts
     report = diagnostics(points, poses, parts, gap)
