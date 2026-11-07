@@ -1,20 +1,22 @@
-# WebGL preview video export
+# WebGL 预览视频导出
 
-The primary **Export preview video** action records exactly the existing Three renderer's scene, camera, materials, lights and hand animation. It captures the game's existing audio through a persistent Web Audio media-element source, adds that audio track to the canvas stream, and encodes with MediaRecorder. No Blender frames, screen capture, microphone, contact search or ArcCreate rendering are involved.
+主操作「导出当前预览视频」录制现有 Three 渲染器的同一场景、相机、材质、灯光和手部动画。通过持久 Web Audio 媒体元素源捕获现有游戏音频，与 canvas 视频轨组成 MediaRecorder 输入。不需要 Blender 帧、屏幕捕获、麦克风、重新规划或 ArcCreate 重渲染。
 
-The browser prefers supported MP4 codecs, then falls back to WebM. See the platform references for [canvas capture](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/captureStream), [media-element audio routing](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/createMediaElementSource) and [runtime codec detection](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder/isTypeSupported_static).
+浏览器优先检测支持的 MP4 编码，否则回退 WebM。所用平台接口参考原始文档：[canvas 录制](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/captureStream)、[媒体元素音频源](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/createMediaElementSource)、[运行时编码检测](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder/isTypeSupported_static)。
 
-Recording starts at the displayed take's beginning and runs at 1× regardless of inspection speed. It takes approximately the duration of the clip. Current canvas detail controls resolution. Capture uses the same canvas in an even 4:3 size, then restores its regular responsive resolution. UI inputs and take changes are locked/deferred during recording; the original time, speed, muted/volume values and paused/playing state are restored. Repeated exports reuse the audio graph. Cancellation or a hidden/stalled page discards the incomplete capture and keeps a previous download available. Finished videos must be downloaded before closing/reloading the page.
+从所选演奏开头以 1× 录制，不受慢放检查速度影响，耗时约等于片长。分辨率来自当前画布精度；录制时调整为完整、偶数尺寸的 4:3，再恢复正常响应式大小。录制期间锁定设置与播放控制，切换演奏会延后处理。结束恢复原时间、速度、静音／音量及暂停／播放状态；再次导出复用同一音频图。取消、隐藏页面或播放卡住会丢弃不完整结果，保留上一次成功下载。视频必须在关页／刷新前下载。
 
-The expandable Blender export retains its original API and saved-take MP4 behavior. It remains useful for browsers without recording support or offline EEVEE output; it is not the primary matching-view export.
+界面切换中文／English 只更新文字，不更换 canvas、视频源、相机或音频图；录制状态也用当前语言显示。游戏画面本身来自 ArcCreate，不由此 UI 翻译。
 
-## Verification
+可展开的 Blender 导出保留原 API 和服务器端演奏 MP4，适用于不支持录制的浏览器或离线 EEVEE。
 
-On the Apple M2 Max development Mac, the 65–75 s saved take was recorded and downloaded through the actual dashboard. The first desktop file contained H.264 video at 30 fps and AAC audio. Audio waveform correlation against the source gameplay was 0.986 with approximately 53 ms of common capture startup delay. The final aligned desktop export produced a full 856×642 H.264/AAC file in 10.83 s, with 0.984 audio correlation and about 49 ms common startup delay. The visual frame was inspected and retains the live presentation and native gameplay. Real-time capture is not a frame-exact offline encoder; foreground render/encoder latency and occasional frame pacing variation remain device dependent.
+## 实际验证
 
-An odd 859 px canvas was initially encoded at 858 px by H.264. The final implementation renders a complete even 4:3 canvas before capture, rather than accepting that hidden crop. The phone-sized 375×812 check produced a 320×240 H.264/AAC MP4 in **10.83 s** for a **10.77 s** source clip. Cancellation preserved the previous MP4 URL and restored 5.65 s, paused, at the original 0.5× speed. Desktop recording and resized/mobile recording both use the same source and controller. This is browser testing on the Mac, not a physical iPhone/Safari benchmark.
+Apple M2 Max 开发 Mac 上，使用正常工作台录制并下载 65–75 s 演奏。首个桌面文件为 H.264 **30 fps**／AAC，与原游戏音频波形相关 **0.986**，共同启动延迟约 **53 ms**。最终对齐版 **856×642**，**10.83 s** 完成，音频相关 **0.984**、共同启动延迟约 **49 ms**。已看真实帧，场景和原生画面均保留。实时录制并非逐帧离线编码，前台渲染／编码延迟和帧间隔仍依设备变化。
 
-Evidence is under `output/webgl-export-qa/`: downloaded desktop/mobile MP4s, exported frames, audio-check JSON and dashboard screenshots. The controller's Node regression test covers successful recording, audio graph reuse, cancellation and restoration of preview state. Existing independent Blender/WebGL alignment checks remain valid because the pose mapping and scene are unchanged.
+最初奇数宽 **859 px** 被 H.264 编码为 **858 px**；现在录制前直接渲染完整偶数 4:3 画布，不接受隐式裁切。**375×812** 手机尺寸测试得到 **320×240 H.264／AAC**，**10.77 s** 源片在 **10.83 s** 完成。取消后保留旧 MP4 URL，恢复原 **5.65 s、0.5×、暂停** 状态。两种尺寸使用同一源和控制器；这是 Mac 浏览器缩尺寸测试，不是真实 iPhone／Safari 性能基准。
+
+证据位于 `output/webgl-export-qa/`，包括桌面／手机尺寸视频、导出帧、音频检查 JSON 和截图。Node 回归覆盖成功录制、音频图复用、取消及状态恢复。场景／姿态映射未改，独立 Blender／WebGL 对齐检查仍适用。
 
 ```sh
 cd /path/to/ipad-rhythm

@@ -1,38 +1,39 @@
-# Calculation and media caches
+# 计算与媒体缓存
 
-## What happened on the scroll-speed-only rebuild
+## 只改流速为什么还重算手部姿态
 
-The Arghena takes `20261107-041829-013531` and `20261107-042826-bb0f61` differ only in scroll speed, **5.2 → 2.0**. The latter's log confirms completed contact-plan hits in **0.011–0.013 s** (including the separate exclusion variants encountered by the motion retry). Its first glove-pose calculation nevertheless ran again. Only the second Blender invocation, within that same take, reused poses.
+Arghena 的 `20261107-041829-013531` 与 `20261107-042826-bb0f61` 只把流速从 **5.2 改为 2.0**。后者日志确认触点规划命中缓存，只花 **0.011–0.013 秒**（包括动作重试中的不同排除项）。但首次手套姿态计算仍重新运行，只有同一演奏中的第二次 Blender 调用复用了姿态。
 
-The old pose signature already excluded scroll/audio settings, but the file lookup was `RUN_DIRECTORY/motion.poses.npz`. Every new take used a new directory. That was same-take reuse between motion verification and scene export, not sharing across takes. Later scene/GLB construction was also always performed. This made the build appear to redo everything despite reusing contact search.
+原因是旧签名虽然不包含流速／音频，实际文件却只在 `RUN_DIRECTORY/motion.poses.npz` 查找。新演奏目录没有该文件，因此旧缓存只服务于同一演奏的动作校验与场景导出，不能跨演奏共享。后面的场景构建也总会执行，于是看起来像全部重算。
 
-## Current cache layers
+## 当前缓存层
 
-| Work | Scope / location | Key inputs |
+| 工作 | 范围／位置 | 缓存键 |
 | --- | --- | --- |
-| Completed contact plan | Shared disk cache, `output/contact-plans/` | Exact chart bytes **and path**; device-profile bytes; chart start/end in milliseconds; all planner-affecting settings; same-hand preference; forced excluded events and local arc-avoidance windows; planner/parser/rules source fingerprint. |
-| Solved hand positions and wrist angles | **Now shared**, `output/hand-poses/` | Full generated 60 Hz finger paths before fitting; contact/rest pin mask; main move speed, wrist limit, lift, clearance and idle speed; shape/sample count; animation, path, hand geometry/solver and cache source fingerprint. |
-| Native ArcCreate video, judgments and sound stems | Shared disk cache, `output/gameplay/replays/` | Exact touch replay including scroll speed; chart start/source offsets; clip length; AFF/project bytes; audio/artwork/SFX/Lua asset bytes; exporter source files. |
-| Final gameplay audio mix | Shared disk cache, `output/gameplay/replays/mixes/` | Native replay cache identity; song delay; the single hit-sounds toggle; mixer source. Video is stream-copied. |
-| Scene, GLB and Blender animation curves | Per take, `output/runs/ID/` | **No shared scene-build cache.** Each new take assembles the scene and writes its snapshots, even if solved hand poses were loaded. Scene-only refresh reuses saved motion/gameplay but explicitly rebuilds presentation geometry. |
-| Blender video export | Final MP4 reused within a take | Settings/view plus presentation revision identify the per-take MP4. An existing completed file skips EEVEE frame rendering. The inexpensive export-camera scene preparation can still run. Different takes do not share final 3D MP4s. |
-| WebGL video export | Browser-local download | Each Export action records in real time; no server computation cache. The previous recording remains downloadable in the page until replaced or closed. |
+| 已完成触点规划 | 共享磁盘 `output/contact-plans/` | 谱面原始字节及路径、设备配置字节、毫秒级起止、所有规划参数、同手偏好、强制排除与局部蛇避让窗口、规划器／解析器／规则源码指纹 |
+| 手部位置与转腕 | 共享磁盘 `output/hand-poses/` | 拟合前完整 60 Hz 指腹路径、触点／待机固定掩码、主速度、转腕、抬指、间距及待机速度、数组形状和采样数、动画／路径／手形／求解器／缓存源码指纹 |
+| ArcCreate 原生画面、判定、分轨 | 共享磁盘 `output/gameplay/replays/` | 完整触点回放（含流速）、谱面起点与源偏移、片长、AFF／工程字节、音频／封面／音效／Lua 资源字节、导出器源码 |
+| 最终游戏音频混合 | `output/gameplay/replays/mixes/` | 原生回放缓存身份、歌曲延迟、单一击打音效开关、混音器源码；视频流直接复制 |
+| 场景、GLB、Blender 动画曲线 | 每段演奏 `output/runs/ID/` | 无跨演奏场景缓存；每次新建演奏都组装快照。仅更新场景会复用已保存的动作与游戏画面 |
+| Blender 视频导出 | 同一演奏内复用最终 MP4 | 设置／视角与展示场景版本；最终文件存在时跳过 EEVEE 帧渲染，导出相机准备仍可能执行；不同演奏不共享三维 MP4 |
+| WebGL 视频导出 | 当前浏览器页面的下载 | 每次实时录制，无服务器计算缓存；上一个成功视频可下载至替换或关页为止 |
 
-Contact-plan keys deliberately omit camera, quality/resolution, scroll speed, song delay, hit-sounds toggle, wrist/lift/clearance and idle speed. These do not alter contact search. Unknown future settings remain in the plan key unless explicitly excluded. Search itself also memoizes geometry and transition work inside its worker process; that in-memory work disappears with the worker. A completed-plan hit skips the whole search instead.
+触点缓存有意排除相机、精度／分辨率、流速、歌曲延迟、击打音效、转腕／抬指／间距与待机速度；这些不改变触点搜索。未知新设置默认保留在键中，避免误复用。搜索进程内部还缓存几何和转移工作，进程退出就消失；已完成规划缓存则直接跳过整个搜索。
 
-Pose keys use actual paths and pins, not full plan JSON or all settings. Camera, scroll/audio controls, chart labels, file paths, planner statistics and elapsed-time metadata cannot invalidate otherwise identical hand motion. Pose-affecting changes and source changes do invalidate it. Source invalidation is currently conservative: even unrelated edits to `animate.py` cause a cold pose calculation, because that whole file is hashed. The cache stores only finite, verified, contact-preserving arrays, validates checksums on read and writes atomically. Failed/partial calculations are not cached. Corrupt or unavailable caches fall back to computing.
+姿态键使用真实路径及固定掩码，不使用完整规划 JSON 或所有设置。相机、曲名、路径、流速／音频、统计及计时元数据不会使相同动作失效。源码失效策略较保守：整个 `animate.py` 被散列，其中无关修改也可能造成一次冷计算。只发布有限数值、通过校验且触点保持不变的数组；读取校验摘要，原子写入，损坏／不可用时回退为计算，失败结果不入缓存。
 
-## What different changes should redo
+## 修改什么会重做什么
 
-- **Scroll speed only:** reuse contact plan and hand poses; rerender native ArcCreate visuals at the new approach speed, obtain/reuse the corresponding audio mix, then assemble the new scene/GLB snapshot.
-- **Song delay or hit sounds only:** reuse contacts, poses and native footage/stems; mix audio, then assemble the new scene/GLB snapshot.
-- **Camera/display detail only:** live camera updates immediately. A newly requested take may rebuild its scene, but identical hand poses reuse the shared entry. Blender MP4 export still renders a new view when needed.
-- **Idle speed, lift, wrist or clearance:** reuse contact search; solve different hand motion. A changed ending retreat duration can also change the required footage length.
-- **Tap timing, speed limits, arc preferences or chart/window:** contact planning may need a new entry; hand posing reuses an entry only if the resulting actual motion inputs match.
-- **Code changes:** relevant source fingerprints intentionally invalidate affected layers. The first build after a solver update can be cold; changing only scroll speed afterward should not be.
+- **只改流速：** 复用触点和姿态；重渲染对应流速的 ArcCreate 画面，获取／复用混音，再组装新场景快照。
+- **只改歌曲延迟或音效：** 复用触点、姿态、原生画面与分轨；重新混音并组装场景。
+- **只改相机或显示精度：** 实时画面立即更新。若新建演奏仍会组装场景，相同姿态可复用；Blender 导出按需渲染新视角。
+- **改待机速度、抬指、转腕或间距：** 复用触点，重新求姿态。结尾回位时长变化也可能改变所需游戏片长。
+- **改点按时序、主速度、蛇偏好、谱面或范围：** 触点缓存可能失效；只有最终姿态输入完全一致时才复用姿态。
+- **改代码：** 相应源码指纹使受影响的缓存失效。求解器更新后的第一次构建可能较慢，此后只改流速不应再次求相同姿态。
+- **改界面语言：** 仅浏览器显示文字，所有规划、动作和媒体缓存不变。
 
-## Verification of the shared-pose fix
+## 共享姿态修复的验证
 
-Two separate output directories use the exact full Arghena contact plan from `output/idle-qa/reposed/`, changing only scroll speed from 2.0 to 5.2. First solve: **21.59 s**, cache miss. Second process/take: **1.11 s**, cache hit, including Blender startup and motion JSON writing. Finger trajectories, wrist angles, sample clock and duration are exactly identical. The successful entry also seeds the normal shared pose cache for matching future builds. Evidence is under `output/pose-cache-qa/`.
+两个独立目录使用 `output/idle-qa/reposed/` 中完全相同的完整 Arghena 规划，只改流速 **2.0 → 5.2**。首次计算 **21.59 秒**、未命中；第二进程／演奏 **1.11 秒**、命中，包含 Blender 启动和动作 JSON 写入。指腹轨迹、转腕角、采样时钟与时长完全一致。证据位于 `output/pose-cache-qa/`，匹配条目也已写入正常共享缓存。
 
-Run logs now say `Reused contact-preserving glove poses from shared cache.`; the dashboard's current stage reports `Reusing cached hand pivots` when that line arrives. The final motion report includes `pose_cache.hit` and `pose_cache.key` for its Blender invocation. Old per-take pose files remain as historical artifacts but are not treated as verified entries in the new shared cache.
+命中日志为 `Reused contact-preserving glove poses from shared cache.`，界面阶段为「复用手部姿态缓存」。动作报告保留 `pose_cache.hit` 与 `pose_cache.key`。旧的每演奏姿态文件仍是历史产物，不会直接视为新缓存中的已验证条目。

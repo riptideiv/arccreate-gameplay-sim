@@ -1,74 +1,70 @@
-# iPad rhythm simulator: environment porting guide
+# iPad 音游模拟器：环境迁移指南
 
-This is the working guide for moving the simulator into another set or renderer. Update the experience log after each port. The first presentation port replaces the dafeiyu room with a small walnut tabletop set; the room project remains separate.
+本指南记录将模拟器移植到其他布景、渲染器、浏览器或系统的接口与经验。每次迁移后更新经验记录。第一版展示迁移把 dafeiyu 房间替换为独立胡桃木桌面；原房间项目保持独立。
 
-## Ownership and build paths
+## 源文件与产物归属
 
-This folder is the independent simulator repository root.
+此目录是模拟器独立仓库根目录。
 
-| Source/artifact | Responsibility |
+| 文件／产物 | 职责与迁移边界 |
 | --- | --- |
-| `plan_excerpt.py`, `plan.json` | Native touch coordinates, ownership and timing. Environment changes must not replan them. |
-| `hand_pose.py`, `motion_paths.py`, `motion.json` | Glove shape/posing and sampled motion. Keep these intact for a presentation change. |
-| `animate.py` | Builds a new take and bakes the supplied animation. Starts from Blender factory startup, without the room blend. |
-| `presentation_scene.py` | **One shared source of presentation geometry**: rounded tablet, tabletop, mat, plant, pen, image materials and Blender lights. |
-| `refresh_scene.py` | Upgrades an existing baked take to the current set. Reuses its hand meshes, animation, cameras and movie material. |
-| `dashboard/live-preview.js` | Loads the generated GLB and exact motion; substitutes a video material on the named display. Supplies realtime lighting. Do not reconstruct props here. |
-| `export_camera.py`, `render-preview.sh` | Copy the take's selected Blender snapshot, apply current camera/detail, render EEVEE frames, mux the existing gameplay audio. |
-| `output/runs/<id>/run.json` | Selected scene snapshot, motion URL, presentation revision and last MP4. This metadata, not the newest loose file, controls a saved take. |
+| `plan_excerpt.py`、`plan.json` | 原生触点坐标、归属和时序。纯布景迁移不能重新规划 |
+| `hand_pose.py`、`motion_paths.py`、`motion.json` | 手套形状、姿态及采样动作。纯展示修改保留这些数据 |
+| `animate.py` | 从 Blender 出厂空场景构建新演奏并烘焙动作，不加载房间 blend |
+| `presentation_scene.py` | **唯一展示几何源**：圆角平板、桌面、垫、植物、笔、图像材质及 Blender 灯光 |
+| `refresh_scene.py` | 升级已烘焙演奏的布景，复用手部网格、动画、相机与视频材质 |
+| `dashboard/live-preview.js` | 加载生成的 GLB 和精确动作，将命名屏幕材质替换为视频；提供实时灯光，不单独重建道具 |
+| `export_camera.py`、`render-preview.sh` | 复制选定快照，应用相机／精度，渲染 EEVEE 帧并复用已有游戏音频 |
+| `output/runs/<id>/run.json` | 记录选中场景、动作地址、布景版本及最后 MP4；保存演奏以此元数据为准 |
 
-Original room assets, including `outputs/whale-room-final.blend`, are not modified or loaded by new simulator builds. A saved old take retains its original `scene.blend` and `scene.glb`; a refresh publishes versioned `presentation-<revision>.blend/.glb` alongside them. Old exports remain on disk, but the stale dashboard download is cleared only after a successful scene update.
+原房间 `outputs/whale-room-final.blend` 等资产不加载也不修改。旧演奏保留原 `scene.blend`、`scene.glb`；更新会在旁边发布 `presentation-<revision>.blend/.glb`。旧导出文件留在磁盘，仅成功更新后清除失效的界面下载入口。
 
-## Stable scene contract
+## 稳定场景接口
 
-Units are metres, Blender is Z-up. glTF/Three is Y-up: `(x,y,z) → (x,z,-y)`. Apply the equivalent quaternion conversion too; do not move the screen to compensate for a conversion error.
+单位为米。Blender Z 向上，glTF／Three Y 向上：`(x,y,z) → (x,z,-y)`；旋转四元数也需等价转换，不能移动屏幕去弥补坐标转换错误。
 
-- Display world centre: **(0.405, 0.802, 0.708)**. The display is horizontal, with local X/Y equal to native touch X/Y.
-- Current active area: **0.2297 × 0.1605 m**. Read `plan.device.screen_mm` for another device; avoid a second hardcoded size in a renderer.
-- Display name: **`Tablet display | ArcCreate`**. The preview accepts its glTF name with spaces normalized from underscores.
-- Animated roots: **`Left index target`**, **`Right index target`**. Each index pad centre is the pivot. Keep the hand children, mesh shape and local transforms.
-- Retain **`Tablet chassis`**, **`Tablet bezel`**, **`Camera | Tablet play`** and the prototype collection **`90 Tablet rhythm prototype`**.
-- Screen UVs are spatially affine: `u=x/width+0.5`, `v=y/height+0.5`. A rounded outline adds perimeter vertices and centre triangles without squeezing the image into the visible polygon. glTF already converts UV conventions; the Three `VideoTexture` uses `flipY=false`.
-- Media time is the sole live animation clock. Sample index is `(mediaTime + audio_offset_ms/1000)*60`. Match Blender's **linear pitch/yaw interpolation**, rather than replacing it with quaternion slerp.
-- Keep the camera target **(0.405, 0.794, 0.728)**, distance/elevation/yaw and the 36 mm sensor/lens projection shared with `export_camera.py`. Live canvas and export use a 4:3 image. Moving props is the solution to framing, not an unrequested camera change.
+- 屏幕世界中心 **(0.405, 0.802, 0.708)**，水平放置，本地 X/Y 对应原生触点 X/Y。
+- 有效区域 **0.2297 × 0.1605 m**。其他设备从 `plan.device.screen_mm` 读取，避免渲染端再硬编码一份尺寸。
+- 显示对象 **`Tablet display | ArcCreate`**。预览兼容 glTF 对空格／下划线的名称规范化。
+- 动画根 **`Left index target`**、**`Right index target`**，各食指指腹中心即旋转支点。保留子级、网格及局部变换。
+- 保留 **`Tablet chassis`**、**`Tablet bezel`**、**`Camera | Tablet play`** 和集合 **`90 Tablet rhythm prototype`**。
+- 屏幕 UV 为仿射映射 `u=x/width+0.5`、`v=y/height+0.5`。圆角增加轮廓顶点与中心三角形，不把整张图挤入多边形。glTF 已转换 UV 约定，Three `VideoTexture` 用 `flipY=false`。
+- 实时动画以媒体时间为唯一时钟，样本索引为 `(mediaTime + audio_offset_ms/1000)*60`。沿用 Blender 的 **pitch/yaw 线性插值**，不要换成四元数 slerp。
+- 相机目标 **(0.405, 0.794, 0.728)**；距离、俯视角、水平角、36 mm 传感器与焦距投影和 `export_camera.py` 保持一致。画布／视频为 4:3。按现有相机布置道具，不擅自改相机掩盖构图问题。
 
-### Parenting: inspect before deleting
+### 删除旧布景前先检查父子关系
 
-The old `Desk` was itself parented to `Room`. The tablet and hand roots were children of `Desk`, with a parent-inverse matrix. Deleting the desk first would invalidate the pose interface.
+原 `Desk` 还挂在 `Room` 下，平板和手根是 `Desk` 子级并带 parent-inverse。先删桌子会破坏姿态接口。
 
-1. Evaluate the scene, record world matrices, parents and animation data.
-2. Preserve the prototype collection and all descendants. Detach roots with `world = obj.matrix_world.copy(); obj.parent=None; obj.matrix_world=world`.
-3. For animated roots, inspect `parent.matrix_world @ matrix_parent_inverse`. In these snapshots that basis is identity, so the existing location/Euler keys already describe world coordinates and remain valid. `detach()` rejects an unexpected nonidentity animated basis. A different environment must bake sampled world transforms before removing such a parent.
-4. Remove only surroundings in the generated snapshot. Never edit the room asset to isolate a presentation.
-5. Compare all retained world matrices and run the baked-animation alignment checks. Checking only frame 1 is insufficient.
+1. 求值场景，记录世界矩阵、父级与动画数据。
+2. 保留原型集合及其全部后代。根节点解除父级时用 `world = obj.matrix_world.copy(); obj.parent=None; obj.matrix_world=world` 保留世界变换。
+3. 动画根需检查 `parent.matrix_world @ matrix_parent_inverse`。已检查快照中的基是单位阵，现有位置／Euler 关键帧已表示世界坐标。`detach()` 对意外的非单位动画基拒绝继续；其他环境应先采样烘焙世界变换再移除父级。
+4. 只从生成快照移除周围环境，不编辑原房间资产。
+5. 对比所有保留对象世界矩阵，运行烘焙动作对齐检查；只查第一帧不够。
 
-## Rounded tablet geometry
+## 圆角与材质
 
-A cube bevel cannot produce a 12 mm footprint radius on a 10 mm thick chassis: thickness constrains the bevel. The shared builder extrudes an actual rounded-rectangle perimeter, with a separate small edge glint bevel. Chassis radius is 12 mm; bezel radius 11 mm. The display radius is 3 mm, independent of thickness, with unchanged width/height, centre and affine UV mapping.
+盒子 bevel 的圆角受厚度限制，不能在 10 mm 厚机身上做独立 12 mm 平面圆角。共享构建器挤出真正的圆角矩形轮廓，再单独添加细小边缘高光。机身半径 **12 mm**，边框 **11 mm**，显示 **3 mm**，与厚度独立。屏幕尺寸、中心与 UV 不变。
 
-The display mask removes about **0.021%** of the rectangular image, at the four extreme corners. Validate native contact samples against the rounded outline and inspect the score UI/corners in real footage. Do not shrink the active image or reproject touches to hide a masking problem.
+圆角屏幕仅遮住矩形图像四角约 **0.021%** 面积。必须把原生触点样本对照轮廓，并在真实画面中看分数 UI 和四角；不要缩图或重投影触点遮掩问题。
 
-## Materials and lighting across renderers
+跨渲染器材质使用 glTF 支持的 Principled 基色、金属度、粗糙度与法线。Noise／Voronoi 等 Blender 程序节点不能直接作为导出格式。胡桃木生成确定性颜色及切线法线 PNG，连接到 Principled 并打包入 blend 和 GLB；资源目录带布景版本，避免旧纹理误用，无外部下载或房间纹理依赖。
 
-Use glTF-supported Principled base color, metallic, roughness and normal inputs. Blender Noise/Voronoi nodes are not an export format. The walnut material generates deterministic color and tangent-normal PNGs, connects image nodes to Principled inputs, and packs both into the blend and GLB. Asset directories include the presentation revision to avoid silently reusing an older texture after a generator change. There are no external downloads or room texture dependencies.
+Blender 面光没有对应的 glTF 点光表示。实时端使用半球填充和带阴影的暖色平行主光，ACES 色调映射；Blender 使用 AgX。几何和材质来源相同，高光、软阴影近似，因此两个端都要实际看。实时阴影用 1024² VSM、小范围模糊和紧凑阴影相机，轻微 normal bias 抑制接触条纹。视频屏幕在 WebGL 中不受光、不参与色调映射，不能让灯光改变游戏颜色。
 
-Blender's area lights do not have a punctual glTF equivalent. The live preview deliberately replaces lights with a hemispheric fill and a shadowed warm directional key. It uses ACES tone mapping; Blender uses AgX. Material identity and geometry match, while highlight/soft-shadow response is approximate. Inspect both paths; a pleasing Blender still does not establish that WebGL is correct.
+## 保存演奏更新与缓存失效
 
-Realtime shadows use a 1024² VSM map with a small blur. Keep the shadow camera tight around the set and use a small normal bias to avoid contact acne. The video screen remains an unlit, untone-mapped video material in WebGL; avoid lighting/shadow changes that recolor gameplay.
+工作台正常流程：选已完成实时演奏 → **更新展示场景** → 检查 → **导出当前预览视频** → 下载 MP4／WebM；也可展开 Blender MP4 离线导出。新建演奏自动使用当前布景。
 
-## Refreshing saved takes and invalidating caches
+`POST /api/presentation {"id":"<take-id>"}` 只对选定快照运行一次 Blender，不调用触点规划或 ArcCreate。成功后才发布新地址并清除 `export_video`／`export_view`；取消／失败保留旧的可用产物。布景错误与触点／计分验证分开处理。
 
-Normal dashboard flow: choose a completed live take → **Update presentation** → inspect → **Export preview video** → **Download MP4/WebM** (or expand Blender MP4 export for EEVEE). All new builds use the new set automatically.
+布景版本是共享构建器的 SHA-256 前缀；GLB 用版本文件名防止浏览器与旧演奏误认为仍是同一资源。MP4 键包含视角与选定布景版本。导出打开 `run.presentation.blend`，未更新的演奏才回退 `scene.blend`。换一个 GLB 不会自动换掉 Blender 快照或旧 MP4。
 
-`POST /api/presentation {"id":"<take-id>"}` runs Blender once against the take's selected snapshot. It never invokes the contact planner or ArcCreate. It publishes the new scene paths only after successful generation, clears `export_video`/`export_view`, and leaves prior usable artifacts on cancellation/failure. Scene errors are separate from contact/score validation.
+纯几何迁移前后保存 `plan.json`、`motion.json`、`gameplay.mp4`、`judgements.json` 的散列清单，要求字节不变。触点规划、共享姿态、原生画面、混音与导出各自有缓存边界，详见[缓存层说明](cache-layers.md)。
 
-The presentation revision is the shared builder's SHA-256 prefix. GLB filenames are versioned so browser caches and saved-take references cannot mistake the new set for the old room. MP4 cache identities include both the current view settings and the selected presentation revision; export opens `run.presentation.blend`, falling back to `scene.blend` for an unrefreshed take. Do not assume replacing one GLB also updates a saved Blender snapshot or MP4.
+## 验证步骤
 
-When changing the environment again, check the refreshed metadata and actual exported frame. Keep a hash manifest of `plan.json`, `motion.json`, `gameplay.mp4` and `judgements.json` before/after. Geometry-only work must preserve those bytes.
-
-## Verification recipe
-
-From the simulator repository root, substitute the real take folder and versioned blend:
+从仓库根目录执行，替换实际演奏与版本文件名：
 
 ```sh
 BLENDER="${BLENDER_BIN:-.tools/Blender.app/Contents/MacOS/Blender}"
@@ -81,104 +77,59 @@ node tests/check_webgl_alignment.mjs "$TAKE"
 .venv/bin/python -m pytest tests/test_dashboard_export.py tests/test_presentation_workflow.py -q
 ```
 
-The original alignment tests remain unchanged. The presentation audit checks display bounds/UVs, native contact corner masking, removal of the room/desk, detached roots, tablet/prop triangle intersections, and actual glove/cuff meshes versus the props over the animation at 60 Hz. It also checks clearance above the pad. These are finite checks on the inspected takes; future charts/changed hand shapes need their own envelope audit. They are not a universal proof against every possible future pose.
+原对齐测试保持原样。布景审计包含：显示尺寸／UV、触点圆角遮罩、旧房间／桌子清除、根节点脱离、平板与道具三角形相交，以及全段 60 Hz 手套／袖口真实网格与道具相交、手与垫面间距。这些是所查演奏上的有限检查；新谱面和新手形仍需独立运动包络审计，不能宣称所有未来姿态均无碰撞。
 
-Inspect the live browser at the default camera, close cross-hand poses, elevated and left/right views, a wide lens, and a phone-sized viewport. At aggressive zoom/oblique settings edge props may be cropped; retain the user's camera rather than silently reframing. Verify no prop obstructs the display. Check real video frames as well as stream metadata/audio. Do not substitute an autoplay-only screenshot for live WebGL evidence.
+在浏览器看默认相机、近距离交叉手、高低与左右视角、广角和手机宽度。极端变焦／斜角允许边缘道具裁切，但不能挡屏或偷偷自动改用户相机。检查真实视频帧及音频，不以自动播放截图代替真实触点 WebGL 证据。
 
-For moving performance, record the host, viewport, quality, canvas dimensions, GLB bytes, moving FPS and p95 frame interval. The canvas exposes these measurements as `data-*` attributes. Measure while video/motion play; an idle renderer's redraw rate is meaningless. Phone-sized desktop testing does not establish physical-phone GPU performance.
+测性能需记录机器、视口、精度、画布尺寸、GLB 大小、**播放时** FPS 和帧间隔 p95。画布有相应 `data-*` 字段；静止重绘率没有意义。桌面模拟手机宽度不代表真机 GPU 性能。
 
-## Deployment and environment differences
+## 部署与系统差异
 
-- On this Mac, Blender 5.2.3 LTS is selected explicitly by `BLENDER_BIN` in the launchd service, and the Python environment is the prototype's `.venv`. Check APIs in the installed runtime rather than assuming another Blender version's EEVEE/animation behavior.
-- `dashboard/server.py` currently resolves the workspace Blender path; `render-preview.sh` accepts `BLENDER_BIN`. For another OS, centralize/override the server binary path too. Keep camera/projection and ffmpeg mux settings consistent.
-- Native ArcCreate is only necessary to produce new gameplay; a presentation port needs the completed take's files and Blender/Node/ffmpeg.
-- Server is supervised by the existing `com.dafeiyu.rhythm-workbench` launchd service and bound to loopback:8765; Tailscale Serve provides the phone URL. Inspect `/api/state` before restarting. Never restart a live planner/export merely to load UI changes. During this port the user's earlier build was already cancelled through the dashboard before the service was reloaded.
-- Preserve exact case-sensitive names, path portability, relative movie paths, packed material images, 30 fps export, and 60 Hz motion sampling when moving to Linux/another engine. Test HTTP byte-range downloads and mobile video seeking. Linux/headless Blender may need an explicit graphics backend; verify actual rendering instead of inferring GPU support from a config flag.
-- Keep old room files and prior snapshots. Future presentation ports should change the shared set builder and refresh scenes, not fork the renderer's prop implementation.
+- 本 Mac 用 `BLENDER_BIN` 显式选 Blender **5.2.3 LTS**，Python 为本仓库 `.venv`。不同 Blender 版本需检查 EEVEE／动画 API，不能假设相同。
+- Blender 查找：`BLENDER_BIN` → PATH → `.tools/Blender.app`。launchd 中可指向已有共享安装，但源码不假设父工作区路径；保持相机投影与 FFmpeg 混流一致。
+- 新游戏画面才需要原生 ArcCreate；纯展示迁移需要已完成演奏、Blender、Node 和 FFmpeg。
+- 服务 `com.dafeiyu.rhythm-workbench` 绑定 loopback:8765，Tailscale Serve 提供 `https://macbook-pro---riptideiv.tail57056e.ts.net/`。先看 `/api/state`；不要为静态界面改动中断活动规划／导出。新增静态文件若不在服务白名单，必须等空闲后重载。
+- Linux／其他引擎保持名称大小写、相对视频路径、打包图像、30 fps 视频和 60 Hz 动作。测试 HTTP byte-range、移动端拖动。无头 Blender 可能需要明确图形后端；实际渲染确认，不能仅凭配置旗标推断 GPU 生效。
+- 保留旧房间和历史快照。后续环境修改共享布景构建器并更新保存演奏，不分叉维护浏览器道具。
 
-## Experience log — 2026-11-07
+## 经验记录：展示迁移（2026-11-07）
 
-- Inspected the real parent hierarchy before detaching. Retained interface transforms differed by at most 5.96e-8 in the first old-room migration; repeat presentation updates were exact at the matrix comparison tolerance.
-- Replaced thickness-limited beveled boxes with rounded perimeter meshes; affine display UVs and contact mapping stayed intact.
-- A plant scaling pass initially translated meshes already authored in world coordinates a second time. Live and Blender inspection caught the floating/cropped foliage. Fixed local-versus-world scaling and reduced/repositioned the plant for the existing camera. Treat mesh coordinates and object transforms separately.
-- Adjusted wood/light response in both engines after inspecting actual output. Shader-node success alone did not establish portable appearance.
-- Reused BIBBIDIBA 65–75 s, including its closest proxy hand approach around media 9.317 s. Scene refresh preserved plan, motion, gameplay and judgement SHA-256 hashes. Existing 76/76 native arc-catch results remain valid.
-- Initial final-scene audit: 637 sampled poses, 883 contact samples, zero clipped contacts, zero prop/tablet or prop/hand mesh intersections, at least 12.82 mm hand-to-pad-top clearance. Blender/Three: 77 subframe alignment checks; maximum position error 6.82e-8 m, rotation error 1.89e-7 rad, projected-coordinate error 3.69e-7.
-- Mobile-sized live preview: 375×812 override (360 px layout with scrollbar), Draft canvas 324×243, about 120 fps/p95 9.2 ms on the development Mac (Apple M2 Max), while a real EEVEE video export was running. This is desktop GPU evidence, not a physical-phone benchmark. GLB about 4.5 MB; 67 draws / 145,206 reported triangles including shadow passes.
-- Normal dashboard MP4 export succeeded with the new scene: H.264 640×480 at 30 fps, 10.633 s video and AAC audio. Inspected an ordinary catch and the close cross-hand frame. Evidence is in `output/presentation-qa/` and the saved take's `presentation-check.json`/`alignment-check.json`.
+- 先检查真实层级再脱离；初次保留矩阵最大差 **5.96e-8**，再次布景更新在比较容差内完全一致。
+- 用轮廓网格替换受厚度约束的盒子 bevel，UV 和触点映射保持。
+- 植物一次缩放把已按世界坐标建模的网格又平移了一遍，出现漂浮／裁切；真实 Blender 和 WebGL 检查发现后修复局部／世界坐标处理，并按现有相机缩小、移位。对象变换和网格坐标必须分开考虑。
+- 两端检查后分别调整木材和灯光；程序节点存在不等于材质可移植。
+- 复用 BIBBIDIBA **65–75 s**，包含媒体约 **9.317 s** 最近交叉手，规划／动作／游戏／判定 SHA-256 全不变，原 **76/76** 蛇计分点仍有效。
+- 首段 **637** 姿态、**883** 触点，无裁切或道具相交；手至垫顶至少 **12.82 mm**。Blender／Three **77** 个子帧对齐检查，位置最大误差 **6.82e-8 m**、旋转 **1.89e-7 rad**、投影 **3.69e-7**。
+- Apple M2 Max 手机尺寸 **375×812**（布局 360 px），Draft **324×243**，约 **120 fps／p95 9.2 ms**，当时另有真实 EEVEE 导出。GLB 约 **4.5 MB**，67 draws／145,206 三角形（含阴影）。这是桌面 GPU 证据，不是真机基准。
+- 正常导出得到 H.264 **640×480／30 fps**、视频 **10.633 s**、AAC 音频，检查了普通命中和交叉手帧。证据在 `output/presentation-qa/` 及演奏的 `presentation-check.json`／`alignment-check.json`。
+- 扩展至 **120–150 s** 演奏，**1,837** 姿态、**1,975** 触点，零道具相交／裁切、**209** 对齐检查。两段合计 **2,474** 姿态、**286** 对齐检查，当时项目测试 **142** 通过。
+- 原／新快照的手部网格坐标、拓扑、动画关键帧字节相同。曲线转换前显式取消其他对象选择，避免道具转换时误应用手部修改器。
+- 出厂空场景试建复用原规划／视频、不加载房间，按住触点和转腕匹配；从头重建动作曾使一个旧缓存的空中抬指变化 **4 mm**。因此纯环境迁移使用 refresh，保留烘焙曲线，不用新动作构建器。
 
-- Extended validation to the latest 120–150 s take: 1,837 sampled poses, 1,975 contact samples, zero prop intersections/clipped contacts, and 209 passing Blender/WebGL checks. Across both takes: 2,474 pose samples and 286 alignment checks. The original test suite plus workflow additions passes **142 tests**.
-- Compared original and refreshed snapshots directly: hand mesh coordinates/topology and animation keys are byte-identical; retained matrices differ by at most 5.96e-8. Curve conversion now explicitly deselects other objects first so a prop conversion cannot accidentally apply a selected hand's modifiers.
-- A factory-startup smoke build using the copied 65–75 s plan and existing movie completed without loading the room or rerunning the planner/ArcCreate. Its active contacts and wrist rotations match the saved motion. Recomputing motion from scratch changed one historical cached airborne lift by up to 4 mm; the saved-take refresh deliberately retains the original baked curves and motion bytes instead. This is why environment ports should use scene refresh, rather than the animation builder.
+最终布景版本 **`50aa44fcc9c4`**。验证视频 `output/runs/20261107-000550-9a4498/preview-2e27af8e3808.mp4`，流审计 `output/presentation-qa/export-streams.json`，截图 `webgl-default.png`、`webgl-cross-hand.png`、`mobile.png`。Tailscale 的 GLB／MP4 范围请求返回 HTTP **206**。
 
-Final published presentation revision: `50aa44fcc9c4`. The verified downloadable video is `output/runs/20261107-000550-9a4498/preview-2e27af8e3808.mp4`; its stream audit is `output/presentation-qa/export-streams.json`. Live screenshots are `webgl-default.png`, `webgl-cross-hand.png`, and `mobile.png` in the QA folder. Tailscale byte-range downloads of the GLB and final MP4 returned HTTP 206.
+## 经验记录：WebGL 录制
 
-## WebGL recording port — 2026-11-07
+主导出改用同一 WebGL 画布 `captureStream(30)`，通过 Web Audio 将同一游戏媒体元素音频送入 MediaRecorder。无新场景、无游戏重渲染，当前相机／灯光／材质原速实时录制，结束后恢复原播放状态。页面隐藏时取消，避免后台降频产生坏视频。
 
-The primary dashboard export now captures the existing WebGL canvas via `captureStream(30)` and mixes the existing gameplay element through Web Audio into the same MediaRecorder stream. It does not construct another scene or rerender the gameplay. Export is real time at 1×, with the current live camera, materials and lights. The original preview state is restored afterward. Keep the page visible; hiding it cancels the export rather than delivering a throttled recording.
+运行时检测 MP4，回退 WebM。H.264 曾把奇数 **859 px** 画布裁成 **858 px**；现录制前冲刷 ResizeObserver，改用宽 8 像素对齐且高为偶数的完整 4:3 画布，锁定大小至清理结束。音频图每媒体元素只建一次，结束只停克隆音轨，保留后续播放与导出。无需麦克风／屏幕共享权限。
 
-MP4 support is detected at runtime, with WebM fallback. A canvas width aligned to 8 pixels with a 4:3 even height avoids an observed H.264 encoder crop of an odd-width canvas. ResizeObserver updates are flushed before capture and then locked until cleanup. The renderer still uses its existing camera and source scene. Audio graphs are created once per media element and reused; only cloned recording tracks are stopped so subsequent playback/export keeps sound. No microphone or screen-sharing permission is needed.
+浏览器下载随关页失效，Blender 仍保留服务器文件。移植到新浏览器／系统必须用 ffprobe 检查真实文件并听音／比对音频，不能仅靠特性检测。前台渲染和编码会有启动延迟、帧间隔波动。实测数据见[视频导出说明](ipad-rhythm-webgl-export.md)。
 
-Browser-local downloads expire when the page closes. The Blender export remains an explicit offline option with persistent server-side take artifacts. For another browser/OS, inspect a real file with ffprobe and listen/check the audio; feature detection alone does not establish correct encoding. Real-time capture can add short startup/encoder latency and depends on the foreground device's ability to render. Desktop viewport emulation is not a physical-phone test.
+## 经验记录：仓库、曲库与音频
 
-Contact-plan caching is now independent of presentation and hand posing: chart/device/rule version, planner settings, window and exclusions determine the key. Changing this presentation module, the physical viewing camera or export detail does not invalidate contact search. A device/projection/scoring-rule change does. See [planner optimization and cache verification](ipad-rhythm-planner-optimization.md) and [the Git/branch workflow](rhythm-git-workflow.md) before moving this build into another environment.
+模拟器有独立 `.git` 和 `docs/`，父房间仓库忽略此目录；椅子／房间不在本历史。基准打包源在 `--workspace` 指向本仓库时不依赖 Git 可运行。运行资源与 Tailscale 地址未移动，见[仓库拆分](repository-separation.md)。
 
-## Repository-boundary correction
+曲库复制后运行 `.venv/bin/python import_charts.py charts/imported/10plus-import-novedio`，生成每难度工程与 `catalog.json`。迁移时同时保留 `library/`、原始解压目录和相对符号链接，或在目标重生成；ffprobe 用于实际音频时长，难度音频覆盖也需保留。目录按曲包原子替换，可重复执行。
 
-The simulator now owns an independent `.git` and `docs/` at this folder. The parent room repository ignores it. Chair/room changes are outside this Git history; see [repository separation](repository-separation.md). Blender is configured via `BLENDER_BIN`/PATH or a local `.tools/Blender.app`, replacing the source code’s old assumption about the parent workspace layout. The launchd service records the existing shared Blender installation explicitly. Runtime/media paths and the Tailscale URL did not move. The packaged benchmark baseline still works when `--workspace` points directly to this repository.
+全部 **268** 原始／工程 AFF 散列对照初始清单通过。初次有八张 `designant` 被禁用，现通过零分红键兼容层全部启用；当前 **44** 张仍有其他功能警告。导入可解析不等于所有 gimmick 完整支持。清单在 `charts/manifests/`。
 
-## Chart-library import — 2026-11-07
+端到端曾发现：Build 必须发全部表单字段（含谱面和起止），只发相机字段会回退默认曲目；Blender 准备用 `-b` 才会执行后退出，背景模式 `bpy.context.screen` 可为空。目录更新先等空闲再重载。
 
-Run `.venv/bin/python import_charts.py charts/imported/10plus-import-novedio` after copying the extracted collection. The importer produces one ArcCreate project per difficulty and `charts/imported/catalog.json`; the dashboard merges this local catalog with its original two chart IDs. Generated projects use relative asset links into the copied collection. Preserve both `library/` and the extracted collection, including symlinks, when moving the library; alternatively regenerate projects on the target. No source file is edited. ffprobe is needed for audio duration, including difficulty-specific audio overrides. The importer replaces its collection's catalog entries atomically and is repeatable.
+红键兼容层在临时 AFF 使用红色渲染与原生天键判定，零分、不掉连击；原始谱面不动。新环境运行 `./arc-create-export/setup.sh`，默认适配应用为 `.tools/ArcCreate/ArcCreate-media.app`，可用 `ARCCREATE_EXPORT_APP` 覆盖。检查实际红色画面、独立红键命中／漏掉字段、正常分数归一化与空输入对照，不能仅看到红色就认为计分已正确隔离。
 
-The full import contains 268 difficulties across 77 songs, plus the two original dashboard projects. Eight Designant/Lament Rain charts use a `designant` arc token unsupported by the installed planner and ArcCreate readers; keep them visibly unavailable instead of coercing that token to a Boolean or omitting arcs. Forty other charts have parser feature warnings, which the selector displays. Parsing does not establish support for every scoring/visual gimmick. Inventory, import counts and rejected-chart reasons are recorded under `charts/manifests/`.
+音频导出为原生无声画面、原采样率歌曲 WAV、48 kHz 命中 WAV 和声音事件 JSON。歌曲带两端 2 秒余量用于 ±2000 ms 延迟；只移动歌曲，命中音效与画面固定。一个开关包含单键、长条头、蛇实际计分点和捕获红键；漏键静音，保留自定义音效。原生蛇头亮起事件不冒充计分点音效。流速映射为原生 `DropRate=round(scroll_speed*30)`，不改谱面时间。
 
-Two workflow issues surfaced during end-to-end validation. Build must send **all** form settings, including chart ID and start/end; camera-only payloads silently fall back to the original default chart. Blender preparation must use `-b` so its process exits after the script; the scene builder must tolerate `bpy.context.screen` being absent in background mode. Check for an active job before reloading the dashboard catalog.
+## 经验记录：中文化
 
-Verified all 268 source/project AFF hashes against the original inventory, generated 268 projects, and passed 73 project tests. The live dashboard listed 270 chart options and eight unavailable entries. A real Abstruse Dilemma Past 5 build at 3–5 s used `0.aff`, completed contact planning, Blender preparation, ArcCreate replay and GLB export, and played in WebGL without browser errors. All 15 predicted arc catches were confirmed by native replay. The gameplay file has H.264 video and AAC audio; its 2.733 s duration includes the existing release/judgement tail. Evidence: `output/runs/20261107-033350-6b7eb9/` and `output/chart-import-dashboard.jpg`.
-
-## Designant red-note compatibility — 2026-11-07
-
-`designant` is a red trace with non-scoring sky taps. ChartIR preserves it explicitly as `ArcEvent.is_designant`; the trace is a guideline, not a scoring hold/arc, and its sky-tap occupations have zero scoring weight. The dashboard has `enable_red_notes=true` and `target_all_red_notes=false` defaults. Disabled means remove these traces/taps from the temporary render chart. Enabled without targeting means show them but plan no extra contacts; incidental native catches still register. Targeting adds red sky-tap occupations and ranks plans by scoring ticks lost, then red notes missed, then movement cost. Red targets are always skippable, even with ordinary misses disabled. This is a bounded best-effort search, not a guarantee of catching every red note.
-
-The installed ArcCreate 1.2.68 parser does not understand the token. `dashboard/red_notes.py` prepares a per-take compatibility project using relative links to the copied assets. It translates designant to native traces with a private SFX marker, preserving the original chart, timing-group scope, and tap positions. `arc-create-export/RedNotes.cs` recognizes that marker: rendering tints traces/sky taps red, reloads the ordinary sky-tap mesh/texture, and keeps native touch requests, expiry, particles and sounds. Only red score processing and combo normalization are excluded. Red verdicts have separate `red_hits`, `red_misses`, and `red_judgements` in the replay JSON. Regular scoring behaviour remains native.
-
-Run `./arc-create-export/setup.sh` to build the compatibility exporter. It now writes `.tools/ArcCreate/ArcCreate-red-notes.app` separately from the older exporter, so installing it does not mutate an app already rendering a user run. Both setup and export accept `ARCCREATE_EXPORT_APP` to override this destination. Source build and Mono.Cecil prerequisites are unchanged. The gameplay cache includes `RedNotes.cs` and the converted chart bytes; planner cache fingerprints include typed red-note semantics and both controls. Old completed takes retain their original footage/settings. Reload the dashboard only when idle, and refresh the browser for its new controls/catalog.
-
-Native verification in `output/red-note-qa/` used two scoring taps and one red sky tap. Red hit, red miss, and red disabled each yielded **10,000,002 score, combo 2, two regular hits and zero regular misses**. Their separate red counts were 1/0, 0/1, and 0/0. A decoded frame visibly shows a red sky tap and red trace. A real Designant Past 7 excerpt at 77.5–80.5 s completed the full planner/Blender/ArcCreate/GLB pipeline: five red targets planned, five native red hits, zero skipped scoring ticks. Its one later red miss and two later ordinary misses are the existing judgement tail after the selected cutoff. Saved demonstration: `output/red-note-qa/runs/20261107-034319-055a2e/`, also linked into normal saved takes. Browser controls, enable/disable dependency and WebGL loading were checked without changing the user's tab. Screenshot: `output/red-note-qa/dashboard.jpg`. The project and vendored planner suite passed **160 tests**; the recorder checks passed too.
-
-The same validation exposed a source-audio/sample-grid issue on Arghena (`AudioOffset:-1297`). Negative source offsets previously put early visible excerpt contacts into negative animation frames, where clipping created empty contacts and cache validation failed. New plans retain `source_audio_offset_ms` for footage/audio and use a nonnegative `audio_offset_ms` sample grid. Replay input follows the grid, while hit-sound mixing uses the source offset. The exact failed 135–165 s Arghena settings now generate 92 contacts and pass completed-plan validation. Do not conflate these two offsets when porting playback or audio mixing.
-
-References for the AFF distinction: [community AFF model](https://github.com/AuRousKiNN/aff) and [ArcaeaChartRender element model](https://github.com/Arcaea-Infinity/ArcaeaChartRender/blob/master/ArcaeaChartRender/element.py). The native adapter is based on the installed [ArcCreate source](https://github.com/Arcthesia/ArcCreate), with local touch-replay tests establishing this implementation's scoring isolation.
-
-## Scroll speed and audio mixing — 2026-11-07
-
-The dashboard's `scroll_speed` uses ArcCreate's 1–10 scale (default 5). The adapter sets `Settings.DropRate` to `round(scroll_speed*30)` for export and restores the previous value afterward. This is the native approach-speed control, not `PlaybackSpeed`: note timestamps, judgement windows, hand contacts, song tempo and preview playback rate remain unchanged. Chart-authored timing-group/scene speed overrides still apply normally.
-
-`song_delay_ms` ranges from −2000 to +2000 ms, default 0; positive means the song plays later. It is independent of the chart's source `AudioOffset`, planner sample-grid offset and the browser's playback-rate control. `hit_sounds` is one toggle covering both block hits and successful snake scoring ticks (default true). There are no separate block/snake toggles.
-
-Stock ArcCreate AudioRenderer schedules effects from chart contents. Our replay path disables that autoplay effect mix and records native successful callbacks instead. Ground taps and hold heads use the native tap callback; sky taps use `PlayArcTapHitsound` only when `isFromJudgement` is true (including caught red notes). Native arc-head highlight sounds are excluded from the tick track. Each successful native scoring-arc request records a click at its actual settlement time; expired/Miss/NoScore requests do not. Standard ArcCreate clips and custom sky-tap SFX are retained. Native chord sound deduplication is retained for block clicks. `.sounds.json` records the actual block/tick event times separately for audit, while one combined `.hits.wav` is offered to users. Turning hit sounds off changes the mix, not judgement or the recorded WAV.
-
-The new exporter is built by `./arc-create-export/setup.sh` into `.tools/ArcCreate/ArcCreate-media.app`, independently of the older running exporter. `ARCCREATE_EXPORT_APP` overrides this destination for setup and export. Each cached replay retains a silent 30 fps `.base.mp4`, combined `.hits.wav`, song `.music.wav`, native `.judgements.json` and `.sounds.json`. Song PCM includes 2000 ms before and after the selected video interval, preserving song continuity when shifting an excerpt; only the actual song edges are padded with silence. Song extraction preserves the source sample rate, leaving high-quality resampling to ffmpeg. Hit PCM uses 48 kHz stereo. The preview mix is AAC with the H.264 video stream copied unchanged. `dashboard/media.py` trims song PCM at `(2000-song_delay_ms)` and leaves hit PCM at time zero, so a positive delay shifts only the song later. Mix identity includes the controls and mixer implementation; scroll speed is included in the native replay cache identity. These three media settings are excluded from contact-plan cache keys and pose signatures.
-
-Validation: 166 project/vendor tests passed, including synthetic tone checks for both delay signs, muted clicks, fixed hit timing, unchanged H.264 packet hashes and completed-plan reuse across all three controls. Real Designant native exports at speeds 5 and 8 had exactly identical judgement JSON and sound event timestamps, but visibly different approach geometry. Both captured 5 block clicks and 15 snake tick clicks; an otherwise identical all-missed input produced zero sound events and an entirely zero-valued WAV. Evidence is in `output/media-qa/verification.json` and the speed5/speed8/missed artifacts.
-
-A full dashboard-pipeline QA take with speed 8, song delay +200 ms and hit sounds on completed at `output/media-qa/runs/20261107-040442-ff99a5/` and is linked into normal saved takes. WebGL recording from that take produced H.264/AAC, 856×642, 3.804 s including encoder startup; its source gameplay is 3.733 s. Decoded recorded audio correlated 0.967 with the source mix after a measured 49 ms encoder/startup alignment, consistent with the existing real-time recording limitation. Artifacts: `output/media-qa/webgl-preview.mp4` and `dashboard.jpg`. Browser inputs restored the saved 8/+200/true values, showed the combined WAV download and actual-hit counts, and loaded the GLB without browser errors. The existing user MP4 export was allowed to finish before the idle service was reloaded.
-
-## Idle/detour pacing and default migration — 2026-11-07
-
-A saved Arghena take exposed fast motion added after contact planning. Always compare `motion_paths.positions` with the final fitted paths before attributing a fling to return-to-home logic: this case had short gaps without home dwells, but the collision pass added roughly 12 cm detours under the full 4 m/s main budget. The new `idle_speed_m_s` control (default 1) caps optional home movement and both avoidance passes. A necessary faster contact-to-contact baseline remains allowed; it must not be slowed by moving/skipping a fixed touch. For long gaps, do not accelerate an optional home excursion to fit; allocate terminal return time using the idle limit. Rotation remains subject to the existing wrist and full-glove speed checks.
-
-Idle speed belongs in pose signatures, not contact-plan cache keys. Existing take snapshots do not update automatically: the original full 56.55–118.378 s plan and movie were reused to regenerate a new motion/scene take `20261107-044336-ca9335`. Contact positions, all plan bytes and 3,746 motion samples were preserved. The affected transfer fell from 3.46 to 1.19 m/s. Residual collision diagnostics remain possible; this patch does not reintroduce failure/replan gates. The detailed cause, native input alternative, boundary misses and measured overlap tradeoff are documented in [the Arghena investigation](arghena-end-miss-and-idle-motion.md).
-
-New requested defaults are repeat comfort 167 ms, fast-run gap 133 ms, two free presses, fast-run cost 10, scroll 2.5, song delay 0, prefer arc geometry/visual-end holding on, elevation 70°. `DEFAULTS_REVISION` and `STARTUP_PREFERENCES` apply these once when resuming pre-migration takes. Explicitly selecting a historical take still restores its old settings; subsequent new takes carry the current revision and retain custom tuning. Reset uses the full defaults. Distinguish a migrated form's pending preferences from the media of a historical take (the UI shows Settings changed).
-
-Validation: 170 project/vendor tests pass; browser verification checked the new control, migrated values, GLB loading and the affected interval. The corrected saved take reuses the original ArcCreate footage; it preserves the original missed note for a fair motion comparison. Native diagnostic replay separately demonstrates that the 114.485 s lane-3 miss is avoidable with an earlier release/repress; a general contact-planner repair is not part of this motion change.
-
-## Shared hand-pose cache correction — 2026-11-07
-
-The former `motion.poses.npz` lived inside each take directory. Excluding scroll speed from its signature did not enable cross-take reuse: the first pose pass was cold in every new directory, and only that take's subsequent scene-export invocation could hit. The user-observed Arghena 5.2→2.0 change demonstrates this: contact search hit in 11–13 ms while pivots were computed anew.
-
-`pose_cache.py` now stores solved points, wrist angles and their verified report under `output/hand-poses/`. Keys use generated base paths/contact-rest pins, resolved pose parameters and source hashes, independent of camera/media or plan reporting metadata. Entries are atomic, checksum-validated, finite and contact-preserving; corrupted/unavailable entries recompute. Keep this shared directory when moving an environment if warm reuse matters, but correctness must never depend on it. Source fingerprints can legitimately force a first cold calculation after a port. Old per-take NPZs are retained, not silently trusted as new-format entries.
-
-Real two-process, separate-directory Arghena validation: 21.59 s cold, 1.11 s warm after changing only scroll speed; exact same trajectory and wrist-angle arrays. Shared hand motion does not eliminate the later scene/GLB assembly step, which is still per take. Native ArcCreate visuals must still change with scroll speed. See [cache-layer keys and invalidation](cache-layers.md) and `output/pose-cache-qa/verification.json` for the complete map and evidence.
+中文 UI 仅显示层，语言不进入设置请求或缓存键。文本节点与动态状态均保存英文源，切换不重建表单或播放对象；歌曲元数据和机器报告保留原值。新增 `/i18n.js`、`/i18n-messages.js` 时，旧服务白名单返回 404；确认活动演奏完成后才重载服务，未取消任务。后续新增资源要同时检查静态路由和真实加载，不能只过语法检查。简体中文／English、桌面／手机断点的验证方法见[中文化维护](i18n.md)。
