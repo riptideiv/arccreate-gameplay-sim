@@ -32,6 +32,10 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
+DEFAULTS_REVISION = '20261107-idle-motion'
+STARTUP_PREFERENCES = ('repeat_comfort_ms', 'jack_gap_ms', 'jack_free', 'jack_weight',
+                       'scroll_speed', 'song_delay_ms', 'prefer_arc_trace', 'full_arc_hold',
+                       'camera_elevation_deg', 'idle_speed_m_s')
 
 
 class Settings(BaseModel):
@@ -40,24 +44,25 @@ class Settings(BaseModel):
     start_s: float = Field(default=0, ge=0)
     end_s: float = Field(default=6.65, gt=0)
     max_speed_m_s: float = Field(default=1.6, ge=0.1, le=4)
+    idle_speed_m_s: float = Field(default=1, ge=0.05, le=4)
     angular_limit_deg_s: float = Field(default=360, ge=30, le=1440)
     lift_mm: float = Field(default=6, ge=0, le=30)
     clearance_mm: float = Field(default=1, ge=0.5, le=8)
     comfort_speed_m_s: float = Field(default=0.25, ge=0.1, le=2)
     crossing_weight: float = Field(default=1, ge=0, le=30)
     planner_accel_m_s2: float = Field(default=75, ge=1, le=200)
-    repeat_comfort_ms: float = Field(default=180, ge=1, le=1000)
+    repeat_comfort_ms: float = Field(default=167, ge=1, le=1000)
     repeat_weight: float = Field(default=5, ge=0, le=100)
-    jack_gap_ms: int = Field(default=150, ge=0, le=1000)
-    jack_free: int = Field(default=4, ge=1, le=32)
-    jack_weight: float = Field(default=20, ge=0, le=100)
+    jack_gap_ms: int = Field(default=133, ge=0, le=1000)
+    jack_free: int = Field(default=2, ge=1, le=32)
+    jack_weight: float = Field(default=10, ge=0, le=100)
     point_contact_frames: int = Field(default=2, ge=1, le=12)
     min_air_frames: int = Field(default=1, ge=0, le=30)
     held_release_air_frames: int = Field(default=4, ge=0, le=30)
     arc_path_mode: Literal["score", "trace"] = "score"
-    prefer_arc_trace: bool = False
+    prefer_arc_trace: bool = True
     arc_trace_weight: float = Field(default=1000, ge=0, le=10000)
-    full_arc_hold: bool = False
+    full_arc_hold: bool = True
     partial_hold_weight: float = Field(default=1000, ge=0, le=10000)
     full_ground_hold: bool = True
     partial_ground_hold_weight: float = Field(default=500, ge=0, le=10000)
@@ -66,11 +71,11 @@ class Settings(BaseModel):
     target_all_red_notes: bool = False
     search_width: int = Field(default=256, ge=32, le=2048)
     camera_distance_m: float = Field(default=0.29, ge=0.22, le=0.5)
-    camera_elevation_deg: float = Field(default=52, ge=25, le=80)
+    camera_elevation_deg: float = Field(default=70, ge=25, le=80)
     camera_yaw_deg: float = Field(default=0, ge=-35, le=35)
     camera_lens_mm: float = Field(default=30, ge=20, le=55)
     quality: Literal["draft", "final"] = "draft"
-    scroll_speed: float = Field(default=5, ge=1, le=10)
+    scroll_speed: float = Field(default=2.5, ge=1, le=10)
     song_delay_ms: int = Field(default=0, ge=-2000, le=2000)
     hit_sounds: bool = True
 
@@ -129,7 +134,8 @@ class RenderQueue:
             self.cancelled.clear()
             run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6]
             run = {"id": run_id, "status": "running", "stage": "Planning contacts",
-                   "progress": 0, "created": time.time(), "settings": settings.model_dump()}
+                   "progress": 0, "created": time.time(), "settings": settings.model_dump(),
+                   "defaults_revision": DEFAULTS_REVISION}
             (RUNS / run_id).mkdir()
             write_json(RUNS / run_id / "run.json", run)
             self.active = run
@@ -440,6 +446,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/bootstrap":
             self.json({"charts": CHARTS, "defaults": Settings().model_dump(),
+                       "defaults_revision": DEFAULTS_REVISION, "startup_preferences": STARTUP_PREFERENCES,
                        "presentation_revision":hashlib.sha256((ROOT / "presentation_scene.py").read_bytes()).hexdigest()[:12], **QUEUE.state()})
         elif path == "/api/state":
             self.json(QUEUE.state())

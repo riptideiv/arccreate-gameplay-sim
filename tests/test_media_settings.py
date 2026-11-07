@@ -80,6 +80,6 @@ def test_media_settings_reuse_identical_contact_plan(tmp_path):
 
 def test_media_setting_ranges_and_defaults():
     settings=Settings()
-    assert settings.scroll_speed==5 and settings.song_delay_ms==0 and settings.hit_sounds
+    assert settings.scroll_speed==2.5 and settings.song_delay_ms==0 and settings.hit_sounds
     for values in ({'scroll_speed':0},{'scroll_speed':11},{'song_delay_ms':2001}):
         with pytest.raises(ValueError):Settings(**values)

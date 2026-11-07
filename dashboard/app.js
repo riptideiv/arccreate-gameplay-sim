@@ -532,11 +532,10 @@ async function start() {
     const latest = bootstrap.history.find(run => run.status === "complete");
     if (latest) {
       showTake(latest, true);
-      // Keep old takes faithful when restored, but start new work with early arc release.
-      if (latest.legacyReleasePolicy || latest.legacyArcPaths || latest.legacyArcTrace) fill({ ...latest.settings,
-        prefer_arc_trace: latest.legacyArcTrace ? bootstrap.defaults.prefer_arc_trace : latest.settings.prefer_arc_trace,
-        full_arc_hold: latest.legacyReleasePolicy ? bootstrap.defaults.full_arc_hold : latest.settings.full_arc_hold,
-        arc_path_mode: latest.legacyArcPaths ? bootstrap.defaults.arc_path_mode : latest.settings.arc_path_mode });
+      // Apply newly requested preferences once when migrating older takes.
+      // Explicit saved-take selection still restores its historical settings.
+      if (latest.defaults_revision !== bootstrap.defaults_revision) fill({ ...latest.settings,
+        ...Object.fromEntries(bootstrap.startup_preferences.map(name => [name, bootstrap.defaults[name]])) });
     }
     displayJob(normalizeRun(bootstrap.active));
     history(bootstrap.history);
