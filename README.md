@@ -15,6 +15,8 @@ The local chart selector also contains all 268 difficulties from the 77-song `10
 
 ## Tune in the dashboard
 
+See [calculation and media cache layers](docs/cache-layers.md) for exactly what a settings change reuses. Hand pivots now share a validated cache across separate takes; a scroll-speed change reuses contacts and hand motion, while ArcCreate footage and the new scene snapshot still need the appropriate update.
+
 **Scroll and audio** contains the chart scroll-speed control (ArcCreate scale 1–10, default 2.5), song audio delay (−2000 to +2000 ms, default 0), and one **Hit sounds** toggle (on by default). Scroll speed changes note approach distance, with note times and tempo unchanged. Positive audio delay makes the song play later relative to the video; negative plays it earlier. Hand contacts, gameplay timing and hit clicks stay fixed. Build to apply these controls; contact planning is cached independently, and audio changes reuse cached native footage.
 
 Current dashboard preferences: comfortable repeat gap **167 ms**, fast-run gap **133 ms**, **2** free fast-run presses, extra fast-run cost **10**, prefer arc geometry and visual-end holding **on**, camera elevation **70°**. Startup migrates these preferences once for older saved takes; selecting a saved take explicitly still restores its historical settings, and subsequent takes retain their own tuning. Reset controls applies the complete current defaults.

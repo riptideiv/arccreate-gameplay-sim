@@ -248,6 +248,8 @@ class RenderQueue:
             for line in process.stdout:
                 log.write(line)
                 log.flush()
+                if line.startswith('Reused contact-preserving glove poses from shared cache.'):
+                    self.update(stage='Reusing cached hand pivots', progress=progress)
                 if line.startswith('PLANNER_PROGRESS '):
                     try:
                         self.planner_update(json.loads(line.removeprefix('PLANNER_PROGRESS ')))
