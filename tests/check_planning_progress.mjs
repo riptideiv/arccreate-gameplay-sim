@@ -15,6 +15,7 @@ const $ = id => {
 };
 const context = vm.createContext({$, Date, Math, String,
   bootstrap: {charts: {bibideba: {title: 'BIBBIDIBA'}}},
+  setText(element, text) { element.textContent = text; },
   setRenderDisabled() {}, updateExportControls() {}, currentJob: null,
 });
 vm.runInContext(functionSource, context);
@@ -32,6 +33,10 @@ run.planning_progress = {...run.planning_progress, phase: 'geometry', completed:
 context.displayJob(run);
 assert.equal($('planning-progress').value, undefined); // indeterminate work
 assert.match($('planning-label').textContent, /Checking arc input regions/);
+run.planning_progress = {...run.planning_progress, phase: 'placement'};
+context.displayJob(run);
+assert.equal($('planning-progress').value, undefined);
+assert.match($('planning-label').textContent, /Optimizing contact placement/);
 run.planning_progress = null;
 context.displayJob(run);
 assert.equal($('planning-status').hidden, true);
