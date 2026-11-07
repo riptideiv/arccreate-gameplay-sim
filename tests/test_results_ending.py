@@ -45,6 +45,21 @@ def test_native_special_ranks_and_strict_gauge_threshold(results,score,gauge,ran
     assert results_spec({'settings':{'start_s':0}},j)[1]==rank
 
 
+def test_result_music_waits_for_native_activation_when_gameplay_audio_ends_early(tmp_path):
+    import shutil,subprocess
+    import numpy as np
+    from dashboard.ending import mix_result_audio
+    if not shutil.which('ffmpeg'):pytest.skip('ffmpeg required')
+    song=tmp_path/'song.wav';music=tmp_path/'results.wav';movie=tmp_path/'movie.mp4';output=tmp_path/'output.mp4'
+    for path,hz in [(song,440),(music,880)]:
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency={hz}:duration=1','-y',str(path)],check=True)
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=c=blue:s=64x48:r=60:d=3','-c:v','libx264','-pix_fmt','yuv420p','-y',str(movie)],check=True)
+    mix_result_audio(song,movie,music,output,2,3,1)
+    pcm=np.frombuffer(subprocess.check_output(['ffmpeg','-v','error','-i',str(output),'-vn','-ac','1','-ar','8000','-f','f32le','-']),dtype='<f4')
+    def rms(start,end):return float(np.sqrt(np.mean(pcm[round(start*8000):round(end*8000)]**2)))
+    assert rms(.2,.8)>.04 and rms(1.2,1.8)<.001 and rms(2.2,2.8)>.04
+
+
 def test_ending_failure_keeps_saved_gameplay_and_success_publishes_only_new_media(tmp_path,monkeypatch):
     monkeypatch.setattr(server,'RUNS',tmp_path)
     q=server.RenderQueue();directory=tmp_path/'take';directory.mkdir()

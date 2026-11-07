@@ -53,6 +53,15 @@ def command(args):
     subprocess.run([str(a) for a in args],check=True)
 
 
+def mix_result_audio(source, silent, music, output, result_start, length, volume):
+    # A take can end while the native transition is covering gameplay. Preserve
+    # the result activation clock even when its original audio runs out early.
+    filters=(f'[0:a]atrim=0:{result_start},asetpts=PTS-STARTPTS,apad,atrim=0:{result_start}[song];'
+             f'[2:a]atrim=0:{length-result_start},asetpts=PTS-STARTPTS,volume={volume}[result];'
+             '[song][result]concat=n=2:v=0:a=1[a]')
+    command(['ffmpeg','-v','error','-i',source,'-i',silent,'-stream_loop','-1','-i',music,'-filter_complex',filters,'-map','1:v','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-t',length,'-movflags','+faststart','-y',output])
+
+
 def prepare(directory):
     directory=Path(directory).resolve();run=json.loads((directory/'run.json').read_text())
     if run['status']!='complete' and not run.get('ending_only'):raise ValueError('Choose a completed live preview.')
@@ -84,14 +93,10 @@ def prepare(directory):
     if native_meta.get('flow')!='arccreate-native-v1' or native_meta['clear_result']!=rank:
         raise ValueError('The native ending does not match the saved result.')
     length=native_meta['duration_s'];music_start=native_meta['results_start_s']
-    music_length=length-music_start
     silent,_,_=splice_picture(source,native,join,length,folder,'native')
     music=ROOT/'.tools/ArcCreate/source/Assets/AudioClips/ResultScreen.ogg'
     output=folder/'gameplay-with-results.mp4'
-    filters=(f'[0:a]atrim=0:{join+music_start},asetpts=PTS-STARTPTS[song];'
-             f'[2:a]atrim=0:{music_length},asetpts=PTS-STARTPTS,volume={native_meta["result_music_volume"]}[result];'
-             '[song][result]concat=n=2:v=0:a=1[a]')
-    command(['ffmpeg','-v','error','-i',source,'-i',silent,'-stream_loop','-1','-i',music,'-filter_complex',filters,'-map','1:v','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-t',join+length,'-movflags','+faststart','-y',output])
+    mix_result_audio(source,silent,music,output,join+music_start,join+length,native_meta['result_music_volume'])
     metadata={'revision':identity,'flow':'arccreate-native-v1','start_s':join,'duration_s':length,'clear_result':rank,'native_scene':'Result','original_video':original,'video':'/media/'+output.relative_to(ROOT/'output').as_posix(),'play':play,'folder':folder.name,'results_start_s':music_start,'native_timing':native_meta}
     (folder/'ending.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
     print('ENDING_RESULT '+json.dumps(metadata),flush=True)
