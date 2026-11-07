@@ -331,5 +331,10 @@ export const zhCN = {
   "camera": "相机事件",
   "ground lane": "地键轨道",
   "timing divisor": "时间除数",
-  "reversed arc duration": "反向蛇时长"
+  "reversed arc duration": "反向蛇时长",
+  "Video frame rate": "视频帧率",
+  "30 fps": "30 fps",
+  "60 fps": "60 fps",
+  "Choose 30 or 60 fps.": "请选择 30 或 60 fps。",
+  "Video ready · {width} × {height} · {fps} fps target with game audio.": "视频已就绪 · {width} × {height} · 目标 {fps} fps，含游戏音频。"
 };

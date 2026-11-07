@@ -49,7 +49,8 @@ export class PreviewRecorder {
     if (this.recorder?.state !== 'inactive') this.recorder?.stop();
   }
 
-  async record() {
+  async record({fps = 30} = {}) {
+    if (![30, 60].includes(fps)) throw new Error('Choose 30 or 60 fps.');
     if (this.active) throw new Error('A preview export is already running.');
     if (!this.supported()) throw new Error('This browser cannot record the preview with audio. Use the Blender MP4 export below.');
     const {video, preview} = this;
@@ -68,11 +69,11 @@ export class PreviewRecorder {
       if (video.currentTime !== 0) await mediaReady(video, 'seeked', () => { video.currentTime = 0; }, signal);
       if (signal.aborted) throw new Error(this.cancelReason);
       preview.beginCapture(); // Lock encoded dimensions even if the phone rotates.
-      const canvasStream = preview.canvas.captureStream(30);
+      const canvasStream = preview.canvas.captureStream(fps);
       stream = new MediaStream([...canvasStream.getVideoTracks(), ...audio.destination.stream.getAudioTracks().map(track => track.clone())]);
       const mimeType = recordingFormat();
       const recorder = this.recorder = new MediaRecorder(stream, {mimeType,
-        videoBitsPerSecond:Math.max(2000000, Math.min(12000000, preview.canvas.width*preview.canvas.height*30*.18)), audioBitsPerSecond:192000});
+        videoBitsPerSecond:Math.max(2000000, Math.min(12000000, preview.canvas.width*preview.canvas.height*fps*.18)), audioBitsPerSecond:192000});
       const chunks = [];
       let failure;
       const stopped = new Promise((resolve, reject) => {
@@ -106,7 +107,7 @@ export class PreviewRecorder {
       const type = recorder.mimeType || mimeType;
       const blob = new Blob(chunks, {type});
       if (!blob.size) throw new Error('The browser returned an empty recording.');
-      const result = {blob, extension:type.startsWith('video/mp4') ? 'mp4' : 'webm', mimeType:type,
+      const result = {fps, blob, extension:type.startsWith('video/mp4') ? 'mp4' : 'webm', mimeType:type,
         width:preview.canvas.width, height:preview.canvas.height, duration:video.duration, wallSeconds:(performance.now()-began)/1000};
       this.changed({active:false, progress:100, message:'Preview video ready to download.'});
       return result;
