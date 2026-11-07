@@ -32,3 +32,7 @@
 下载工具、虚拟环境、导入媒体、演奏与缓存忽略于 Git；清单与可复现源码／配置提交。交互签名提示在当前执行环境不可用，任务提交按命令使用 `commit.gpgsign=false`，未修改全局签名或身份。
 
 服务仍为 loopback:8765 与已有 Tailscale 地址；launchd 显式配置 `BLENDER_BIN`，源码默认 PATH／本地安装，不加载房间场景。重载前检查 `/api/state`；新增 UI 模块要检查静态白名单，不能为加载新界面中断活动演奏。
+
+## 后续修复分支
+
+`fix/negative-audio-start-60fps` 从中文化分支创建，包含 Arghena 负音频起点修复、真正保留原生 60 fps、浏览器 30／60 fps 导出选项及完整重跑验证。未改 main，也未改动保存的规划设置；详见[调查记录](arghena-negative-offset-60fps.md)。
