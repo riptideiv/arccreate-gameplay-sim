@@ -13,14 +13,14 @@ def ledger(results,score):
     return {'score':score,'judgements':[{'chart_ms':i*100,'result':r} for i,r in enumerate(results)]}
 
 
-def test_pure_memory_requires_all_native_perfects_and_complete_chart():
+def test_native_rank_requires_complete_chart_and_matches_arccreate():
     run={'settings':{'start_s':0}}
-    play,banner=results_spec(run,ledger(['Max']*9+['PerfectLate'],10_000_009))
-    assert banner=='PURE MEMORY' and play['NoteCount']==10 and play['MaxCount']==9
+    play,rank=results_spec(run,ledger(['Max']*9+['PerfectLate'],10_000_009))
+    assert rank=='AllPerfect' and play['NoteCount']==10 and play['MaxCount']==9
     assert play['LatePerfectCount']==1 and play['MaxCombo']==10
-    # No misses alone does not mean Pure Memory: GOOD is a full recall.
-    play,banner=results_spec(run,ledger(['Max']*9+['GoodEarly'],9_500_009))
-    assert banner=='FULL RECALL'
+    # GOOD preserves combo, but cannot earn ArcCreate's AllPerfect rank.
+    play,rank=results_spec(run,ledger(['Max']*9+['GoodEarly'],9_500_009))
+    assert rank=='FullCombo'
     # A perfect excerpt is not a completed song.
     with pytest.raises(ValueError,match='complete chart'):
         results_spec(run,ledger(['Max']*5,5_000_005))
@@ -30,8 +30,19 @@ def test_pure_memory_requires_all_native_perfects_and_complete_chart():
 
 def test_max_combo_is_reconstructed_rather_than_using_final_combo():
     j=ledger(['Max']*4+['MissLate']+['Max']*3,8_750_007)
-    play,banner=results_spec({'settings':{'start_s':0}},j)
-    assert play['MaxCombo']==4 and banner=='TRACK COMPLETE' and play['LateMissCount']==1
+    play,rank=results_spec({'settings':{'start_s':0}},j)
+    assert play['MaxCombo']==4 and rank=='Clear' and play['LateMissCount']==1
+
+
+@pytest.mark.parametrize('results,score,gauge,rank',[
+    (['Max']*10,10_000_010,100,'Max'),
+    (['GoodEarly']*10,5_000_000,100,'AllGood'),
+    (['Max']*9+['MissLate'],9_000_009,70,'Fail'),
+    (['Max']*9+['MissLate'],9_000_009,71,'Clear'),
+])
+def test_native_special_ranks_and_strict_gauge_threshold(results,score,gauge,rank):
+    j=ledger(results,score);j['play_result']={'NoteCount':10,'GaugeValue':gauge,'GaugeClearRequirement':70}
+    assert results_spec({'settings':{'start_s':0}},j)[1]==rank
 
 
 def test_ending_failure_keeps_saved_gameplay_and_success_publishes_only_new_media(tmp_path,monkeypatch):
@@ -44,7 +55,7 @@ def test_ending_failure_keeps_saved_gameplay_and_success_publishes_only_new_medi
     monkeypatch.setattr(q,'command',fail);q.work_ending(directory)
     assert q.active['status']=='complete' and q.active['video']=='original.mp4' and q.active['export_video']=='old.mp4'
     assert q.active['live']==before['live'] and q.active['metrics']==before['metrics']
-    result={'video':'ending.mp4','start_s':4,'banner':'PURE MEMORY'}
+    result={'video':'ending.mp4','start_s':4,'clear_result':'AllPerfect'}
     def succeed(*a,**kw):(directory/'render.log').write_text('ENDING_RESULT '+json.dumps(result)+'\n')
     monkeypatch.setattr(q,'command',succeed);q.work_ending(directory)
     assert q.active['video']=='ending.mp4' and q.active['ending']==result
