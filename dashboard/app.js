@@ -1,5 +1,6 @@
 import { RhythmPreview } from './live-preview.js';
 import { ChartRange } from './chart-range.js';
+import { PreviewRecorder } from './preview-recorder.js';
 
 const form = document.querySelector("#settings");
 const video = document.querySelector("#video");
@@ -12,14 +13,55 @@ let pollTimer;
 let exportSubmitting = false;
 let sceneSubmitting = false;
 const chartRange = new ChartRange(form, () => markDirty());
-let live;
+let live, recorder, deferredTake, webglDownload, webglResult;
 try { live = new RhythmPreview($("live-scene"), video, $("live-performance")); }
 catch (error) { $("live-performance").textContent = "Live 3D unavailable: " + error.message; }
+
+recorder = new PreviewRecorder(live, video, state => {
+  $('webgl-export-hint').textContent = state.message;
+  $('webgl-export-progress').hidden = !state.active;
+  $('webgl-export-progress').value = state.progress;
+});
+function lockRecording(locked) {
+  form.inert = locked;
+  for (const element of document.querySelectorAll('#live-transport button, #live-transport input, #playback-speed, #history button')) element.disabled = locked;
+  $('cancel-webgl').hidden = !locked;
+  $('webgl-export-progress').hidden = !locked;
+  setRenderDisabled(currentJob?.status === 'running');
+  updateExportControls();
+}
+$('cancel-webgl').addEventListener('click', () => recorder.cancel());
+$('export-webgl').addEventListener('click', async () => {
+  if (!selected?.live || recorder.active) return;
+  $('error').hidden = true;
+  const savedSpeed = $('playback-speed').value;
+  try {
+    // record() starts synchronously inside this user gesture, then awaits media.
+    const task = recorder.record(); $('playback-speed').value = '1'; lockRecording(true);
+    const result = await task;
+    if (webglDownload) URL.revokeObjectURL(webglDownload);
+    webglDownload = URL.createObjectURL(result.blob);
+    webglResult = {width:result.width, height:result.height, id:selected.id, scene:selected.live.scene, view:JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))};
+    $('download-webgl').href = webglDownload;
+    Object.assign($('download-webgl').dataset, {mimeType:result.mimeType,width:result.width,height:result.height,wallSeconds:result.wallSeconds,durationSeconds:result.duration});
+    $('download-webgl').download = `${selected.settings.chart}-${selected.settings.start_s}-${selected.settings.end_s}-preview-${result.width}x${result.height}.${result.extension}`;
+    $('download-webgl').textContent = `Download ${result.extension.toUpperCase()}`;
+    $('download-webgl').hidden = false;
+    $('webgl-export-hint').textContent = `Video ready · ${result.width} × ${result.height} · up to 30 fps with game audio.`;
+  } catch (error) {
+    $('webgl-export-hint').textContent = error.message;
+    if (!error.message.startsWith('Export cancelled')) showError(error.message);
+  } finally {
+    $('playback-speed').value = savedSpeed;
+    lockRecording(false);
+    if (deferredTake) { const pending = deferredTake; deferredTake = null; showTake(...pending); }
+  }
+});
 
 const cameraFields = new Set(['camera_distance_m', 'camera_elevation_deg', 'camera_yaw_deg', 'camera_lens_mm', 'quality']);
 const clock = value => Math.floor(value / 60) + ':' + String(Math.floor(value % 60)).padStart(2, '0');
 $("play-preview").addEventListener('click', async () => {
-  try { if (video.paused) await video.play(); else video.pause(); }
+  try { if (video.paused) { await recorder.resumeAudio(); await video.play(); } else video.pause(); }
   catch (error) { showError('Could not play the preview: ' + error.message); }
 });
 $("seek-preview").addEventListener('input', event => { video.currentTime = Number(event.target.value); live?.pose(video.currentTime); });
@@ -34,8 +76,8 @@ function updateTransport() {
 for (const event of ['timeupdate', 'loadedmetadata', 'play', 'pause', 'seeked']) video.addEventListener(event, updateTransport);
 
 function setRenderDisabled(disabled) {
-  renderButton.disabled = disabled;
-  $("mobile-render").disabled = disabled;
+  renderButton.disabled = disabled || !!recorder?.active;
+  $("mobile-render").disabled = disabled || !!recorder?.active;
 }
 
 for (const field of fields.filter(field => field.type === "number")) {
@@ -121,7 +163,7 @@ function markDirty() {
 function updateExportControls() {
   if (!selected) return;
   const current = settings();
-  const running = currentJob?.status === 'running' || exportSubmitting || sceneSubmitting;
+  const running = currentJob?.status === 'running' || exportSubmitting || sceneSubmitting || recorder?.active;
   const currentSet = selected.presentation?.revision === bootstrap.presentation_revision;
   $('presentation-set').hidden = !selected.live;
   $('refresh-scene').disabled = running || currentSet;
@@ -130,11 +172,16 @@ function updateExportControls() {
   const dirty = !sameSettings(current, selected.settings);
   const invalidCamera = [...cameraFields].some(name => !byName(name).validity.valid || byName(name).value === '');
   const saved = selected.export_video || (!selected.live ? selected.video : null);
+  $('webgl-export').hidden = !selected.live;
+  if (!recorder?.supported()) $('webgl-export-hint').textContent = 'This browser cannot record a canvas with audio. Use Blender MP4 export below.';
+  $('export-webgl').disabled = !!recorder?.active || !recorder?.supported() || !live?.enabled || invalidCamera;
+  $('download-webgl').hidden = !webglResult || webglResult.id !== selected.id || webglResult.scene !== selected.live?.scene;
+  if (webglResult && webglResult.id === selected.id && !recorder.active) $('webgl-export-hint').textContent = webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · up to 30 fps with game audio.`;
   $('video-export').hidden = false;
   $('export-video').hidden = !selected.live;
   $('export-video').disabled = running || dirty || invalidCamera;
   const ownExport = currentJob?.export_only && currentJob.id === selected.id;
-  $('export-video').textContent = exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export MP4';
+  $('export-video').textContent = exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export Blender MP4';
   $('download-export').hidden = !saved;
   if (saved) $('download-export').href = saved;
   const oldCamera = selected.export_view && [...cameraFields].some(name => current[name] !== selected.export_view[name]);
@@ -193,7 +240,7 @@ form.addEventListener("submit", async event => {
       live?.setCamera(settings()); setRenderDisabled(false); return;
     }
     const run = await api("/api/render", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings())
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))
     });
     displayJob(normalizeRun(run));
     if (matchMedia("(max-width: 700px)").matches) $("preview").scrollIntoView({ block: "start" });
@@ -297,6 +344,7 @@ function displayJob(run) {
 }
 
 function showTake(run, restoreControls = false) {
+  if (recorder?.active) { deferredTake = [run, restoreControls]; return; }
   selected = run;
   $("error").hidden = true;
   if (restoreControls) fill(run.settings);
@@ -311,7 +359,7 @@ function showTake(run, restoreControls = false) {
   $("live-transport").hidden = !run.live;
   $("export-video").hidden = !run.live;
   if (run.live && !live) showError('This browser cannot start WebGL. Try Safari or Chrome with WebGL enabled.');
-  live?.load(run).then(() => { if (selected?.id === run.id && run.live) live.setCamera(settings()); })
+  live?.load(run).then(() => { if (selected?.id === run.id && run.live) { live.setCamera(settings()); updateExportControls(); } })
     .catch(error => showError('Live preview could not load: ' + error.message));
   $("judgement-report").hidden = !run.judgements;
   $("arc-tick-summary").hidden = !run.arc_tick_validation;
@@ -387,6 +435,7 @@ function history(runs) {
   for (const run of takes.slice(0, 8)) {
     const button = document.createElement("button");
     button.type = "button";
+    button.disabled = !!recorder?.active;
     button.className = "take" + (run.id === selected?.id ? " selected" : "");
     button.setAttribute("aria-pressed", String(run.id === selected?.id));
     const mark = document.createElement("span");

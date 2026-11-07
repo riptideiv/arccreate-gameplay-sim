@@ -138,10 +138,14 @@
       <div><h2>Presentation set</h2><p id="presentation-hint" class="hint" aria-live="polite"></p></div>
       <div class="export-actions"><button id="refresh-scene" type="button">Update presentation</button></div>
     </section>
-    <section class="video-export" id="video-export" hidden aria-label="Video export">
-      <div><h2>Export video</h2><p id="export-hint" class="hint" aria-live="polite">Export this take with the current camera and audio.</p></div>
-      <div class="export-actions"><button id="export-video" type="button">Export MP4</button><a id="download-export" download hidden>Download MP4</a></div>
+    <section class="video-export" id="webgl-export" hidden aria-label="Preview video export">
+      <div><h2>Export preview video</h2><p id="webgl-export-hint" class="hint" aria-live="polite">Records this view with game audio at 1×. Keep the page visible until it finishes.</p><progress id="webgl-export-progress" max="100" value="0" hidden aria-label="Preview recording progress"></progress></div>
+      <div class="export-actions"><button id="export-webgl" type="button">Export preview video</button><button id="cancel-webgl" type="button" hidden>Cancel export</button><a id="download-webgl" download hidden>Download video</a></div>
     </section>
+    <details id="video-export" class="analysis" hidden><summary>Blender MP4 export</summary>
+      <p id="export-hint" class="hint" aria-live="polite">Offline Blender rendering with the current camera and audio.</p>
+      <div class="export-actions"><button id="export-video" type="button">Export Blender MP4</button><a id="download-export" download hidden>Download Blender MP4</a></div>
+    </details>
     <section class="analysis" id="judgement-report" hidden>
       <h2>ArcCreate results</h2><p id="judgement-summary"></p><p id="arc-tick-summary" class="hint" hidden></p><a id="arc-tick-report" hidden target="_blank" rel="noopener">Native arc-tick report</a>
       <p class="hint">Score, combo, effects and hit sounds follow the two-hand touch replay. Window boundaries can also cause misses.</p>

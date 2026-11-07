@@ -33,6 +33,7 @@ export class RhythmPreview {
   }
 
   resize() {
+    if (this.captureLock) return;
     const box = this.canvas.parentElement.getBoundingClientRect();
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.settings.quality === 'final' ? 2 : 1));
     this.renderer.setSize(Math.max(1, box.width), Math.max(1, box.height), false);
@@ -96,7 +97,7 @@ export class RhythmPreview {
     const size = new THREE.Box3().setFromObject(screen).getSize(new THREE.Vector3());
     const error = Math.max(Math.abs(size.x - motion.screen_mm[0] / 1000), Math.abs(size.z - motion.screen_mm[1] / 1000));
     if (error > .00001) throw new Error('Tablet dimensions do not match the contact plan.');
-    const texture = new THREE.VideoTexture(this.video);
+    const texture = this.videoTexture = new THREE.VideoTexture(this.video);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.flipY = false; // glTF UVs already use the video image's top-left convention.
     screen.material = new THREE.MeshBasicMaterial({map: texture, toneMapped: false});
@@ -150,6 +151,22 @@ export class RhythmPreview {
       root.quaternion.set(this.nativeQ.x, this.nativeQ.z, -this.nativeQ.y, this.nativeQ.w);
     }
     this.canvas.dataset.mediaTime = String(time);
+  }
+
+  beginCapture() {
+    this.resize(); // Flush a pending ResizeObserver after a viewport change.
+    this.captureLock = true;
+    // H.264 encoders can crop odd pixel widths. Use a full 4:3 frame with
+    // even dimensions, rendered by this same canvas/camera, then restore it.
+    const width = Math.max(8, Math.floor(this.canvas.width / 8) * 8);
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(width, width * 3 / 4, false);
+  }
+
+  renderAt(time) {
+    this.pose(time);
+    if (this.videoTexture) this.videoTexture.needsUpdate = true;
+    this.renderer.render(this.scene, this.camera);
   }
 
   loop(now) {
