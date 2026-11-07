@@ -20,21 +20,21 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from typing import Literal
 
+if __package__:
+    from .chart_library import load_catalog, chart_paths
+else:
+    from chart_library import load_catalog, chart_paths
+
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
-CHARTS = {
-    "ex-otogibanashi": {"title": "Ex-Otogibanashi", "artist": "ryo (supercell)", "duration": 109.894,
-                       "start_s": 0, "end_s": 6.65, "audio_start_ms": 0},
-    "bibideba": {"title": "BIBBIDIBA", "artist": "Hoshimachi Suisei / Tsumiki", "duration": 168,
-                "start_s": 3.5, "end_s": 6.5, "audio_start_ms": 3500},
-}
+CHARTS = load_catalog(ROOT)
 
 
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    chart: Literal["ex-otogibanashi", "bibideba"] = "ex-otogibanashi"
+    chart: str = "ex-otogibanashi"
     start_s: float = Field(default=0, ge=0)
     end_s: float = Field(default=6.65, gt=0)
     max_speed_m_s: float = Field(default=1.6, ge=0.1, le=4)
@@ -69,6 +69,10 @@ class Settings(BaseModel):
 
     @model_validator(mode="after")
     def time_range(self):
+        if self.chart not in CHARTS:
+            raise ValueError("Choose a chart from the library.")
+        if CHARTS[self.chart].get("available") is False:
+            raise ValueError(CHARTS[self.chart]["unavailable_reason"])
         if self.end_s <= self.start_s or self.end_s > CHARTS[self.chart]["duration"]:
             raise ValueError("Choose a window inside the chart, with its end after its start.")
         if self.end_s-self.start_s < 0.5:
@@ -281,12 +285,12 @@ class RenderQueue:
                           height=480 if settings.quality == "draft" else 768)
             write_json(directory / "settings.json", config)
             plan_path = directory / "plan.json"
-            chart = ROOT / "charts/imported" / settings.chart
+            chart, aff, project_path = chart_paths(ROOT, settings.chart, CHARTS[settings.chart])
             excluded = set()
             avoid_contacts = []
             while True:
                 (directory / "metrics.json").unlink(missing_ok=True)
-                arguments = [ROOT / ".venv/bin/python", ROOT / "plan_excerpt.py", chart / "2.aff",
+                arguments = [ROOT / ".venv/bin/python", ROOT / "plan_excerpt.py", aff,
                              round(settings.start_s*1000), round(settings.end_s*1000), plan_path,
                              "--settings", directory / "settings.json", "--progress"]
                 for event in sorted(excluded):
@@ -297,7 +301,7 @@ class RenderQueue:
                 self.command(arguments, directory, "Planning contacts and missed notes", 3)
                 plan = json.loads(plan_path.read_text())
                 try:
-                    self.command([BLENDER, "--factory-startup", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
+                    self.command([BLENDER, "--factory-startup", "-b", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
                                   plan_path, directory / "scene.blend", "--motion-only",
                                   "--motion", directory / "motion.json", "--settings", directory / "settings.json",
                                   "--report", directory / "metrics.json"], directory, "Posing gloves around fixed touch points", 15)
@@ -345,8 +349,8 @@ class RenderQueue:
                                    "points": [{"x": x, "y": y} for x, y in t["path_mm"]]} for t in plan["touches"]]}
             write_json(directory / "replay.json", replay)
             digest = hashlib.sha256((directory / "replay.json").read_bytes() +
-                                    str((audio_start, frames)).encode() + (chart / "2.aff").read_bytes())
-            project = re.sub(r"(?m)^\s*(lastWorkingTiming|lastOpenedChartPath):.*\n", "", (chart / "project.arcproj").read_text())
+                                    str((audio_start, frames)).encode() + aff.read_bytes())
+            project = re.sub(r"(?m)^\s*lastWorkingTiming:.*\n", "", project_path.read_text())
             digest.update(project.encode())
             for asset in sorted(chart.rglob("*")):
                 if ".rendering" not in asset.parts and asset.suffix.lower() in (".ogg", ".mp3", ".wav", ".flac", ".png", ".jpg", ".jpeg", ".lua"):
@@ -359,12 +363,12 @@ class RenderQueue:
             cached = cache / (digest.hexdigest() + ".mp4")
             clip = directory / "gameplay.mp4"
             if not cached.exists() or not Path(str(cached) + ".judgements.json").exists():
-                self.command([ROOT / "arc-create-export/export.sh", chart / "project.arcproj", cached,
+                self.command([ROOT / "arc-create-export/export.sh", project_path, cached,
                               audio_start, audio_start+math.ceil((frames+2)*1000/30), directory / "replay.json"],
                              directory, "ArcCreate judging the two-hand replay", 35)
             clip.symlink_to(os.path.relpath(cached, directory))
             shutil.copyfile(str(cached) + ".judgements.json", directory / "judgements.json")
-            self.command([BLENDER, "--factory-startup", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
+            self.command([BLENDER, "--factory-startup", "-b", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
                           plan_path, directory / "scene.blend", "--gameplay", clip,
                           "--settings", directory / "settings.json", "--report", directory / "metrics.json",
                           "--motion", directory / "motion.json", "--glb", directory / "scene.glb"],

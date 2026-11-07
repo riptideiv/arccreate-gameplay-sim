@@ -381,7 +381,7 @@ def main():
     scene.frame_end = frame_count
     scene.frame_set(1)
     scene.render.filepath = "//frames/hand-"
-    for area in bpy.context.screen.areas:
+    for area in bpy.context.screen.areas if bpy.context.screen else ():
         if area.type == "VIEW_3D":
             area.spaces.active.region_3d.view_perspective = "CAMERA"
             area.spaces.active.shading.type = "MATERIAL"

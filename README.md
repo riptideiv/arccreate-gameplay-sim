@@ -11,6 +11,8 @@ Earlier offline exports (retained for comparison):
 
 The packages and their extracted projects are under `charts/imported/`. The Blender files use relative paths to their ArcCreate footage under `output/gameplay/`. Keep that folder next to the scenes when moving them. The MP4s include ArcCreate's source audio and hit sounds.
 
+The local chart selector also contains all 268 difficulties from the 77-song `10plus-import-novedio` collection, grouped by song. See [chart import and compatibility](charts/README.md) for regeneration, source assets and the eight unavailable difficulties. Charts with known feature limitations show a notice when selected.
+
 ## Tune in the dashboard
 
 This folder is its own Git repository; the parent dafeiyu room repository ignores it. Simulator code, documentation, charts and runtime output belong here.
