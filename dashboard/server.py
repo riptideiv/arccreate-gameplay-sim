@@ -22,9 +22,8 @@ from typing import Literal
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE = ROOT.parents[1]
 RUNS = ROOT / "output/runs"
-BLENDER = WORKSPACE / "work/tools/Blender.app/Contents/MacOS/Blender"
+BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = {
     "ex-otogibanashi": {"title": "Ex-Otogibanashi", "artist": "ryo (supercell)", "duration": 109.894,
                        "start_s": 0, "end_s": 6.65, "audio_start_ms": 0},

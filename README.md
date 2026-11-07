@@ -13,6 +13,8 @@ The packages and their extracted projects are under `charts/imported/`. The Blen
 
 ## Tune in the dashboard
 
+This folder is its own Git repository; the parent dafeiyu room repository ignores it. Simulator code, documentation, charts and runtime output belong here.
+
 Run `./dashboard.sh`, then open [Rhythm workbench](http://127.0.0.1:8765). The dashboard uses the two copied chart packages and runs the planner, ArcCreate, and Blender on this Mac. It binds to loopback and saves each take under `output/runs/`.
 
 For phone access, connect Tailscale on the phone and open [the tailnet dashboard](https://macbook-pro---riptideiv.tail57056e.ts.net/). Tailscale Serve proxies HTTPS to the loopback server, using the tailnet's existing access policy. Enable it with `tailscale serve --bg --https=443 http://127.0.0.1:8765`; disable this endpoint with `tailscale serve --https=443 off`. Serve persists in the background, but the dashboard process and Mac must remain running. An idle-sleep assertion is currently tied to the dashboard process for remote use.
@@ -27,11 +29,11 @@ The shared chart-range track has independently draggable start/end handles, sync
 
 **Export preview video** records the actual WebGL canvas with the gameplay element's audio. It replays the displayed take from the beginning at 1×, using the current live camera, lighting and preview detail. Recording takes approximately the clip's duration; it does not run Blender, replan contacts, or render ArcCreate again. Keep the page visible. Controls are locked during capture, and the original paused/playing state, position and playback speed are restored afterward. **Cancel export** preserves any previous completed download. The recording requests up to 30 fps and uses even 4:3 dimensions near the live canvas resolution so H.264 cannot silently crop an odd pixel column. MP4/H.264/AAC is preferred when the browser supports it; WebM is the fallback. **Download MP4/WebM** saves the file locally; download before closing/reloading the page. The download is browser-local, not a new saved take.
 
-The expandable **Blender MP4 export** remains available for offline EEVEE rendering (640 × 480 Draft / 1024 × 768 High), with separate saved downloads. Its lighting can differ from the WebGL view. **Download gameplay only** remains separate under the motion report. See [WebGL export verification](../../docs/ipad-rhythm-webgl-export.md) for the measured output and browser/API details.
+The expandable **Blender MP4 export** remains available for offline EEVEE rendering (640 × 480 Draft / 1024 × 768 High), with separate saved downloads. Its lighting can differ from the WebGL view. **Download gameplay only** remains separate under the motion report. See [WebGL export verification](docs/ipad-rhythm-webgl-export.md) for the measured output and browser/API details.
 
 **Presentation set** is directly below playback. New builds use the independent set automatically. For an older saved take, press **Update presentation** to regenerate only its Blender/GLB snapshots, preserving the exact hand meshes, baked motion, plan, native judgements and gameplay footage. A successful update clears the stale MP4 download; export again for the new set. Cancellation/failure leaves the previous scene usable. Versioned scene paths and scene-aware MP4 cache identities prevent reuse of the old room export. The latest 120–150 s take and the 65–75 s cross-hand verification take have been updated.
 
-See [the environment-porting guide](../../docs/ipad-rhythm-environment-porting.md) for hierarchy/coordinate contracts, material portability, snapshot regeneration, cache handling, repeatable validation and experience from this port. Original room assets are preserved; the simulator no longer loads `whale-room-final.blend`.
+See [the environment-porting guide](docs/ipad-rhythm-environment-porting.md) for hierarchy/coordinate contracts, material portability, snapshot regeneration, cache handling, repeatable validation and experience from this port. Original room assets are preserved; the simulator no longer loads `whale-room-final.blend`.
 
 Move speed is now checked on the animated glove after airborne detours and wrist rotation. A conservative bound combines translation with the speed of the farthest point turning around the index pad. Turn speed has its own hard limit. Active index pads stay on their chart targets. Glove overlap is handled by contact-preserving posing; it never blocks a build. The planner's acceleration control remains a preference. Playback speed in the video player is only for inspection.
 
@@ -140,6 +142,8 @@ The upstream planner suite passed 81 tests during setup. The one-index configura
 
 ## Planner performance and completed-plan reuse
 
-The contact planner now memoizes fixed projection/polygon geometry and state-independent arc extensions while retaining the same DP candidates, scoring checks, costs and search width. Three-window fresh-process benchmarks measured a 1.92× aggregate search speedup, with identical complete plans (apart from elapsed-time metadata). See [the optimization report](../../docs/ipad-rhythm-planner-optimization.md) and [repeatable benchmark commands](benchmarks/README.md).
+The contact planner now memoizes fixed projection/polygon geometry and state-independent arc extensions while retaining the same DP candidates, scoring checks, costs and search width. Three-window fresh-process benchmarks measured a 1.92× aggregate search speedup, with identical complete plans (apart from elapsed-time metadata). See [the optimization report](docs/ipad-rhythm-planner-optimization.md) and [repeatable benchmark commands](benchmarks/README.md).
 
 CLI/dashboard planning reuses validated completed results under `output/contact-plans/`. The key includes chart/device/rule implementation, window, planner settings and exclusions; camera, presentation, hand posing and export settings do not invalidate contact planning. Use `--no-plan-cache` for uncached search measurements or `--plan-cache-dir PATH` for isolation. Library calls remain uncached unless `cache_dir` is supplied. Cache hits preserve the actual plan and emit `cache_hit=true` through the existing progress stream; corrupt/incompatible entries trigger normal search.
+
+Blender is resolved from `BLENDER_BIN`, then the system PATH, then `.tools/Blender.app/Contents/MacOS/Blender`. This Mac’s launchd configuration explicitly points to the existing shared Blender installation. No original room scene is loaded.

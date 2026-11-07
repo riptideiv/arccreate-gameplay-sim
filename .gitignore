@@ -1,6 +1,13 @@
 .venv/
-output/frames/
-*.egg-info/
-
-charts/imported/
 .tools/
+output/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.egg-info/
+*.blend1
+*.log
+.DS_Store
+charts/imported/
+charts/packages/
