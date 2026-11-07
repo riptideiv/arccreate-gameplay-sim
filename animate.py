@@ -1,7 +1,6 @@
 """Animate one rigid, pointing hand per side from arc-hand-order contact JSON."""
 
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -285,6 +284,7 @@ def main():
     parser.add_argument("--report", type=Path)
     parser.add_argument("--motion", type=Path)
     parser.add_argument("--motion-only", action="store_true")
+    parser.add_argument('--pose-cache-dir', type=Path, default=Path(__file__).resolve().parent/'output/hand-poses')
     parser.add_argument("--glb", type=Path)
     args = parser.parse_args(sys.argv[sys.argv.index("--")+1:])
     plan = json.loads(args.plan.read_text())
@@ -308,27 +308,23 @@ def main():
         home = home_position(side, lift)
         active_samples[h].update(f for f,p in enumerate(paths[h]) if np.linalg.norm(np.array(p)-home) < 1e-9)
     try:
-        pose_settings = {k:v for k,v in settings.items() if k not in ('scroll_speed','song_delay_ms','hit_sounds')}
-        signature = hashlib.sha256(json.dumps([plan, pose_settings], sort_keys=True).encode()
-                                   + Path(__file__).read_bytes()
-                                   + Path(__file__).with_name('hand_pose.py').read_bytes()
-                                   + Path(__file__).with_name('motion_paths.py').read_bytes()).hexdigest()
-        cache_path = args.motion.with_suffix('.poses.npz') if args.motion else None
-        cached = None
-        if cache_path and cache_path.exists():
-            with np.load(cache_path, allow_pickle=False) as saved:
-                if str(saved['signature']) == signature:
-                    cached = (saved['points'].copy(), saved['angles'].copy(), json.loads(str(saved['report'])))
+        import pose_cache
+        base = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
+        active = np.zeros(base.shape[:2], dtype=bool)
+        for h, samples in enumerate(active_samples):
+            active[list(samples), h] = True
+        signature = pose_cache.request_key(base, active, settings)
+        cached = pose_cache.read(args.pose_cache_dir, signature, base, active)
         if cached:
             points, poses, report = cached
             paths = [[Vector(p) for p in points[:, h]] for h in range(2)]
-            print('Reused contact-preserving glove poses.')
+            print('Reused contact-preserving glove poses from shared cache.')
         else:
             paths, poses, report = pose_sequence(paths, active_samples, max_speed, angular_limit,
                                                 settings.get("clearance_mm", 1)/1000, idle_speed)
-            if cache_path:
-                points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
-                np.savez(cache_path, signature=signature, points=points, angles=np.array(poses), report=json.dumps(report))
+            points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
+            pose_cache.write(args.pose_cache_dir, signature, points, np.array(poses), report, base, active)
+        report['pose_cache'] = {'hit': cached is not None, 'key': signature}
     except ValueError as error:
         if args.report:
             args.report.write_text(json.dumps({"verified": False, "error": str(error),
