@@ -61,6 +61,7 @@ class Settings(BaseModel):
     min_air_frames: int = Field(default=1, ge=0, le=30)
     held_release_air_frames: int = Field(default=4, ge=0, le=30)
     arc_path_mode: Literal["score", "trace"] = "score"
+    off_center_contacts: bool = True
     prefer_arc_trace: bool = True
     arc_trace_weight: float = Field(default=1000, ge=0, le=10000)
     full_arc_hold: bool = True
@@ -313,7 +314,7 @@ class RenderQueue:
         phase = event['phase']
         ranges = {'loading': (3, 3), 'preparing': (3, 3), 'geometry': (3, 4),
                   'arc_profiles': (4, 6), 'candidates': (6, 9), 'graph': (9, 10),
-                  'search': (10, 19), 'finalizing': (19, 19), 'done': (19, 19), 'writing': (19, 19)}
+                  'search': (10, 19), 'finalizing': (19, 19), 'placement': (19, 19), 'done': (19, 19), 'writing': (19, 19)}
         low, high = ranges[phase]
         completed, total = event.get('completed'), event.get('total')
         fraction = max(0, min(1, completed / total)) if total else 0
