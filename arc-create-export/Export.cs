@@ -20,6 +20,7 @@ public static class Export
     private class ViewOptions { public float scroll_speed = 5; }
     public static void Start(ComposeManager manager)
     {
+        if (Ending.Start(manager)) return;
         string[] args = Environment.GetCommandLineArgs();
         int flag = Array.IndexOf(args, "--export-aff-video");
         if (flag < 0) return;

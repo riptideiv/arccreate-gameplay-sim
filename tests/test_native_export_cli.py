@@ -19,6 +19,7 @@ def test_native_cli_accepts_negative_audio_start_but_rejects_invalid_windows(tmp
     gate = source[start:stop]
     harness = '''using System; using System.Collections;
 class ComposeManager { public bool started; public void StartCoroutine(IEnumerator job) { started=true; } }
+static class Ending { public static bool Start(ComposeManager manager) { return false; } }
 static class Debug { public static void LogError(string text) {} }
 static class Application { public static int code; public static void Quit(int value) { code=value; } }
 static class Export {

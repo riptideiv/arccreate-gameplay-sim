@@ -17,7 +17,7 @@ trap 'rm -rf "$temp_dir"' EXIT
 cp "$source_app/Contents/Resources/Data/Managed/ArcCreate.Compose.dll" "$temp_dir"
 cp "$source_app/Contents/Resources/Data/Managed/ArcCreate.Gameplay.dll" "$temp_dir"
 mcs -target:library -out:"$temp_dir/ArcCreateOfflineExport.dll" -lib:"$managed" \
-    -r:Newtonsoft.Json,netstandard,SceneTransition,ArcCreate.Compose,ArcCreate.Settings,ArcCreate.Gameplay,ArcCreate.Utility,ArcCreate.Data,UniTask,UnityEngine.CoreModule,UnityEngine.AudioModule,UnityEngine.JSONSerializeModule,UnityEngine.InputLegacyModule Export.cs Replay.cs RedNotes.cs
+    -r:Newtonsoft.Json,netstandard,SceneTransition,ArcCreate.Compose,ArcCreate.Settings,ArcCreate.Gameplay,ArcCreate.Utility,ArcCreate.Data,UniTask,UnityEngine.CoreModule,UnityEngine.AudioModule,UnityEngine.JSONSerializeModule,UnityEngine.InputLegacyModule,UnityEngine.UI,UnityEngine.UIModule,Unity.TextMeshPro,UnityEngine.ImageConversionModule,UnityEngine.ScreenCaptureModule Export.cs Replay.cs RedNotes.cs Ending.cs
 mcs -out:"$temp_dir/patch.exe" -r:"$cecil" Patch.cs
 mono "$temp_dir/patch.exe" "$temp_dir"
 cp "$temp_dir/ArcCreateOfflineExport.dll" "$temp_dir/ArcCreate.Compose.dll" "$temp_dir/ArcCreate.Gameplay.dll" "$managed"
