@@ -18,15 +18,19 @@ export_gameplay() {
     "$app" "$project" --export-aff-video "$temp_dir/gameplay.mp4" "$start" "$end" "$(command -v ffmpeg)" "$@" \
         -screen-fullscreen 0 -screen-width 1148 -screen-height 802 -logFile "$temp_dir/export.log"
 }
-if [ -n "$replay" ]; then
-    replay="$(cd "$(dirname "$replay")" && pwd)/$(basename "$replay")"
-    export_gameplay --touch-replay "$replay" || { cp "$temp_dir/export.log" "$output.export.log"; tail -80 "$temp_dir/export.log" >&2; exit 1; }
-    rate=60
-else
-    export_gameplay || {
-    tail -80 "$temp_dir/export.log" >&2
+report_failure() {
+    code=$1
+    cp "$temp_dir/export.log" "$output.export.log"
+    detail=$(awk '/^Expected --export-aff-video|Exception:|Error:|AFF export could not|AFF export did not/ {print; exit}' "$temp_dir/export.log")
+    echo "RuntimeError: ArcCreate export failed (exit $code): ${detail:-see native export log}. Log: $output.export.log" >&2
     exit 1
 }
+if [ -n "$replay" ]; then
+    replay="$(cd "$(dirname "$replay")" && pwd)/$(basename "$replay")"
+    export_gameplay --touch-replay "$replay" || report_failure "$?"
+    rate=60
+else
+    export_gameplay || report_failure "$?"
     rate=30
 fi
 cp "$temp_dir/export.log" "$output.export.log"
@@ -34,7 +38,7 @@ ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_r
     -of csv=p=0 "$temp_dir/gameplay.mp4" | grep -qx "1148,802,$rate/1"
 if [ -n "$replay" ]; then
     ffmpeg -hide_banner -loglevel error -i "$temp_dir/gameplay.mp4" \
-        -map 0:v -an -r 30 -c:v libx264 -preset veryfast -crf 17 -pix_fmt yuv420p -movflags +faststart -y "$output.base.mp4"
+        -map 0:v -an -c:v copy -movflags +faststart -y "$output.base.mp4"
     mv "$temp_dir/gameplay.mp4.music.wav" "$output.music.wav"
     mv "$temp_dir/gameplay.mp4.hits.wav" "$output.hits.wav"
     mv "$temp_dir/gameplay.mp4.sounds.json" "$output.sounds.json"
