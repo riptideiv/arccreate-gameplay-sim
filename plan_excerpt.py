@@ -28,7 +28,26 @@ def split_arc_ticks(occupations):
                                                                     o.end_ms,o.occupation_id))))
 
 
-def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False, excluded=(), avoid_contacts=(), progress=None):
+def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False,
+                excluded=(), avoid_contacts=(), progress=None, *, cache_dir=None):
+    """Library calls default to uncached. CLI/dashboard opt into completed reuse."""
+    if cache_dir is None:
+        return _create_plan(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,progress)
+    from plan_cache import request_key, read, write
+    began=time.monotonic()
+    excluded,avoid_contacts=tuple(excluded),tuple(avoid_contacts)
+    key,request=request_key(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts)
+    cached=read(cache_dir,key,request)
+    if cached is not None:
+        if progress:progress({'phase':'done','completed':1,'total':1,'cache_hit':True,
+                              'attempt':0,'elapsed_s':round(time.monotonic()-began,3)})
+        return cached
+    result=_create_plan(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,progress)
+    write(cache_dir,key,request,result)
+    return result
+
+
+def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False, excluded=(), avoid_contacts=(), progress=None):
     if not 0 <= start_ms < end_ms:
         raise ValueError("Expected 0 <= start_ms < end_ms")
     settings = settings or {}
@@ -202,6 +221,8 @@ def main():
     parser.add_argument("--exclude-event", action="append", default=[])
     parser.add_argument("--avoid-contacts", type=Path)
     parser.add_argument("--progress", action="store_true", help="Stream machine-readable planning progress to stdout")
+    parser.add_argument('--no-plan-cache', action='store_true', help='Run the search without completed-plan disk reuse')
+    parser.add_argument('--plan-cache-dir', type=Path, default=Path(__file__).resolve().parent/'output/contact-plans')
     args = parser.parse_args()
     try:
         settings = json.loads(args.settings.read_text()) if args.settings else {'arc_path_mode':'score'}
@@ -210,7 +231,8 @@ def main():
         def progress(event):
             print('PLANNER_PROGRESS ' + json.dumps(event), flush=True)
         output = create_plan(args.chart, args.start_ms, args.end_ms, settings, args.prefer_same_hand, args.exclude_event, avoid,
-                             progress=progress if args.progress else None)
+                             progress=progress if args.progress else None,
+                             cache_dir=None if args.no_plan_cache else args.plan_cache_dir)
     except ValueError as error:
         parser.exit(1, f"error: {error}\n")
     args.output.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n")

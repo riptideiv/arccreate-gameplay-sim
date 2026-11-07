@@ -1,0 +1,46 @@
+{
+  "baseline": {
+    "files": {
+      "plan_excerpt.py": "b1ce38da5e05809cddad0d387c305c226fcd19734a78ff7ead47b80ae25ce213",
+      "vendor/arc-hand-order/src/arc_hand_order/__init__.py": "de6f59d88128161953e79614e9363167696209b1141f2d91de5f3ae2e0fa6d9b",
+      "vendor/arc-hand-order/src/arc_hand_order/__main__.py": "d60883ccd96098b8d9c92f5cd0c290a5bda726c0826df94b33c45e6f2dc14b36",
+      "vendor/arc-hand-order/src/arc_hand_order/api.py": "483dd647cf125829b01f8fa5e94aa4c2c4fd4fc6151453f4779626cb7b9cef94",
+      "vendor/arc-hand-order/src/arc_hand_order/camera.py": "a94bc8699463997ce6cd04fbbe0b437959f366df31cd20dc70d2e9c8c605838b",
+      "vendor/arc-hand-order/src/arc_hand_order/chart/__init__.py": "1d4ca5e4ed7132815eed0089d5b0de024e9cc30a2980071f24d5f1ab4076e78c",
+      "vendor/arc-hand-order/src/arc_hand_order/chart/arc_connections.py": "373ce5055e01c8e81ee0f2733789549ecd54c32662697d2434e7843776bd072a",
+      "vendor/arc-hand-order/src/arc_hand_order/chart/diagnostics.py": "36f27ae6a7019035784037e3905d2bd8d60a555bc9545d8996cb587c08b46fe0",
+      "vendor/arc-hand-order/src/arc_hand_order/chart/interpolation.py": "25050c74c6e61bc3d4e16d5b94c0384bd770e7d1e9daad76abaa9902256bdde0",
+      "vendor/arc-hand-order/src/arc_hand_order/chart/parser.py": "33ed026327c9f833a85b4cfb1b898559b68d97ae9af1c9fd5e7f3600460c3405",
+      "vendor/arc-hand-order/src/arc_hand_order/chart/syntax.py": "50bf3879188f2de5dc5bd6335f2f795be4b65f7038f2838b22c96144a9fdaa93",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/__init__.py": "b7c26c1c707d04d558aacdf5977f5f8798b7bd79dd35a393d288f08bd46d5be9",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/arc_scoring.py": "59b6293b587324a55b12228b1622604804ad63d5ba0e2c3414346b07d158a249",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/multi_finger.py": "bc5b30b2de96e6ebb201f0fbfb44ca01028026130f023ad75ef0cc3af73aed3b",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/native_input.py": "d622d5f0e81046349e10e738b3799d9edca7e474ac75ef8693f514949796db75",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/occupations.py": "effff11bf2174f912309c055c01458a54c24881064dacf0352639a00f3d7ab96",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/progress.py": "ce6f4ff7fd5d8620625100370e12b9cdb3dceb10bd975249a5d7aa18fc5fda32",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/projection.py": "2de6ddb51de2fda1a7d0582c73db9ce6f53c97f5c2c79d5c47a5964bc3cb81b0",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/rules.py": "241add3eefc7eead1cdb8bf1c357793df940700e0e3a94b3e3254a5abe94217f",
+      "vendor/arc-hand-order/src/arc_hand_order/planning/two_finger.py": "13d4e26dd4aa515fa6777cf829c3a28efedc061dc5df8aa166b18b18e3882d04",
+      "vendor/arc-hand-order/src/arc_hand_order/presets.py": "f90b214fc3ce0a037c0e588ed70324ef4f9ccf8f2cb24fd6cba2d53c1140ae07",
+      "vendor/arc-hand-order/src/arc_hand_order/schemas/__init__.py": "ea55746d8797b4fb6c652bfec16764e9cc2d2b902697aaf0593f73958407cfb3",
+      "vendor/arc-hand-order/src/arc_hand_order/schemas/chart_ir.py": "235158630dca1cdda1b1a471f4575bd3e5a51825a637fe38a6f536c259286860",
+      "vendor/arc-hand-order/src/arc_hand_order/schemas/common.py": "d93dbe1a3e515de58b181936f12a92f27790557a4910bb38fe3eb581b6f30ae2",
+      "vendor/arc-hand-order/src/arc_hand_order/schemas/device.py": "fdffe3cfcf6a1ceda0ec183c7bdf9f6f07e15717112365f040d93cb6b99977da"
+    },
+    "sha256": "173b76cc3aaabe9d323e218571536ff264092f4a847bb07a0c11b7c0a6349db3"
+  },
+  "chart_sha256": "07785651c7b9c201f705c9eb0aac4a117e00bc8692dccfce33f90e986c0263cc",
+  "host": "macOS-26.7.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "interpreter": "/Users/xingrui/Documents/dafeiyu/dafeiyu-3d-room/prototypes/ipad-rhythm/.venv/bin/python",
+  "baseline_commit": "25f6003",
+  "progress": "same callback/logging for both",
+  "contention": "No dashboard build or agent-started render/export overlapped headline trials. Unrelated lightweight chair inspection files appeared at 01:35:44\u201301:36:35; no heavy render was observed. Worker CPU/wall ratios exceeded 99%; timing ranges are recorded. Browser capture began only after all 18 headline trials completed.",
+  "cpu_model": "Apple M2 Max",
+  "dependencies": {
+    "numpy": "2.5.3",
+    "pydantic": "2.13.5"
+  },
+  "worker_sha256": "811333cef9dead56c5ec2714e0dd81ebb7bcf40dbcadab2c2a570b31abe71ef4",
+  "device_sha256": "2b4458bf015214cf1c77c51f990500e71d06e1d99491ef14c77fa6d5c61e4ec3"
+}
