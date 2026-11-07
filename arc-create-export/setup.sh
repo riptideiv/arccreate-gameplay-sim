@@ -2,7 +2,7 @@
 set -eu
 cd "$(dirname "$0")"
 source_app=../.tools/ArcCreate/build/StandaloneOSX/ArcCreate.app
-export_app=${ARCCREATE_EXPORT_APP:-../.tools/ArcCreate/ArcCreate-red-notes.app}
+export_app=${ARCCREATE_EXPORT_APP:-../.tools/ArcCreate/ArcCreate-media.app}
 cecil=${MONO_CECIL_DLL:-$(find -L /Library/Frameworks/Mono.framework/Versions/Current/lib/mono/gac/Mono.Cecil -path '*/0.11*/*dll' -print -quit)}
 if [ ! -d "$source_app" ] || [ ! -f "$cecil" ]; then
     echo "ArcCreate 1.2.68 and Mono.Cecil 0.11 are required. See the prototype README." >&2

@@ -414,6 +414,11 @@ function showTake(run, restoreControls = false) {
   }
   if (run.judgements) {
     const j = run.judgements;
+    $('hit-audio-report').hidden = !run.audio_stems?.hits;
+    if (run.audio_stems?.hits) {
+      $('hit-audio-download').href = run.audio_stems.hits;
+      $('hit-audio-counts').textContent = `${run.sound_events.block_hits} block clicks · ${run.sound_events.arc_tick_hits} snake tick clicks from actual catches.`;
+    }
     $("judgement-summary").textContent = j.hits + ' hits · ' + j.misses + ' misses · score ' + j.score.toLocaleString()
       + ((j.red_hits || j.red_misses) ? ` · red: ${j.red_hits || 0} caught / ${j.red_misses || 0} missed (no score)` : '')
       + (run.planning?.arc_reacquisitions ? ' · ' + run.planning.arc_reacquisitions + ' planned arc reacquisitions' : '');

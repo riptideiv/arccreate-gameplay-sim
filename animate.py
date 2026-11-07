@@ -306,7 +306,8 @@ def main():
         home = home_position(side, lift)
         active_samples[h].update(f for f,p in enumerate(paths[h]) if np.linalg.norm(np.array(p)-home) < 1e-9)
     try:
-        signature = hashlib.sha256(json.dumps([plan, settings], sort_keys=True).encode()
+        pose_settings = {k:v for k,v in settings.items() if k not in ('scroll_speed','song_delay_ms','hit_sounds')}
+        signature = hashlib.sha256(json.dumps([plan, pose_settings], sort_keys=True).encode()
                                    + Path(__file__).read_bytes()
                                    + Path(__file__).with_name('hand_pose.py').read_bytes()
                                    + Path(__file__).with_name('motion_paths.py').read_bytes()).hexdigest()

@@ -70,6 +70,9 @@ class Settings(BaseModel):
     camera_yaw_deg: float = Field(default=0, ge=-35, le=35)
     camera_lens_mm: float = Field(default=30, ge=20, le=55)
     quality: Literal["draft", "final"] = "draft"
+    scroll_speed: float = Field(default=5, ge=1, le=10)
+    song_delay_ms: int = Field(default=0, ge=-2000, le=2000)
+    hit_sounds: bool = True
 
     @model_validator(mode="after")
     def time_range(self):
@@ -346,6 +349,7 @@ class RenderQueue:
             frames = report["frame_count"]
             audio_start = plan["preview"]["audio_start_ms"]
             replay = {"width_mm": plan["device"]["screen_mm"][0], "height_mm": plan["device"]["screen_mm"][1],
+                      "scroll_speed": settings.scroll_speed,
                       "chart_start_ms": plan["preview"]["chart_start_ms"],
                       "audio_offset_ms": plan["chart"]["audio_offset_ms"],
                       "source_audio_offset_ms": plan["chart"].get("source_audio_offset_ms", plan["chart"]["audio_offset_ms"]),
@@ -368,11 +372,23 @@ class RenderQueue:
             cache.mkdir(parents=True, exist_ok=True)
             cached = cache / (digest.hexdigest() + ".mp4")
             clip = directory / "gameplay.mp4"
-            if not cached.exists() or not Path(str(cached) + ".judgements.json").exists():
+            if not all(Path(str(cached) + suffix).exists() for suffix in ('', '.judgements.json', '.base.mp4', '.music.wav', '.hits.wav', '.sounds.json')):
                 self.command([ROOT / "arc-create-export/export.sh", game_project, cached,
                               audio_start, audio_start+math.ceil((frames+2)*1000/30), directory / "replay.json"],
                              directory, "ArcCreate judging the two-hand replay", 35)
-            clip.symlink_to(os.path.relpath(cached, directory))
+            mix_config = {key: config[key] for key in ('song_delay_ms', 'hit_sounds')}
+            identity = hashlib.sha256(json.dumps([digest.hexdigest(), mix_config], sort_keys=True).encode() +
+                                      (ROOT / 'dashboard/media.py').read_bytes()).hexdigest()
+            mixed = cache / 'mixes' / (identity + '.mp4')
+            if not mixed.exists():
+                self.command([ROOT / '.venv/bin/python', ROOT / 'dashboard/media.py', cached, mixed,
+                              '--settings', directory / 'settings.json'], directory, 'Mixing song and actual hit sounds', 75)
+            clip.symlink_to(os.path.relpath(mixed, directory))
+            stem = directory / 'hit-sounds.wav'
+            stem.symlink_to(os.path.relpath(Path(str(cached) + '.hits.wav'), directory))
+            stems = {'hits': media_url(stem)}
+            sound_events = json.loads(Path(str(cached) + '.sounds.json').read_text())
+            sound_events.pop('events', None)
             shutil.copyfile(str(cached) + ".judgements.json", directory / "judgements.json")
             self.command([BLENDER, "--factory-startup", "-b", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
                           plan_path, directory / "scene.blend", "--gameplay", clip,
@@ -396,6 +412,7 @@ class RenderQueue:
                         judgements={k: v for k, v in judgments.items() if k not in ("judgements", "red_judgements", "arc_ticks")},
                         judgement_timeline=media_url(directory / "judgements.json"),
                         planned_misses=plan["misses"], video=media_url(clip),
+                        audio_stems=stems, sound_events=sound_events,
                         planning=plan["planning"], arc_tick_validation=tick_validation,
                         blend=media_url(directory / "scene.blend"),
                         log=media_url(directory / "render.log"))
