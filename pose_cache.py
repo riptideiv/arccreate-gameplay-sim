@@ -10,7 +10,7 @@ import numpy as np
 
 SCHEMA = 'rhythm-hand-poses/1'
 POSE_DEFAULTS = {'max_speed_m_s': 1.6, 'angular_limit_deg_s': 360,
-                 'lift_mm': 8, 'clearance_mm': 1, 'idle_speed_m_s': 1}
+                 'lift_mm': 8, 'clearance_mm': 1, 'idle_speed_m_s': 1, 'winding_limit_deg':260, 'comfort_speed_m_s':.25}
 
 
 def canonical(value):
@@ -27,7 +27,7 @@ def request_key(points, active, settings, root=None):
         digest.update(str(array.shape).encode()); digest.update(array.tobytes())
     # Conservative code invalidation includes all pose/path/geometry code. New
     # animation code can never silently load arrays from a different solver.
-    for name in ('animate.py', 'hand_pose.py', 'motion_paths.py', 'pose_cache.py'):
+    for name in ('animate.py', 'hand_pose.py', 'motion_paths.py', 'pose_cache.py', 'winding_paths.py'):
         digest.update(name.encode()); digest.update((root / name).read_bytes())
     return digest.hexdigest()
 

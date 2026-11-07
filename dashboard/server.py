@@ -32,10 +32,10 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261107-idle-motion'
+DEFAULTS_REVISION = '20261107-arm-winding'
 STARTUP_PREFERENCES = ('repeat_comfort_ms', 'jack_gap_ms', 'jack_free', 'jack_weight',
                        'scroll_speed', 'song_delay_ms', 'prefer_arc_trace', 'full_arc_hold',
-                       'camera_elevation_deg', 'idle_speed_m_s')
+                       'camera_elevation_deg', 'idle_speed_m_s', 'winding_limit_deg')
 
 
 class Settings(BaseModel):
@@ -46,6 +46,7 @@ class Settings(BaseModel):
     max_speed_m_s: float = Field(default=1.6, ge=0.1, le=4)
     idle_speed_m_s: float = Field(default=1, ge=0.05, le=4)
     angular_limit_deg_s: float = Field(default=360, ge=30, le=1440)
+    winding_limit_deg: float = Field(default=260, ge=90, le=355)
     lift_mm: float = Field(default=6, ge=0, le=30)
     clearance_mm: float = Field(default=1, ge=0.5, le=8)
     comfort_speed_m_s: float = Field(default=0.25, ge=0.1, le=2)
@@ -330,6 +331,7 @@ class RenderQueue:
             chart, aff, project_path = chart_paths(ROOT, settings.chart, CHARTS[settings.chart])
             excluded = set()
             avoid_contacts = []
+            winding_retries = 0
             while True:
                 (directory / "metrics.json").unlink(missing_ok=True)
                 arguments = [ROOT / ".venv/bin/python", ROOT / "plan_excerpt.py", aff,
@@ -353,6 +355,11 @@ class RenderQueue:
                     if not where or not plan["touches"]:
                         raise
                     details = json.loads((directory / "metrics.json").read_text()).get('failure') or {}
+                    winding_failure=details.get('reason')=='arm winding'
+                    if winding_failure:
+                        winding_retries+=1
+                        if not settings.allow_misses or winding_retries>4:
+                            raise ValueError(f"{error} No safe arm route was found; the winding limit remains enforced.")
                     frame = details.get('frame',float(where[1]) * 60)
                     near = sorted(plan["touches"], key=lambda t: max(t["down_frame"]-frame, frame-t["up_frame"], 0))
                     candidates = [t for t in near if t['down_frame'] <= frame+2 and t['up_frame'] >= frame-2
@@ -365,11 +372,12 @@ class RenderQueue:
                                    key=lambda p:max(p['from_frame']-frame,frame-p['to_frame'],0))
                         parent = part.get('parent_occupation_id') or part['occupation_id']
                         at = round(frame*1000/60) - plan['chart']['audio_offset_ms']
-                        start,end = max(0,at-34),at+34
+                        padding=180 if winding_failure else 34
+                        start,end = max(0,at-padding),at+padding
                         prior = next((x for x in avoid_contacts if x['parent']==parent and x['start_ms'] <= end+100 and x['end_ms'] >= start-100),None)
                         if prior:
-                            prior['start_ms'] = max(0,min(start,prior['start_ms']-34))
-                            prior['end_ms'] = max(end,prior['end_ms']+34)
+                            prior['start_ms'] = max(0,min(start,prior['start_ms']-padding))
+                            prior['end_ms'] = max(end,prior['end_ms']+padding)
                         else:
                             avoid_contacts.append({'parent':parent,'start_ms':start,'end_ms':end,
                                                    'reason':details.get('reason','motion limits')})
