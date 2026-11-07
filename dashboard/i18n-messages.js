@@ -336,5 +336,13 @@ export const zhCN = {
   "30 fps": "30 fps",
   "60 fps": "60 fps",
   "Choose 30 or 60 fps.": "请选择 30 或 60 fps。",
-  "Video ready · {width} × {height} · {fps} fps target with game audio.": "视频已就绪 · {width} × {height} · 目标 {fps} fps，含游戏音频。"
+  "Video ready · {width} × {height} · {fps} fps target with game audio.": "视频已就绪 · {width} × {height} · 目标 {fps} fps，含游戏音频。",
+  "Add results ending": "添加结算片尾",
+  "Export ending only": "仅导出片尾",
+  "Rendering results ending only": "仅渲染结算片尾",
+  "Results ending ready": "结算片尾已就绪",
+  "Invalid export start time.": "导出起点无效。",
+  "Results endings require a chart-complete take starting at zero.": "结算片尾需要从 0 开始且已完成整张谱面的演奏。",
+  "The selected take does not cover the complete chart.": "当前演奏未覆盖完整谱面。",
+  "Results endings export through the WebGL preview.": "结算片尾请通过 WebGL 预览导出。"
 };
