@@ -1,24 +1,37 @@
-# 原生结算片尾与局部导出
+# 原生结算流程与局部导出
 
-工作台已完成演奏可点击「添加结算片尾」，然后用「仅导出片尾」录制短片，或正常导出整段预览。当前片尾用于从 0 开始且原生判定已覆盖完整谱面的演奏；完美片段不冒充整曲 Pure Memory。
+完整演奏可点击「添加结算片尾」，旧版本片尾可点击「更新结算流程」。随后可正常导出整段 WebGL 预览，或用「仅导出片尾」只录制短尾段。片尾要求演奏从 0 开始，且原生判定覆盖完整谱面。
 
-## 原生与适配部分
+## ArcCreate 的原生流程
 
-ArcCreate 1.2.68 有 `Result` 场景，但 `ArcCreate.Selection` 程序集明确排除桌面平台，桌面编辑器没有完整 `ResultScreen` 控制器。适配器加载已有场景，复用原生布局、字体、封面框、等级与 ClearResult 徽章，填入保存的原生判定。原生等级名称为 **All Perfect**；前置 **Pure Memory** 横幅使用 Arcaea 的术语，由同一实际结果决定。
+遵循 ArcCreate 1.2.68 `StorageData.SwitchToResultScene` 的顺序：
 
-`arc-create-export/Ending.cs` 只生成片尾，不加载触点回放或重新演奏。横幅 2.2 秒、结果页 6 秒，以 60 fps 截取。所有 PERFECT（含非 MAX PERFECT）才显示 Pure Memory；有 GOOD 而不断连显示 Full Recall；存在 MISS 不显示上述标记。最大连击从原生判定序列重建，不把最终连击误作最大连击。示例 Arghena 为 MAX 1433、Late Perfect 11、GOOD／MISS 0、总物量 1444、最高连击 1444、分数 10,001,433。
+1. `TransitionSequence.OnShow` 的 `TriangleTileTransition` 与 `OnBoth` 的 `DecorationTransition` 同时进入。
+2. 过场覆盖后显示原生 `Result` 场景、启动其音乐，并调用 InfoCanvas 主 `ScriptedAnimator.Show()`。
+3. `sequence.Hide()` 撤走装饰；三角背景保留在结果页下方。封面、计分表、分数与徽章按原生动画入场。
+4. 动画完成后保留结果页 6 秒，作为有限长度视频的结束。
 
-已保存的旧报告没有单独 NoteCount 时，以原生计分公式、MAX 额外分和判定台账交叉验证分母；无法可靠确认或未覆盖全谱时拒绝。片尾渲染器还加载原生谱面，读取引擎的真实 NoteCount 再次核对，不需要模拟或重放触点。结果不伪造个人最佳、游玩次数或偏移统计，因此这些区域不显示。红键不会计入计分台账。
+不再添加自制的完成横幅，也不使用 Arcaea 的结果术语。等级严格按原生 `PlayResult.ClearResult` 的优先级：Max → All Perfect → All Good → Full Combo → Clear → Fail。Gauge 必须严格大于通关线才是 Clear。Arghena 示例为 **All Perfect**：MAX 1433、Late Perfect 11、GOOD／MISS 0、总物量和最高连击均为 1444、分数 10,001,433。
 
-## 只更新末尾
+原生 `ResultScreen.ogg` 在结果场景激活的实际捕获帧开始，沿用场景音量 1；之前继续原有游戏音轨。不加入自制横幅、渐弱、半音量或转场音效。原生结果序列本身没有 SoundTransition。
 
-`dashboard/ending.py` 在最后一次原生判定后留 1.2 秒，再替换原来多余的等待尾段。原先的游戏画面、规划、动作与判定保留。新的无声视频前段直接复制视频流，原歌曲在横幅段渐弱，结果页使用 ArcCreate 自带 `ResultScreen.ogg`。音频重新混合很快，不渲染前段视频。
+## 桌面适配与真实数据
 
-`POST /api/ending {"id":"<take-id>"}` 由正常工作台队列执行；活动任务时拒绝并发。成功后才发布新 `run.video` 与 `ending` 元数据，并清除旧离线 MP4 入口；失败／取消保留原预览。片尾资产放在带源码和结果指纹的 `ending-<revision>/`，不覆盖原游戏缓存。
+桌面构建保留 `Result` 场景资产，但排除了 Selection 的完整控制器。适配器复用现有字体、布局、等级显示组件、动画器与 SceneTransition 模块；从已保存的原生判定填入结果，并按上述原生调用顺序执行。预加载场景避免等待不存在的 ResultSceneRepresentative；不会重新演奏触点。
 
-片尾在 WebGL 中仍使用同一 GLB、相机和手部样本。录制器 `startTime` 从片尾起点录起，结束恢复原预览状态。当前带结算的导出使用 WebGL；Blender 旧离线入口不导出该后加片尾，界面会说明并禁用该动作，避免下载不含结算的旧画面。
+NoteCount 通过保存的原生记录核对；旧记录可用原生分数、MAX 加分和判定台账交叉验证。片尾还实际加载原谱、读取引擎 NoteCount 再次检查。完美片段不能伪装成完整演奏。最大连击由判定序列重建。红键不计入评分；未记录的个人最佳、游玩次数和偏移统计保持隐藏。
 
-要把局部录制拼回已经导出的 **60 fps、同尺寸、同相机** 成片：
+平板 1148×802 的 CanvasScaler 改为按宽度匹配，避免裁掉底部分数。编辑器过场相机的 Topmost 绑定需恢复为原 Transition 相机和 Default 图层；三角层保持在结果画布下方。启动后还需先调用一次原生 HideTriangleTile，恢复正常演奏的透明材质状态，否则会在第一个捕获帧跳白。只调用 InfoCanvas 主动画器，不能再单独启动其所有子动画器。
+
+## 局部重渲染与缓存
+
+`dashboard/ending.py` 在最后一次原生判定后留 1.2 秒，替换多余等待尾段。规划、原生触点回放、动作、三维场景和相机保持原样。片尾长度、音乐起点和动画完成时刻来自原生捕获证书，而非固定时长猜测。
+
+`POST /api/ending {"id":"<take-id>"}` 使用正常工作台队列；活动任务时拒绝并发。成功后才发布新 `run.video`、`ending.flow=arccreate-native-v1`，清除旧导出入口；失败保留可用预览。源码、结果、接缝和原媒体路径共同决定 `ending-<revision>/` 指纹。版本化媒体 URL 同时使浏览器录制缓存失效。历史导出保留，不冒充当前结果。
+
+「仅导出片尾」从 `ending.start_s` 开始录制相同 WebGL 画面及游戏音频，结束恢复原预览时间、速度和播放状态。带结果页的导出目前使用 WebGL；旧 Blender 导出按钮禁用，避免生成不含后加片尾的视频。
+
+将短片拼回已导出的 **同尺寸、同相机、60 fps H.264** 成片：
 
 ```sh
 .venv/bin/python dashboard/ending.py output/runs/TAKE \
@@ -26,18 +39,24 @@ ArcCreate 1.2.68 有 `Result` 场景，但 `ArcCreate.Selection` 程序集明确
   --body /path/to/original-60fps.mp4
 ```
 
-只重编码短尾段和它前面不足一个 GOP 的编码接缝，较早正文视频流复制，音轨拼接混合，产物为 `preview-60fps-with-results.mp4`。`ending-<revision>/final-export.json` 记录来源与拼接点。修改相机或尺寸后，旧正文不能直接复用。
+输出 `preview-60fps-arccreate-results.mp4`，拼接证据在 `ending-<revision>/final-export.json`。正文在安全的 GOP 边界前直接复制视频流；仅解码重编码不足一个 GOP 的接缝和新短片。任意 B 帧位置直接裁切会导致缺帧／重复显示时间戳。最后使用 `setts=pts=PTS:dts=N/(60*TB)+STARTDTS:duration=1/(60*TB)`，必须显式保留 PTS，再验证实际解码帧数与每帧 1/60 秒间隔。
 
-## 2026-11-07 验证
+## 迁移与验证
 
-沿用 `20261107-052526-611446`，片尾起点 **151.5 s**，新尾段 **8.2 s**，最终 **159.7 s、856×642、60 fps、9582 帧、H.264／AAC**。原最后判定为 150.300 s；1444 次命中、0 漏键的原生台账完全不变。
+运行 `./arc-create-export/setup.sh` 重建本地适配器；保留同版本源码的 `Assets/AudioClips/ResultScreen.ogg` 和 SceneTransition／UniTask 模块。源程序集不改动，适配器仅写入独立的 ArcCreate-media.app。
 
-原生结果页先实际检查，再检查真实 WebGL 和导出帧中的 Pure Memory、封面、分数、1444 PERFECT 与 0 GOOD／MISS。调整 CanvasScaler 为按宽度匹配，避免在 1148×802 平板比例下裁掉底部分数；封面和原生徽章均可见，双手保持原动作。场景、相机与接触映射没有更改。
+验证需同时观看透明过渡的前几帧、装饰进出、结果入场中途与完整结果页，并检查实际 WebGL 及最终导出；不能只判断文件存在。结果音轨起点以证书 `results_start_s` 为准。场景切换的层级、相机、字体、CanvasScaler、截图方向和尺寸都是移植检查项。三维触点与相机不改动，也不重新搜索整首谱面。
 
-完整项目测试 **180 项通过**，另有两种真实 FFmpeg 局部拼接／B 帧时钟回归通过（共 182 项），Node 录制器测试覆盖局部录制、原时间／速度恢复、帧率和取消，翻译检查通过。保存证据位于 `output/60fps-qa/final-pure-memory.png`、`final-results.png`、演奏的 `ending-verification.json`。原版成片与 plan／motion／judgements 均保留，正文逐帧 MD5 与新成片前段比较：前 **9000 帧（150 秒）完全一致**。之后 **90 帧（1.5 秒）**从原视频解码，仅为安全的 GOP 边界拼接而重新编码，不进行三维渲染；新三维渲染只有 8.2 秒。最终用 setts 规范解码时钟并保持显示时间，实际每帧间隔 1/60 秒、无非单调时间戳或解码错误。
+### 2026-11-07 实测
 
-## 迁移经验
+沿用 Arghena `20261107-052526-611446`，在 **151.5 s** 开始原生过场；结果页于片尾 **1.0333 s** 激活，完整入场于 **3.0333 s** 完成，再停留 6 秒。新尾段共 **542 帧／9.0333 s**，原生片尾缓存为 `ending-82c717843df0`。
 
-运行 `./arc-create-export/setup.sh` 更新本机适配器；需保留匹配版本 ArcCreate 源码中的 `Assets/AudioClips/ResultScreen.ogg`。Unity 的原生 Result 场景必须实际存在，不能仅凭源码判断桌面功能完整。桌面缺失控制器会产生序列化提示，适配器不用该组件；仍使用场景中的原生图形和 Utility 显示组件。编辑器弹窗日志回调不适用于已关闭的编辑器画布，因此片尾模式移除该 UI 回调，保留文件日志。
+通过工作台实际录制短尾段后，与原 60 fps 正文拼接成 **160.5333 s、856×642、60 fps、9632 帧 H.264／AAC** 成片。前 **9000 帧（150 s）**逐帧 MD5 完全一致；接下来的 90 帧只是安全拼接接缝重编码，没有三维重渲染。plan、motion、judgements 和原成片的 SHA-256 均不变。实际解码每帧间隔 1/60 秒，无解码错误；Tailscale 视频范围请求返回 HTTP 206。
 
-新平台需检查结果场景对象路径、原生字体与徽章、CanvasScaler、截图方向／尺寸和真实导出。相机／手部不改动；只有片尾屏幕纹理和片尾音频变化。不要为了增加结算重新搜索或回放整首谱面。
+检查了透明过场、原生入场中途、实时 WebGL 结果页和真实成片帧。证据：`output/canonical-results-qa/`、演奏目录的 `canonical-ending-verification.json` 与片尾目录的 `final-export.json`。完整 Python 测试 **186 项通过**，Node 录制器和 346 条界面翻译检查通过。
+
+### 短音轨的过场补齐
+
+当原演奏音轨早于结果场景激活时刻结束，必须补静音至原生证书给出的时刻，再拼接 ResultScreen 音乐。仅对短音轨 atrim 后直接 concat 会使音乐提前；本批次在 Breach／Extradimensional 分别发现约 0.85／0.40 秒的提前。修复只需重混音并复用原生片尾画面、触点和三维视频；新版本媒体 URL 使浏览器缓存失效。真实 FFmpeg 回归检查演奏声音、静音间隙和结果音乐三个区间；新增回归后完整 Python 测试 187 项通过。
+
+最终 MP4 还可以复用与预览完全相同的游戏音轨，按实测的画面启动延迟对齐，避免把 Web Audio 输出延迟写入成片。重混音时复制视频流并比较其 SHA-256，确认画面字节和帧时钟未改变；保留原始浏览器录制供追溯。

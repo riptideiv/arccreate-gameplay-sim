@@ -38,9 +38,11 @@ def results_spec(run,judgements):
         combo=0 if item['result'].startswith('Miss') else combo+1
         peak=max(peak,combo)
     play.update(NoteCount=note_count,MaxCombo=peak,GaugeValue=saved.get('GaugeValue',100),GaugeClearRequirement=saved.get('GaugeClearRequirement',70),GaugeMax=100)
-    # Arcaea terminology for the banner; native results keep ArcCreate's badges.
-    banner='PURE MEMORY' if perfect==note_count else 'FULL RECALL' if peak==note_count else 'TRACK COMPLETE'
-    return play,banner
+    # Match ArcCreate.Data.PlayResult.ClearResult, including its AllGood rank.
+    rank=('Max' if counts['Max']==note_count else 'AllPerfect' if perfect==note_count
+          else 'AllGood' if good==note_count else 'FullCombo' if peak==note_count
+          else 'Clear' if play['GaugeValue']>play['GaugeClearRequirement'] else 'Fail')
+    return play,rank
 
 
 def duration(path):
@@ -51,11 +53,20 @@ def command(args):
     subprocess.run([str(a) for a in args],check=True)
 
 
+def mix_result_audio(source, silent, music, output, result_start, length, volume):
+    # A take can end while the native transition is covering gameplay. Preserve
+    # the result activation clock even when its original audio runs out early.
+    filters=(f'[0:a]atrim=0:{result_start},asetpts=PTS-STARTPTS,apad,atrim=0:{result_start}[song];'
+             f'[2:a]atrim=0:{length-result_start},asetpts=PTS-STARTPTS,volume={volume}[result];'
+             '[song][result]concat=n=2:v=0:a=1[a]')
+    command(['ffmpeg','-v','error','-i',source,'-i',silent,'-stream_loop','-1','-i',music,'-filter_complex',filters,'-map','1:v','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-t',length,'-movflags','+faststart','-y',output])
+
+
 def prepare(directory):
     directory=Path(directory).resolve();run=json.loads((directory/'run.json').read_text())
     if run['status']!='complete' and not run.get('ending_only'):raise ValueError('Choose a completed live preview.')
     plan=json.loads((directory/'plan.json').read_text());judgements=json.loads((directory/'judgements.json').read_text())
-    play,banner=results_spec(run,judgements)
+    play,rank=results_spec(run,judgements)
     original=run.get('ending',{}).get('original_video',run['video'])
     if not original.startswith('/media/'):raise ValueError('Unexpected saved gameplay path.')
     source=(ROOT/'output'/original.removeprefix('/media/')).resolve()
@@ -67,9 +78,9 @@ def prepare(directory):
     def scalar(name):
         match=re.search(r'^  '+name+r': (.*)$',project,re.M)
         return json.loads(match[1]) if match and match[1].startswith('"') else match[1] if match else ''
-    identity=hashlib.sha256(json.dumps([play,banner,join,original],sort_keys=True).encode()+(ROOT/'arc-create-export/Ending.cs').read_bytes()+Path(__file__).read_bytes()).hexdigest()[:12]
+    identity=hashlib.sha256(json.dumps([play,rank,join,original],sort_keys=True).encode()+(ROOT/'arc-create-export/Ending.cs').read_bytes()+Path(__file__).read_bytes()).hexdigest()[:12]
     folder=directory/f'ending-{identity}';folder.mkdir(exist_ok=True)
-    config=dict(output=str(folder/'native-ending.mp4'),ffmpeg=shutil.which('ffmpeg'),background=str(folder/'background.png'),jacket=str((assets/scalar('jacketPath')).resolve()),title=scalar('title'),composer=scalar('composer'),difficulty=scalar('difficulty'),charter=scalar('charter'),color=scalar('difficultyColor'),banner=banner,play=play)
+    config=dict(output=str(folder/'native-ending.mp4'),ffmpeg=shutil.which('ffmpeg'),background=str(folder/'background.png'),jacket=str((assets/scalar('jacketPath')).resolve()),title=scalar('title'),composer=scalar('composer'),difficulty=scalar('difficulty'),charter=scalar('charter'),color=scalar('difficultyColor'),clear_result=rank,play=play)
     (folder/'config.json').write_text(json.dumps(config,ensure_ascii=False,indent=2))
     command(['ffmpeg','-v','error','-ss',join,'-i',source,'-frames:v','1','-update','1','-y',folder/'background.png'])
     native=folder/'native-ending.mp4'
@@ -78,15 +89,15 @@ def prepare(directory):
         native_project=directory/'arccreate/project.arcproj'
         if not native_project.is_file():native_project=assets/'project.arcproj'
         command([app,native_project.resolve(),'--export-ending',folder/'config.json','-screen-fullscreen','0','-screen-width','1148','-screen-height','802','-logFile',folder/'native.log'])
-    silent,_,_=splice_picture(source,native,join,8.2,folder,'native')
+    native_meta=json.loads(Path(str(native)+'.result.json').read_text())
+    if native_meta.get('flow')!='arccreate-native-v1' or native_meta['clear_result']!=rank:
+        raise ValueError('The native ending does not match the saved result.')
+    length=native_meta['duration_s'];music_start=native_meta['results_start_s']
+    silent,_,_=splice_picture(source,native,join,length,folder,'native')
     music=ROOT/'.tools/ArcCreate/source/Assets/AudioClips/ResultScreen.ogg'
     output=folder/'gameplay-with-results.mp4'
-    filters=(f'[0:a]atrim=0:{join},asetpts=PTS-STARTPTS[body];'
-             f'[0:a]atrim=start={join}:end={join+2.2},asetpts=PTS-STARTPTS,apad,atrim=0:2.2,afade=t=out:st=1.5:d=0.7[clear];'
-             '[2:a]atrim=0:6,asetpts=PTS-STARTPTS,volume=0.5,afade=t=in:st=0:d=0.2,afade=t=out:st=5.5:d=0.5[result];'
-             '[body][clear][result]concat=n=3:v=0:a=1[a]')
-    command(['ffmpeg','-v','error','-i',source,'-i',silent,'-stream_loop','-1','-i',music,'-filter_complex',filters,'-map','1:v','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-t',join+8.2,'-movflags','+faststart','-y',output])
-    metadata={'revision':identity,'start_s':join,'duration_s':8.2,'banner':banner,'native_scene':'Result','original_video':original,'video':'/media/'+output.relative_to(ROOT/'output').as_posix(),'play':play,'folder':folder.name}
+    mix_result_audio(source,silent,music,output,join+music_start,join+length,native_meta['result_music_volume'])
+    metadata={'revision':identity,'flow':'arccreate-native-v1','start_s':join,'duration_s':length,'clear_result':rank,'native_scene':'Result','original_video':original,'video':'/media/'+output.relative_to(ROOT/'output').as_posix(),'play':play,'folder':folder.name,'results_start_s':music_start,'native_timing':native_meta}
     (folder/'ending.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
     print('ENDING_RESULT '+json.dumps(metadata),flush=True)
     return metadata
@@ -130,7 +141,7 @@ def finalize(directory, tail, body):
     if (source_info['width'],source_info['height']) != (tail_info['width'],tail_info['height']):
         raise ValueError('The body and ending must have the same canvas size and camera.')
     silent,boundary_frame,lead_frames=splice_picture(body,tail,join,length,folder,'3d')
-    output=directory/'preview-60fps-with-results.mp4'
+    output=directory/('preview-60fps-arccreate-results.mp4' if ending.get('flow')=='arccreate-native-v1' else 'preview-60fps-with-results.mp4')
     muxed=folder/'final-mux.mp4'
     filters=(f'[0:a]atrim=0:{join},asetpts=PTS-STARTPTS[body];[1:a]atrim=0:{length},asetpts=PTS-STARTPTS,apad,atrim=0:{length}[tail];[body][tail]concat=n=2:v=0:a=1[a]')
     command(['ffmpeg','-v','error','-i',body,'-i',tail,'-i',silent,'-filter_complex',filters,'-map','2:v','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-t',join+length,'-movflags','+faststart','-y',muxed])

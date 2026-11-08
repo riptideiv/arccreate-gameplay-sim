@@ -144,4 +144,14 @@ node tests/check_webgl_alignment.mjs "$TAKE"
 
 ArcCreate 桌面构建排除 Selection 控制器，但保留 Result 场景资产。可直接加载原生场景、复用布局／徽章并填入已保存的真实判定，无需重演整首。平板比例的 CanvasScaler 需按宽度匹配，否则底部分数被裁切；原生封面 RawImage 路径为 `InfoCanvas/Jacket/Jacket`。移植时实际检查字体、标题、分数、计分表和原生等级，而非只判断视频文件存在。详见[结算片尾说明](native-results-ending.md)。
 
-局部导出从 `ending.start_s` 开始，手部和相机仍沿原采样时钟。把短片与相同相机／尺寸／60 fps 的既有成片拼接，正文在安全的 GOP 边界之前 stream copy，逐帧 MD5 验证；边界到片尾之间最多一个 GOP 从旧视频解码重编码，再接新尾段。任意 B 帧位置直接裁切会造成重复显示时间戳。最后规范解码时钟、保持显示时刻，再检查全段每帧间隔与实际解码。片尾只能由全谱原生判定决定，不能给完美片段或存在 GOOD 的回放贴 Pure Memory。
+局部导出从 `ending.start_s` 开始，手部和相机仍沿原采样时钟。把短片与相同相机／尺寸／60 fps 的既有成片拼接，正文在安全的 GOP 边界之前 stream copy，逐帧 MD5 验证；边界到片尾之间最多一个 GOP 从旧视频解码重编码，再接新尾段。任意 B 帧位置直接裁切会造成重复显示时间戳。最后规范解码时钟、保持显示时刻，再检查全段每帧间隔与实际解码。等级按 ArcCreate 的 `PlayResult.ClearResult` 顺序判断；全 GOOD 对应 All Good，含 GOOD 的普通全连对应 Full Combo。
+
+原生结算过场采用 `StorageData.SwitchToResultScene` 的同一序列：OnShow 的 TriangleTileTransition，加 OnBoth 的 DecorationTransition，然后播放 Result 主 ScriptedAnimator。三角背景只显示、不在 Hide 阶段消失，必须位于结果画布下面。编辑器将过场绑定到 Gameplay UI 相机的 Topmost 图层，片尾需要恢复原 Transition 相机／Default 图层；还要先完成一次 HideTriangleTile，把编辑器启动后的不透明材质重置成正常演奏时的透明状态，否则第一帧会直接跳白。不要逐个启动子动画器：只启动 InfoCanvas 的主动画器。按实际捕获帧记录结果激活时刻，用它对齐原生音乐，避免凭固定时长猜测。
+
+### 批量导出与资源调度
+
+2026-11-07 的四谱面批次在本机 32 GB／12 核配置上，采用最多两个并行触点规划，ArcCreate 原生渲染与浏览器录制依次执行。完整谱面的单个规划进程实测可占约 6.7 GB，不能只按 CPU 核数决定并行数。检查内存压力和系统温度提示后再增加并行任务；本批次未观察到系统温度／性能警告，856×642 录制的预览帧耗时 P95 约 9 ms。
+
+可以在其他演奏生成时预热正常 `output/contact-plans/` 缓存；后台参数必须与正式演奏一致，包括谱面绝对路径、范围与规划偏好。低优先级的 `animate.py --motion-only` 也能预热 `output/hand-poses/`，不需要 GPU 画面；正式工作台继续校验并复用缓存。不要另外维护一份演奏管线，或在后台替换当前活动演奏的文件。
+
+录制结束后下载原始浏览器文件，再检查实际帧数、帧间隔、尺寸、完整解码和音轨。MediaRecorder 的 60 fps 是目标值；必要时把实际录制规范为恒定 60 fps，保留同一音画时钟。音频波形相关只测得相对源素材的延迟，不能单独证明音画失步：浏览器启动可能同时延迟声音和画面。应结合投影还原后的屏幕动画、原生片尾时间证书与声音进行比较。全片导出已包含结算时，无需再单独录一遍片尾。

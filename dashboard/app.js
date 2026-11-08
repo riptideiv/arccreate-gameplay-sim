@@ -222,7 +222,8 @@ function updateExportControls() {
   const invalidCamera = [...cameraFields].some(name => !byName(name).validity.valid || byName(name).value === '');
   const saved = selected.export_video || (!selected.live ? selected.video : null);
   $('webgl-export').hidden = !selected.live;
-  $('add-ending').hidden = !!selected.ending;
+  $('add-ending').hidden = selected.ending?.flow === 'arccreate-native-v1';
+  setText($('add-ending'), selected.ending ? 'Update results flow' : 'Add results ending');
   $('add-ending').disabled = running || selected.settings.start_s !== 0;
   $('export-ending').hidden = !selected.ending;
   $('export-ending').disabled = !!recorder?.active || !live?.enabled;
