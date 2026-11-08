@@ -6,128 +6,160 @@
 
 可以在浏览器里调整动作参数、拖动进度、慢放看手序，也可以导出带音频的视频。规划器基于 arc-hand-order，游戏画面和判定使用 ArcCreate，三维部分使用 Blender 和 Three.js。整理出来分享给对手序规划或打谱动画感兴趣的朋友。
 
-## 打开工作台
+## 能做什么
 
-当前构建与导出流程在 macOS 上验证，需要 Python、Blender、ArcCreate 1.2.68、Mono／Cecil 与 FFmpeg。先按下方[曲库与依赖](#曲库与依赖)及[命令行入口](#命令行入口)配置环境并导入自己的谱面，再从仓库根目录运行：
+- 导入 AFF 歌曲文件夹，按歌曲和难度选择谱面，可以生成整首或其中一段。
+- 调整移动速度、连打习惯、蛇的路径、落指位置和转腕偏好，比较不同设置下的手序。
+- 查看 ArcCreate 实际回放得到的命中、失误、连击和分数。
+- 在三维预览中调整相机、拖动进度或慢放，检查双手动作。
+- 导出带游戏音频的 30／60 fps 视频，添加 ArcCreate 结算片尾，也可以用 Blender 离线渲染。
+
+目前每只手使用一根食指。规划会考虑速度、松手间隔和手臂缠绕等限制，但不保证找到最好的手序；规划中跳过的音符和实际回放中的失误会分别显示。
+
+## 安装
+
+下面的步骤面向 macOS。其他系统需要适配 ArcCreate 原生导出脚本，目前还没有完整的安装流程。
+
+### 1. 准备依赖
+
+需要先安装：
+
+| 依赖 | 用途 |
+| --- | --- |
+| Git | 下载仓库 |
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) 和 Python 3.13 | 创建 Python 环境、运行规划器和工作台 |
+| [Blender](https://www.blender.org/download/) | 生成手套、场景和动画，离线渲染视频 |
+| FFmpeg（含 ffprobe） | 读取音频、处理和导出视频 |
+| [Mono](https://www.mono-project.com/docs/getting-started/install/mac/) 和 Mono.Cecil 0.11 | 编译 ArcCreate 的输入与导出适配器 |
+
+Mono 的 macOS 安装包会安装到 `/Library/Frameworks/Mono.framework/`，适配脚本默认在那里查找 Cecil。安装后，确认终端能运行 `mono`、`mcs`、`ffmpeg` 和 `ffprobe`。
+
+### 2. 下载项目并安装 Python 依赖
+
+```sh
+git clone https://github.com/riptideiv/arccreate-gameplay-sim.git
+cd arccreate-gameplay-sim
+uv venv --python 3.13 .venv
+uv pip install --python .venv/bin/python -e 'vendor/arc-hand-order[dev]'
+```
+
+后面的命令都在仓库根目录运行，不需要另外激活虚拟环境。
+
+如果 `blender` 不在 PATH 中，可以指定它的位置。下面是安装到「应用程序」后的常见路径：
+
+```sh
+export BLENDER_BIN="/Applications/Blender.app/Contents/MacOS/Blender"
+```
+
+### 3. 配置 ArcCreate
+
+适配器目前对应 [ArcCreate 1.2.68](https://github.com/Arcthesia/ArcCreate/releases/tag/1.2.68)。下载 macOS 版本并解压到脚本预期的位置：
+
+```sh
+mkdir -p .tools/ArcCreate/build
+curl -fL https://github.com/Arcthesia/ArcCreate/releases/download/1.2.68/StandaloneOSX.zip \
+  -o .tools/ArcCreate/StandaloneOSX.zip
+ditto -x -k .tools/ArcCreate/StandaloneOSX.zip .tools/ArcCreate/build
+./arc-create-export/setup.sh
+```
+
+运行 `setup.sh` 前，确认应用位于 `.tools/ArcCreate/build/StandaloneOSX/ArcCreate.app`。脚本会生成用于回放和导出的应用副本 `.tools/ArcCreate/ArcCreate-media.app`。
+
+如果 Cecil 安装在其他位置，先将 `MONO_CECIL_DLL` 设为 Mono.Cecil 0.11 的 DLL 文件路径，再运行 `setup.sh`。
+
+### 4. 导入谱面
+
+歌曲和音频需要自行准备，仓库不附带曲包。当前批量导入器读取的是带 `songlist` 元数据的歌曲文件夹，不能直接导入任意 `.arcpkg` 或单独的 `.aff` 文件。
+
+将曲包解压到 `charts/imported/` 下，例如：
+
+```text
+charts/imported/my-collection/
+└── song-id/
+    ├── songlist
+    ├── base.ogg
+    ├── base.jpg
+    └── 2.aff
+```
+
+`songlist` 应包含歌曲信息及与 AFF 文件名对应的难度。歌曲也可以有多个难度，或使用单独的音频、封面；具体格式见[曲库说明](charts/README.md)。
+
+```sh
+.venv/bin/python import_charts.py charts/imported/my-collection
+```
+
+导入器会生成工作台曲目列表和 ArcCreate 工程。导入完成后再启动工作台；如果工作台已经在运行，等当前任务结束后重启，让新曲目出现在列表中。
+
+### 5. 启动工作台
 
 ```sh
 ./dashboard.sh
 ```
 
-打开 [Rhythm workbench](http://127.0.0.1:8765/)。工作台在本机运行，演奏、缓存和导出保存在 `output/`。手机访问、后台服务及部署细节见[环境指南](docs/ipad-rhythm-environment-porting.md#部署与系统差异)。
+打开 [http://127.0.0.1:8765/](http://127.0.0.1:8765/)。界面默认简体中文，可以在页首切换 English。程序在本机处理谱面，生成结果保存在 `output/`。
 
-界面默认简体中文；页首可切换 **English / 简体中文**，选择保存在当前浏览器。切换语言不重新加载谱面、视频或设置，不参与缓存键。浏览器的原生菜单、底层异常详情和 ArcCreate 自身画面可能保留原语言。
+如果端口已被占用，可以用 `./dashboard.sh --port 8766` 换一个端口。手机访问和后台运行的配置见[环境指南](docs/ipad-rhythm-environment-porting.md)。
 
-## 使用流程
+## 怎么用
 
-1. 选择歌曲及难度。双端滑块分别控制起点、终点，点「整首」可选择完整歌曲；没有 20 秒上限，最短片段为 0.5 秒。
-2. 调整动作与蛇的策略，点击「生成实时预览」。规划进度按目标数计算，不表示剩余时间线性减少。
-3. 播放、拖动进度或慢放检查。相机修改立即生效；曲目、流速、音频与手部设置需再次生成。
-4. 点「导出当前预览视频」录制当前 WebGL 画面及音频；可选择 30／60 fps，录制期间保持页面可见。完成后下载 MP4，浏览器不支持时使用 WebM。
-5. 完整谱面演奏可点「添加结算片尾」，使用 ArcCreate 原生过场、结果入场动画、All Perfect 等原生等级和结算音乐；旧片尾可点「更新结算流程」升级。「仅导出片尾」复用正文，只录制末尾。详见[结算片尾](docs/native-results-ending.md)。
-6. 如需离线 EEVEE 渲染，可展开「Blender MP4 导出」。旧演奏的「更新展示场景」只更新布景，不重新规划触点或渲染 ArcCreate。
+1. 选择自己导入的歌曲和难度，先选几秒钟的片段试跑，也可以点「整首」。
+2. 可以先保留默认动作设置，点击「生成实时预览」。程序会依次规划触点、生成手部动作并录制 ArcCreate 回放。
+3. 完成后播放预览。拖动进度或慢放查看手序，相机可以直接调整。
+4. 如果想试其他手序，修改动作参数后再次生成。曲目、流速和音频设置的改动也需要重新生成才能生效。
+5. 点击「导出当前预览视频」，选择 30 或 60 fps。录制时保持页面可见，完成后下载；浏览器支持时使用 MP4，否则使用 WebM。
 
-最近的演奏保存在 `output/runs/<id>/`，包含设置、规划、60 Hz 动作、原生回放与判定、场景快照和日志。原生判定结果与「规划中跳过的物量」分别展示；片段边界及判定收尾也可能漏键。
+完整谱面可以添加 ArcCreate 结算片尾。「仅导出片尾」可以复用已有正文，具体用法见[结算片尾说明](docs/native-results-ending.md)。如果需要离线渲染，可以展开「Blender MP4 导出」。
 
-## 设置与默认值
+生成记录保存在 `output/runs/`，可以在工作台重新打开。导入的曲包、下载的工具和生成结果都不会被 Git 跟踪。
 
-| 设置 | 默认值／作用 |
+## 调整手序
+
+不熟悉参数时，可以先只改下面几项：
+
+| 想调整的效果 | 对应设置 |
 | --- | --- |
-| 单手指数量 | 每只手一根食指；第二根手指及相关连打逻辑关闭 |
-| 最大移动／转腕速度 | 1.6 m/s、360°/s；移动约束覆盖整只手套，包括转腕产生的位移 |
-| 待机／避让速度 | 1 m/s，限制可选回位和绕行动作；赶键所需移动仍可使用主速度上限 |
-| 抬指／期望间距 | 6 mm／1 mm；无法解决的重叠仅诊断，不阻止播放或触发重规划循环 |
-| 舒适连打间隔／代价 | 167 ms／5；从上一次松开到下一次按下计算 |
-| 快速连打阈值／免费次数／追加代价 | 133 ms／2／10；从按下到按下计算 |
-| 点按／最短离屏／完整长按后离屏 | 2／1／4 帧；规划为 60 Hz，每帧约 16.7 ms |
-| 蛇的路径 | 计分优先；允许在判定区域内等候、走捷径和逐计分点续接 |
-| 优先描线／按到视觉尾端 | 均开启；几何偏离代价 1000/s，提前松蛇代价 1000/s |
-| 地面长条按到尾端 | 开启，提前松开代价 500/s |
-| 允许漏键／搜索宽度 | 开启／256；有界候选搜索，不保证全局最优 |
-| 谱面流速 | 2.5；ArcCreate 1–10 档，只改变音符接近速度，不改判定时刻和歌曲节奏 |
-| 歌曲延迟／击打音效 | 0 ms／开启；正延迟表示歌曲晚于画面，一个开关统一控制实际命中音效 |
-| 红键显示／追打 | 显示开启／追打关闭；红键不计分，漏掉不掉连击 |
-| 相机距离／俯视角／焦距 | 0.29 m／70°／30 mm，支持水平角度和精度调整 |
+| 限制手的移动和转腕速度 | 最大移动速度、最大转腕速度 |
+| 改变同一只手连续点按的倾向 | 舒适连打间隔、快速连打代价 |
+| 让蛇更贴近中心线，或更多利用判定区域 | 优先描线、利用音符判定区域 |
+| 减少交叉、反拧和手臂缠绕 | 交叉与手腕相关代价、缠绕角限制 |
+| 在动作限制较严格时允许跳过部分音符 | 允许漏键 |
 
-历史演奏显式选中后会恢复其原设置。新默认值通过版本迁移应用一次，保留当前曲目、范围及其他参数；不会每次刷新都覆盖后续手动调参。
+规划结果有限制：它不是最优手序的证明，部分谱面扩展或场景控制也可能没有完整支持。工作台会显示已知兼容性提示；最终成绩以 ArcCreate 实际回放为准。动作中仍可能出现手套重叠，程序会报告这些情况。
 
-几何偏离代价按时间累计：离中心线 20 mm 或离屏时收取完整代价，更近时按比例减小。计分与硬速度限制优先，视觉尾端偏好另行增加代价。长条／蛇的松手时刻同时用于规划和动画，不能在动画中偷偷多按或提早释放。
+具体参数的实现和示例见[判定区落指](docs/contact-placement.md)、[连续加速度](docs/continuous-acceleration.md)和[交叉与手腕代价](docs/crossing-wrist-costs.md)。
 
-## 规划、判定与双手动作
+## 只运行规划器
 
-蛇不要求全程精确描线。计分优先模式按 ArcCreate 的判定区域、提前宽限、颜色归属与抬指锁定生成候选路径。整条蛇不可行时可拆为逐计分点任务，松开再续接，只跳过无法接住的物量。优先比较漏掉的计分量，再比较人体工学代价；追打红键时，其优先级位于正常计分之后、动作代价之前。
-
-原生 ArcCreate 输入适配器提供真实 down/move/up 事件并关闭自动演奏。漏键仍留在谱面中，由引擎显示失误；HUD、连击、分数、特效和音效均来自实际回放。`arc-tick-check.json` 对比规划中的接取与原生判定，另列意外接到的计分点。候选空间及搜索宽度有限，因此计划漏键不等于两根手指必定无法完成。
-
-手套围绕固定指腹触点转腕。`hand_pose.py` 在有界前瞻范围内搜索左右手姿态，只有松开的手能抬高或绕行；按住的触点和待机固定样本不会漂移。长空闲段采用回位—等候—赶键，时间不足时缩小或取消可选回位。碰撞代理较保守，剩余重叠会报告，但不会导致无限重试。主速度和角速度限制仍需通过校验。
-
-浏览器从 Blender 导出的 GLB 加载手套、平板与布景，按 `motion.json` 播放。视频媒体时间是唯一时钟，拖动、暂停和慢放保持同步。Blender 为 Z 向上，Three.js 为 Y 向上；转换坐标和旋转，并沿用线性 pitch/yaw 插值。暂停时只在画面、相机或姿态改变后重绘。
-
-展示场景的唯一几何源为 `presentation_scene.py`：胡桃木桌面、织物垫、绿植、圆珠笔与圆角平板。木纹以图像材质打包，不依赖浏览器无法导出的程序化节点。屏幕有效尺寸、UV、触点与相机使用统一的坐标接口。
-
-## 曲库与依赖
-
-曲库支持批量导入 AFF 谱面并按歌曲及难度分组；导入器已在包含 77 首歌曲、268 张谱面的集合上验证。下载的谱面、音频、工具和生成结果均不提交 Git，只跟踪导入器和清单。源包未被修改。详见[曲库说明](charts/README.md)。
+如果只想生成触点计划，不需要游戏画面或三维动画，安装 Python 依赖后就可以运行。仓库里有一张小型测试谱面：
 
 ```sh
-uv venv --python python3.13 .venv
-uv pip install --python .venv/bin/python -e 'vendor/arc-hand-order[dev]'
-.venv/bin/python import_charts.py charts/imported/10plus-import-novedio
+./plan.sh charts/desk-study.aff output/desk-study.plan.json
 ```
 
-规划器基于 [arc-hand-order](https://github.com/BFvX/arc-hand-order/tree/73604eea75c088db39d332be5e6f77ab16d850aa) 的 `73604ee`，按其 GPL-3.0 许可保留上游源码及本地补丁。Three.js 0.187.0 与 GLTFLoader 依赖本地提供，保留 MIT 许可证。第三方原始说明和许可证保持原文。
-
-Blender 查找顺序：`BLENDER_BIN` → PATH 上的 `blender` → `.tools/Blender.app/Contents/MacOS/Blender`。展示场景由源码生成。
-
-## 命令行入口
-
-从本仓库根目录执行：
+也可以规划自己的 AFF 片段。下面的起止时间单位是毫秒，输出为 JSON：
 
 ```sh
-./plan.sh charts/imported/ex-otogibanashi/2.aff output/ex-otogibanashi.plan.json
-.venv/bin/python plan_excerpt.py charts/imported/bibideba/2.aff 3500 11750 output/bibideba-excerpt.plan.json
-.venv/bin/python plan_excerpt.py charts/imported/ex-otogibanashi/2.aff 0 6650 output/ex-otogibanashi-excerpt.plan.json --prefer-same-hand
+.venv/bin/python plan_excerpt.py path/to/chart.aff 0 10000 output/excerpt.plan.json
 ```
 
-`plan.sh` 保留上游严格策略；片段入口和工作台默认允许漏键。片段处理保留跨边界音符的原计分时刻、拼接关系与音频起点，再裁剪占用范围。
+`plan.sh` 使用较严格的上游策略；片段入口和工作台默认允许漏键。
 
-AFF 画面来自 [ArcCreate 1.2.68](https://github.com/Arcthesia/ArcCreate/releases/tag/1.2.68)，本机工具位于 `.tools/ArcCreate`。`arc-create-export/` 修补独立应用副本，依赖 Mono、Cecil 0.11 和 FFmpeg。可通过 `MONO_CECIL_DLL` 指定库，`ARCCREATE_EXPORT_APP` 指定适配后的应用。
+## 参与贡献
 
-```sh
-mkdir -p .tools/ArcCreate
-curl -fL https://github.com/Arcthesia/ArcCreate/releases/download/1.2.68/StandaloneOSX.zip -o /tmp/ArcCreate-1.2.68.zip
-ditto -x -k /tmp/ArcCreate-1.2.68.zip .tools/ArcCreate
-./arc-create-export/setup.sh
-./arc-create-export/export.sh charts/imported/bibideba/project.arcproj output/gameplay/bibideba.mp4 3500 12167
-```
+欢迎直接提 PR，不用先开 issue。修 bug、改规划逻辑、调整界面、适配其他系统或补文档都可以。PR 里简单说明改了什么、怎么验证的；界面和动画改动可以附上截图或视频。
 
-上面的四参数旧入口使用自动播放。工作台会加传第五个 `replay.json` 参数，使用真实触点判定。真实回放保留引擎 60 Hz 模拟、1148×802、60 fps 画面（旧自动播放入口为 30 fps）；导出器分别保存无声画面、歌曲和实际命中音效，再混音。歌曲可在内存中添加收尾静音，不改源文件。
-
-几何更新使用工作台「更新展示场景」，或：
-
-```sh
-curl -fsS http://127.0.0.1:8765/api/presentation \
-  -H 'Content-Type: application/json' -d '{"id":"your-take-id"}'
-```
-
-它异步更新演奏元数据与带版本的 `.blend`、`.glb`，保留原规划、动作和游戏画面。不要为纯布景更新调用 `animate.py`，那是新建动作的入口。
-
-## 验证与维护
+涉及代码改动时，可以运行这些检查，需要另外安装 Node.js：
 
 ```sh
 .venv/bin/python -m pytest vendor/arc-hand-order/tests tests -q
 node tests/test_i18n.mjs
 node tests/test_preview_recorder.mjs
-node tests/check_webgl_alignment.mjs output/runs/TAKE
+node tests/check_planning_progress.mjs
 ```
 
-几何、Blender 对齐与实际视频的完整检查命令见[迁移指南](docs/ipad-rhythm-environment-porting.md)。搜索优化在三段 Bibideba 基准上取得 **1.92×** 总体加速，完整规划除计时字段外一致；共享姿态缓存也已独立验证。各缓存的键和失效条件见[缓存说明](docs/cache-layers.md)。
+`dashboard/` 是浏览器界面和本地服务，`vendor/arc-hand-order/` 是带本地修改的规划器，`arc-create-export/` 是 ArcCreate 适配器，手部动作主要在 `hand_pose.py`、`motion_paths.py` 和 `animate.py`。
 
-[文档目录](docs/README.md) · [Git 分支与合并记录](docs/rhythm-git-workflow.md) · [中文化维护](docs/i18n.md) · [视频导出](docs/ipad-rhythm-webgl-export.md) · [Arghena 漏键调查](docs/arghena-end-miss-and-idle-motion.md)
-
-双臂现在默认限制袖口连线的累计缠绕角为 **±260°**；可在「手部动作」调整。松手后可绕远路主动解缠，运动代价仍计入轨迹选择，所有按住的触点保持固定。旧演奏会提示需要更新动作。详见[双臂缠绕与 Dantalion 验证](docs/arm-winding.md)。
-
-默认开启[判定区落指](docs/contact-placement.md)：纵连可让双手在音符两侧交替落指，蛇可搜索共同静止接取区。实际接触、动画及 ArcCreate 回放保持一致；工作台「利用音符判定区域」可关闭作对照。
+更多说明见[文档目录](docs/README.md)，包括[视频导出](docs/ipad-rhythm-webgl-export.md)、[缓存复用](docs/cache-layers.md)、[界面翻译](docs/i18n.md)和[场景与动画验证](docs/ipad-rhythm-environment-porting.md)。文档主要使用简体中文，英文 README 与中文介绍保持同步。
 
 ## 致谢
 

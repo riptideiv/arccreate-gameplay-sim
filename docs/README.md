@@ -4,7 +4,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [项目首页](../README.md) | 安装、使用流程、默认值与命令行入口 |
+| [项目首页](../README.md) | 功能、安装、使用方法与参与贡献 |
 | [环境迁移指南](ipad-rhythm-environment-porting.md) | 场景接口、材质、坐标、缓存、部署与迁移经验 |
 | [缓存层说明](cache-layers.md) | 哪些操作重算、缓存键和共享姿态复用 |
 | [搜索优化报告](ipad-rhythm-planner-optimization.md) | 不改变计分规则的优化、基准和正确性证据 |
