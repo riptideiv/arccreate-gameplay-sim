@@ -1,19 +1,25 @@
-**[简体中文](README.md) · English**
+# arccreate-gameplay-sim
 
-# iPad rhythm prototype
+[简体中文](README.md) · **English**
 
-Two chunky pointing gloves play on a rounded tablet in an independent walnut tabletop presentation set, with a charcoal mousepad, ceramic plant pot and ballpoint pen. Each hand has one playable index finger. ArcCreate renders the perspective track, sky input, arcs, effects, and HUD from the supplied charts. The live Three.js preview uses Blender-exported meshes and verified 60 Hz hand motion, with ArcCreate touch-replay footage on the tablet.
+Two pointing gloves, one virtual tablet, and a chart to figure out. Plan how to play an AFF chart, test the touches through ArcCreate's native judgement, and watch the performance in a 3D browser workbench.
 
-Earlier offline exports (retained for comparison):
+- **Plan the performance**: tune tap timing, arc paths, contact placement, wrist motion, and hand crossings.
+- **Replay real inputs**: send planned touches to ArcCreate and inspect actual hits, misses, combo, and score.
+- **Explore in 3D**: watch the gloves on a walnut tabletop, adjust the camera, scrub the timeline, and slow down difficult passages.
+- **Export the result**: record 30/60 fps video with gameplay audio and native results endings, or render offline with Blender.
 
-| Chart | Full contact plan | Hand animation and gameplay |
-| --- | --- | --- |
-| BIBBIDIBA | The strict planner reported no candidate path. | 35 contacts from the 3.50–11.75 s chart window in `output/bibideba-excerpt.blend` and `output/bibideba-excerpt.mp4` |
-| Ex-Otogibanashi | `output/ex-otogibanashi.plan.json`, 586 contacts | 40 contacts from the 0–6.65 s chart window in `output/ex-otogibanashi-excerpt.blend` and `output/ex-otogibanashi-excerpt.mp4` |
+## Open the workbench
 
-The packages and their extracted projects are under `charts/imported/`. The Blender files use relative paths to their ArcCreate footage under `output/gameplay/`. Keep that folder next to the scenes when moving them. The MP4s include ArcCreate's source audio and hit sounds.
+The build and export workflow is verified on macOS and requires Python, Blender, ArcCreate 1.2.68, Mono/Cecil, and FFmpeg. Follow [planner setup](#generate-the-contacts) and [ArcCreate setup](#export-arccreate-gameplay), import your charts using the [chart guide](charts/README.md), then run from the repository root:
 
-The local chart selector also contains all 268 difficulties from the 77-song `10plus-import-novedio` collection, grouped by song. See [chart import and compatibility](charts/README.md) for regeneration and source assets. Charts with known feature limitations show a notice when selected. Designant/Lament Rain red notes are supported: **Enable red notes** controls visibility (on by default); **Target every red note** adds them to the planner (off by default). Red catches are optimized after scoring notes and before movement cost. Unreachable red notes can still be skipped; they never count as lost scoring ticks or break native combo, and have separate replay hit/miss counts.
+```sh
+./dashboard.sh
+```
+
+Open [Rhythm workbench](http://127.0.0.1:8765/). Processing runs locally; takes, caches, and exports are saved under `output/`. See the [environment guide](docs/ipad-rhythm-environment-porting.md#部署与系统差异) for phone access, background services, and deployment details.
+
+The chart library groups imported AFF packages by song and difficulty. The importer has been verified against a 77-song, 268-chart collection. Charts with known feature limitations show a notice when selected. Designant/Lament Rain red notes are supported: **Enable red notes** controls visibility (on by default); **Target every red note** adds them to the planner (off by default). Red catches are optimized after scoring notes and before movement cost. Unreachable red notes can still be skipped; they never count as lost scoring ticks or break native combo, and have separate replay hit/miss counts.
 
 ## Tune in the dashboard
 
@@ -27,14 +33,6 @@ Current dashboard preferences: comfortable repeat gap **167 ms**, fast-run gap *
 
 The single hit-sound toggle covers ground/sky block hits, hold heads and successful snake scoring ticks. The ArcCreate replay adapter captures actual native catches rather than scheduling autoplay clicks. Misses stay silent. New takes provide **Download hit sounds (WAV)** under ArcCreate results, plus counts of block and snake clicks. The WAV remains available when the mix's hit-sound toggle is off. The delayed song and selected hit sounds are included in both the live preview and its WebGL/Blender video exports. Older saved takes keep their original media until rebuilt.
 
-This folder is its own Git repository; the parent dafeiyu room repository ignores it. Simulator code, documentation, charts and runtime output belong here.
-
-Run `./dashboard.sh`, then open [Rhythm workbench](http://127.0.0.1:8765). The dashboard uses the two copied chart packages and runs the planner, ArcCreate, and Blender on this Mac. It binds to loopback and saves each take under `output/runs/`.
-
-For phone access, connect Tailscale on the phone and open [the tailnet dashboard](https://macbook-pro---riptideiv.tail57056e.ts.net/). Tailscale Serve proxies HTTPS to the loopback server, using the tailnet's existing access policy. Enable it with `tailscale serve --bg --https=443 http://127.0.0.1:8765`; disable this endpoint with `tailscale serve --https=443 off`. Serve persists in the background, but the dashboard process and Mac must remain running. An idle-sleep assertion is currently tied to the dashboard process for remote use.
-
-The current Mac login runs the dashboard as the launchd job `com.dafeiyu.rhythm-workbench`, with `KeepAlive` and `caffeinate`, independently of the agent's terminal session. Its generated definition is `output/workbench.launchd.plist`, and output/errors go to `output/dashboard-server.log`. Inspect it with `launchctl print gui/$(id -u)/com.dafeiyu.rhythm-workbench`; stop it with `launchctl bootout gui/$(id -u)/com.dafeiyu.rhythm-workbench`. After logging out or rebooting, load this session job again with `launchctl bootstrap gui/$(id -u) "$PWD/output/workbench.launchd.plist"` from this directory. Do not start another server on port 8765 while that job is loaded.
-
 On phones, the preview comes first. The sticky Preview / Settings / Build bar jumps between the video and controls and submits the current settings from anywhere on the page. Inputs use 16 px text with decimal or numeric keyboards; controls have larger touch targets, and the video plays inline. Build submission returns to the preview and progress display.
 
 Choose any window inside the song, including the full song, then press **Build live preview**. The old 20-second cap is removed. Hand settings require a new plan; camera sliders update the existing 3D preview immediately. Draft uses a device-pixel ratio capped at 1; High caps it at 2. Completed takes retain their settings, touch plan, motion samples, GLB, Blender scene, gameplay footage, actual judgements, log, and measured speeds. **Export MP4** separately runs the slower EEVEE image-sequence render using the current live camera. Each view gets its own export file and preserves the verified source scene. Cancellation stops the current process group and leaves previous takes available.
@@ -45,9 +43,9 @@ The shared chart-range track has independently draggable start/end handles, sync
 
 The expandable **Blender MP4 export** remains available for offline EEVEE rendering (640 × 480 Draft / 1024 × 768 High), with separate saved downloads. Its lighting can differ from the WebGL view. **Download gameplay only** remains separate under the motion report. See [WebGL export verification](docs/ipad-rhythm-webgl-export.md) for the measured output and browser/API details.
 
-**Presentation set** is directly below playback. New builds use the independent set automatically. For an older saved take, press **Update presentation** to regenerate only its Blender/GLB snapshots, preserving the exact hand meshes, baked motion, plan, native judgements and gameplay footage. A successful update clears the stale MP4 download; export again for the new set. Cancellation/failure leaves the previous scene usable. Versioned scene paths and scene-aware MP4 cache identities prevent reuse of the old room export. The latest 120–150 s take and the 65–75 s cross-hand verification take have been updated.
+**Presentation set** is directly below playback. New builds use the independent set automatically. For an older saved take, press **Update presentation** to regenerate only its Blender/GLB snapshots, preserving the exact hand meshes, baked motion, plan, native judgements and gameplay footage. A successful update clears the stale MP4 download; export again for the new set. Cancellation/failure leaves the previous scene usable. Versioned scene paths and scene-aware MP4 cache identities prevent reuse of stale presentation exports. The latest 120–150 s take and the 65–75 s cross-hand verification take have been updated.
 
-See [the environment-porting guide](docs/ipad-rhythm-environment-porting.md) for hierarchy/coordinate contracts, material portability, snapshot regeneration, cache handling, repeatable validation and experience from this port. Original room assets are preserved; the simulator no longer loads `whale-room-final.blend`.
+See [the environment guide](docs/ipad-rhythm-environment-porting.md) for hierarchy and coordinate contracts, material portability, snapshot regeneration, cache handling, and repeatable validation.
 
 Move speed is now checked on the animated glove after airborne detours and wrist rotation. A conservative bound combines translation with the speed of the farthest point turning around the index pad. Turn speed has its own hard limit. Active index pads stay on their chart targets. Glove overlap is handled by contact-preserving posing; it never blocks a build. The planner's acceleration control remains a preference. Playback speed in the video player is only for inspection.
 
@@ -114,7 +112,7 @@ Three.js 0.187.0 and the required GLTFLoader helpers are served locally from `da
 
 ## Generate the contacts
 
-The prototype vendors [arc-hand-order](https://github.com/BFvX/arc-hand-order/tree/73604eea75c088db39d332be5e6f77ab16d850aa) at commit `73604ee` under GPL-3.0, with local release-timing, skip-search, and excerpt-occupation patches described above. Run the commands below from the prototype directory.
+The planner vendors [arc-hand-order](https://github.com/BFvX/arc-hand-order/tree/73604eea75c088db39d332be5e6f77ab16d850aa) at commit `73604ee` under GPL-3.0, with local release-timing, skip-search, and excerpt-occupation patches described above. Run the commands below from the repository root.
 
 ```sh
 uv venv --python python3.13 .venv
@@ -160,7 +158,7 @@ The contact planner now memoizes fixed projection/polygon geometry and state-ind
 
 CLI/dashboard planning reuses validated completed results under `output/contact-plans/`. The key includes chart/device/rule implementation, window, planner settings and exclusions; camera, presentation, hand posing and export settings do not invalidate contact planning. Use `--no-plan-cache` for uncached search measurements or `--plan-cache-dir PATH` for isolation. Library calls remain uncached unless `cache_dir` is supplied. Cache hits preserve the actual plan and emit `cache_hit=true` through the existing progress stream; corrupt/incompatible entries trigger normal search.
 
-Blender is resolved from `BLENDER_BIN`, then the system PATH, then `.tools/Blender.app/Contents/MacOS/Blender`. This Mac’s launchd configuration explicitly points to the existing shared Blender installation. No original room scene is loaded.
+Blender is resolved from `BLENDER_BIN`, then the system PATH, then `.tools/Blender.app/Contents/MacOS/Blender`. The presentation scene is generated from source.
 
 ## Language and current defaults
 
@@ -177,3 +175,11 @@ Completed chart takes can add ArcCreate's native results flow from saved judgeme
 Arm winding is now bounded to **±260°** by default, adjustable under Hand motion. The unwrapped cuff-to-cuff bearing retains its history through releases and idle returns. Free hands can take longer, movement-penalized routes to unwind while all held touch samples remain pinned. Older saved takes explicitly require regeneration. See the [winding design and Dantalion verification](docs/arm-winding.md).
 
 Off-center contact placement is enabled by default. Alternating streams can use stable side-by-side positions, and snakes can share stationary tick-catching regions. The planner, animation, and native ArcCreate replay use the same contacts. Disable **Use note judgement areas** for a center-placement comparison. See [implementation and native verification](docs/contact-placement.md).
+
+## Acknowledgments
+
+Thanks to the authors and contributors of the open-source projects that make this work possible:
+
+- **[ArcCreate](https://github.com/Arcthesia/ArcCreate)**, by Arcthesia and contributors, provides the chart editor and player. This project uses **1.2.68** for native gameplay rendering, touch judgement, audio, and results, with custom input and export adapters for recorded replays. ArcCreate is licensed under [GPL-3.0](https://github.com/Arcthesia/ArcCreate/blob/trunk/LICENSE).
+- **[arc-hand-order](https://github.com/BFvX/arc-hand-order)**, by BFvX, provides the AFF hand-order and contact planner that this project's planning code builds on. The copy in `vendor/arc-hand-order/` starts from upstream commit [`73604ee`](https://github.com/BFvX/arc-hand-order/commit/73604eea75c088db39d332be5e6f77ab16d850aa), with extensions for score-aware paths, contact optimization, and motion costs. Its [upstream README](vendor/arc-hand-order/README.md) and [GPL-3.0 license](vendor/arc-hand-order/LICENSE) are retained.
+- **[Three.js](https://github.com/mrdoob/three.js)** provides the browser's 3D preview and glTF loading. The bundled dependencies retain their [MIT license](dashboard/vendor/THREE-LICENSE).

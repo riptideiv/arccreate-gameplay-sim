@@ -1,30 +1,23 @@
-# iPad 音游双手模拟器
+# arccreate-gameplay-sim
 
 **简体中文** · [English](README.en.md)
 
-用两只单指手套在虚拟 iPad 上演奏 Arcaea AFF 谱面：规划触点，用 ArcCreate 实际判定，再在浏览器中播放三维手部动作。可以调流速、点按节奏、描蛇偏好、待机速度与相机，直接导出带游戏音频的预览视频。
+让两只单指手套在虚拟平板上演奏 AFF 谱面。从触点规划到 ArcCreate 原生判定，再到三维动作与视频导出，在一个浏览器工作台里探索「这张谱面该怎么打」。
 
-这是独立 Git 仓库。当前文件夹虽然位于 `dafeiyu-3d-room/prototypes/ipad-rhythm`，但房间、角色和椅子动画属于父仓库；这里的展示场景、源码和历史独立维护。原房间资产不参与新场景构建。
+- **规划双手动作**：调节点按节奏、蛇的路径、落指位置、转腕与交叉偏好，观察不同策略的演奏效果。
+- **真实游戏判定**：将规划转换为 ArcCreate 触摸回放，记录实际命中、失误、连击与分数。
+- **三维实时预览**：在胡桃木桌面场景中播放手套动作，自由调整相机，拖动进度或慢放检查。
+- **生成演奏视频**：导出带游戏音频的 30／60 fps 预览，添加原生结算片尾，或使用 Blender 离线渲染。
 
 ## 打开工作台
 
-在本仓库目录中运行：
+当前构建与导出流程在 macOS 上验证，需要 Python、Blender、ArcCreate 1.2.68、Mono／Cecil 与 FFmpeg。先按下方[曲库与依赖](#曲库与依赖)及[命令行入口](#命令行入口)配置环境并导入自己的谱面，再从仓库根目录运行：
 
 ```sh
 ./dashboard.sh
 ```
 
-默认地址为 `http://127.0.0.1:8765/`。现有 Mac 会话由 launchd 的 `com.dafeiyu.rhythm-workbench` 服务维持运行，不要重复启动同端口进程。服务带 `KeepAlive` 和 `caffeinate`；定义位于 `output/workbench.launchd.plist`，日志位于 `output/dashboard-server.log`。
-
-```sh
-launchctl print gui/$(id -u)/com.dafeiyu.rhythm-workbench
-# 仅在没有规划、生成或导出任务时重新加载：
-launchctl kickstart -k gui/$(id -u)/com.dafeiyu.rhythm-workbench
-# 注销／重启后，从本目录加载现有定义：
-launchctl bootstrap gui/$(id -u) "$PWD/output/workbench.launchd.plist"
-```
-
-Tailscale Serve 已将本机服务代理至现有的 tailnet HTTPS 地址，可从已登录同一网络的手机访问。地址和部署细节见[环境迁移指南](docs/ipad-rhythm-environment-porting.md)。重载前检查 `/api/state`，不要中断正在运行的任务。
+打开 [Rhythm workbench](http://127.0.0.1:8765/)。工作台在本机运行，演奏、缓存和导出保存在 `output/`。手机访问、后台服务及部署细节见[环境指南](docs/ipad-rhythm-environment-porting.md#部署与系统差异)。
 
 界面默认简体中文；页首可切换 **English / 简体中文**，选择保存在当前浏览器。切换语言不重新加载谱面、视频或设置，不参与缓存键。浏览器的原生菜单、底层异常详情和 ArcCreate 自身画面可能保留原语言。
 
@@ -73,11 +66,11 @@ Tailscale Serve 已将本机服务代理至现有的 tailnet HTTPS 地址，可�
 
 浏览器从 Blender 导出的 GLB 加载手套、平板与布景，按 `motion.json` 播放。视频媒体时间是唯一时钟，拖动、暂停和慢放保持同步。Blender 为 Z 向上，Three.js 为 Y 向上；转换坐标和旋转，并沿用线性 pitch/yaw 插值。暂停时只在画面、相机或姿态改变后重绘。
 
-展示场景的唯一几何源为 `presentation_scene.py`：胡桃木桌面、织物垫、绿植、圆珠笔与圆角平板。木纹以图像材质打包，不依赖浏览器无法导出的程序化节点。屏幕有效尺寸、UV、触点与原相机接口不变，布景独立于 dafeiyu 房间。
+展示场景的唯一几何源为 `presentation_scene.py`：胡桃木桌面、织物垫、绿植、圆珠笔与圆角平板。木纹以图像材质打包，不依赖浏览器无法导出的程序化节点。屏幕有效尺寸、UV、触点与相机使用统一的坐标接口。
 
 ## 曲库与依赖
 
-本机已导入 77 首歌曲、268 张 AFF 谱面，加上最初两张，共 270 个选项。下载的谱面、音频、工具和生成结果均不提交 Git，只跟踪导入器和清单。源包未被修改。详见[曲库说明](charts/README.md)。
+曲库支持批量导入 AFF 谱面并按歌曲及难度分组；导入器已在包含 77 首歌曲、268 张谱面的集合上验证。下载的谱面、音频、工具和生成结果均不提交 Git，只跟踪导入器和清单。源包未被修改。详见[曲库说明](charts/README.md)。
 
 ```sh
 uv venv --python python3.13 .venv
@@ -87,7 +80,7 @@ uv pip install --python .venv/bin/python -e 'vendor/arc-hand-order[dev]'
 
 规划器基于 [arc-hand-order](https://github.com/BFvX/arc-hand-order/tree/73604eea75c088db39d332be5e6f77ab16d850aa) 的 `73604ee`，按其 GPL-3.0 许可保留上游源码及本地补丁。Three.js 0.187.0 与 GLTFLoader 依赖本地提供，保留 MIT 许可证。第三方原始说明和许可证保持原文。
 
-Blender 查找顺序：`BLENDER_BIN` → PATH 上的 `blender` → `.tools/Blender.app/Contents/MacOS/Blender`。本机 launchd 显式指定现有安装，构建不会载入原房间 blend。
+Blender 查找顺序：`BLENDER_BIN` → PATH 上的 `blender` → `.tools/Blender.app/Contents/MacOS/Blender`。展示场景由源码生成。
 
 ## 命令行入口
 
@@ -138,3 +131,11 @@ node tests/check_webgl_alignment.mjs output/runs/TAKE
 双臂现在默认限制袖口连线的累计缠绕角为 **±260°**；可在「手部动作」调整。松手后可绕远路主动解缠，运动代价仍计入轨迹选择，所有按住的触点保持固定。旧演奏会提示需要更新动作。详见[双臂缠绕与 Dantalion 验证](docs/arm-winding.md)。
 
 默认开启[判定区落指](docs/contact-placement.md)：纵连可让双手在音符两侧交替落指，蛇可搜索共同静止接取区。实际接触、动画及 ArcCreate 回放保持一致；工作台「利用音符判定区域」可关闭作对照。
+
+## 致谢
+
+感谢以下开源项目的作者与贡献者，为这个项目提供基础：
+
+- **[ArcCreate](https://github.com/Arcthesia/ArcCreate)** — 由 Arcthesia 与贡献者开发的谱面编辑器和播放器。本项目基于 **1.2.68** 的原生渲染、触摸判定、音效及结算流程，通过自定义输入与导出适配器生成实际回放。上游采用 [GPL-3.0](https://github.com/Arcthesia/ArcCreate/blob/trunk/LICENSE) 许可。
+- **[arc-hand-order](https://github.com/BFvX/arc-hand-order)** — BFvX 的 AFF 手序与触点规划器，是本项目规划代码的基础。`vendor/arc-hand-order/` 从上游提交 [`73604ee`](https://github.com/BFvX/arc-hand-order/commit/73604eea75c088db39d332be5e6f77ab16d850aa) 引入，并加入计分感知路径、接触点优化与动作代价等扩展；保留[上游说明](vendor/arc-hand-order/README.md)和 [GPL-3.0 许可证](vendor/arc-hand-order/LICENSE)。
+- **[Three.js](https://github.com/mrdoob/three.js)** — 提供浏览器中的三维预览与 glTF 加载；随附依赖保留 [MIT 许可证](dashboard/vendor/THREE-LICENSE)。
