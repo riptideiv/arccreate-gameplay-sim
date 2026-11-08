@@ -116,7 +116,8 @@
       <select id="arc-path" name="arc_path_mode"><option value="score">Score-aware · catch ticks with less movement</option><option value="trace">Trace · follow the snake centre</option></select>
       <p class="hint">Score-aware paths can wait inside a hitbox and cut between catches. ArcCreate judges the resulting touches; colour locks still apply.</p>
       <label><input name="prefer_arc_trace" type="checkbox"> Prefer tracing arc geometry</label>
-      <label for="arc-trace-cost">Geometry deviation cost <span class="input-unit"><input id="arc-trace-cost" name="arc_trace_weight" type="number" min="0" max="10000" step="50" required><span>/s</span></span></label>
+      <label for="arc-trace-cost">Geometry deviation cost <span class="input-unit"><input id="arc-trace-cost" name="arc_trace_weight" type="number" min="0" max="10000" step="any" required><span>/s</span></span></label>
+      <p class="hint">Small positive values such as 0.5–2 give a gentle tracing preference. Zero disables it; larger values can favour following rapid zig-zags too.</p>
       <p class="hint">In Score-aware mode, higher costs favour tracing the centreline throughout the snake, including its tail and release gaps. Full cost applies at 20 mm away or while released; closer offsets cost proportionally less. Scoring and speed limits take priority. The full-hold cost below is additional when enabled.</p>
       <p class="hint" id="arc-release-summary" aria-live="polite"></p>
       <label><input name="full_arc_hold" type="checkbox"> Prefer holding arcs to the visual end</label>
