@@ -2,12 +2,9 @@
 
 [简体中文](README.md) · **English**
 
-Two pointing gloves, one virtual tablet, and a chart to figure out. Plan how to play an AFF chart, test the touches through ArcCreate's native judgement, and watch the performance in a 3D browser workbench.
+A tool for simulating two-finger play on AFF charts. It plans where each index finger presses and how it moves, replays those touches in ArcCreate to record judgements, and generates a 3D hand animation.
 
-- **Plan the performance**: tune tap timing, arc paths, contact placement, wrist motion, and hand crossings.
-- **Replay real inputs**: send planned touches to ArcCreate and inspect actual hits, misses, combo, and score.
-- **Explore in 3D**: watch the gloves on a walnut tabletop, adjust the camera, scrub the timeline, and slow down difficult passages.
-- **Export the result**: record 30/60 fps video with gameplay audio and native results endings, or render offline with Blender.
+You can adjust motion settings in the browser, scrub or slow down the replay to inspect the hand order, and export video with audio. The planner builds on arc-hand-order, gameplay rendering and judgement use ArcCreate, and the 3D animation uses Blender and Three.js. Shared here for anyone interested in hand-order planning or gameplay animation.
 
 ## Open the workbench
 
