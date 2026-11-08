@@ -162,4 +162,3 @@ if __name__=='__main__':
         if not args.body:parser.error('--finalize requires --body')
         finalize(args.take,args.finalize,args.body)
     else:prepare(args.take)
-

@@ -38,3 +38,26 @@
 `fix/negative-audio-start-60fps` 从中文化分支创建，包含 Arghena 负音频起点修复、真正保留原生 60 fps、浏览器 30／60 fps 导出选项及完整重跑验证。未改 main，也未改动保存的规划设置；详见[调查记录](arghena-negative-offset-60fps.md)。
 
 `feature/native-results-ending` 基于上述修复分支，单独加入原生结果场景、Pure Memory 判定、局部导出和不重渲染正文的拼接流程。
+
+## 2026-11-07：后续功能分块并入 main 并发布
+
+在旧 main `fbc66da` 之后，继续按依赖顺序用 `--no-ff` 合并，保留全部 23 个原始提交和原功能分支，不压缩或改写历史：
+
+| main 合并提交 | 来源分支 | 功能块 |
+| --- | --- | --- |
+| `bb694bb` | `feature/zh-cn-i18n` | 默认中文界面、英文切换和双语说明 |
+| `dc13317` | `fix/negative-audio-start-60fps` | 负音频起点修复与 60 fps 导出 |
+| `ca497ec` | `feature/native-results-ending` | 保存判定生成结果片尾与仅导出片尾 |
+| `ab40f2d` | `fix/canonical-arccreate-results` | ArcCreate 原生结果过场、入场、评级及音频时序 |
+| `aa734c0` | `feature/arm-winding-limits` | 手臂累计绕转限制与空闲解绕路径 |
+| `12ac8ab` | `feature/off-center-contacts` | 原生判定区域内的接触点搜索与细化 |
+| `c320a20` | `fix/fine-trace-weight-control` | 小数描线权重与抖动调查 |
+| `f6eeeab` | `feature/continuous-acceleration` | 连续指尖加速度代价与平滑整条蛇路径 |
+| `8bb387d` | `feature/note-center-preference` | 音符中心偏好、调参和原生回放对照 |
+| `b9ef6d2` | `feature/crossing-wrist-costs` | 交叉深度、手腕应变代价及界面调参 |
+
+合并操作在临时 worktree 中进行，未中断现有工作台。十次合并后的 main 文件树与 `feature/crossing-wrist-costs` 完全相同；随后只更新本维护记录并清理片尾模块末尾空行。导入曲包、媒体、工具、演奏输出与父仓库房间／椅子文件均未纳入发布。
+
+发布目标为 [riptideiv/arcaea-gameplay-simulator](https://github.com/riptideiv/arcaea-gameplay-simulator)，默认分支为 `main`。只推送合并后的 main；原功能分支引用保留在本地，完整提交历史随 main 发布。
+
+发布前验证：Python 测试 **229 项通过**；Node 的界面翻译（377 条消息）、预览录制器及规划进度三个检查全部通过；`git diff --check` 通过。本次验证未重新生成原生回放或 Blender 视频，既有验证证据见各功能说明。
