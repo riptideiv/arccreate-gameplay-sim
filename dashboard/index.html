@@ -78,6 +78,16 @@
       <div class="knob"><label for="winding-limit">Arm winding limit</label><span class="input-unit"><span>±</span><input id="winding-limit" name="winding_limit_deg" type="number" min="90" max="355" step="5" required><span>°</span></span><input aria-label="Arm winding limit slider" data-for="winding_limit_deg" type="range" min="90" max="355" step="5"></div>
       <p class="hint">Limits accumulated rotation between the cuffs from idle. Released hands take longer routes to unwind; lifting or returning home never resets the angle. Required unwinds may use the main move-speed limit.</p>
       <p class="hint" id="winding-status"></p>
+      <details id="crossing-preferences" open>
+        <summary>Crossing and wrist preferences</summary>
+        <label for="cross-duration">Crossing duration cost <input id="cross-duration" name="crossing_weight" type="number" min="0" max="30" step="any" required></label>
+        <label for="cross-depth">Crossing depth cost <input id="cross-depth" name="crossing_depth_weight" type="number" min="0" max="100000" step="any" required></label>
+        <p class="hint">Depth is the left fingertip's horizontal distance beyond the right fingertip, minus 5 mm, integrated while both touch. Cost is per metre-second: 50 mm crossed for 2 s costs 0.09 times this weight.</p>
+        <label for="wrist-cost">Wrist twist cost <input id="wrist-cost" name="wrist_twist_weight" type="number" min="0" max="10000" step="any" required></label>
+        <label for="wrist-free">Comfortable wrist deviation <span class="input-unit"><input id="wrist-free" name="wrist_twist_free_deg" type="number" min="0" max="90" step="any" required><span>°</span></span></label>
+        <p class="hint">Pitch and yaw beyond the comfortable angle cost squared deviation, normalized to 90°, per second. Natural direction follows the body's left/right arm anchors. Planning uses a cached static glove-pose estimate; the animation solver penalizes actual angles. This is not full forearm IK. Zero disables each new cost; score and hard motion limits take priority.</p>
+        <p class="hint" id="crossing-status" aria-live="polite"></p>
+      </details>
       <div class="knob"><label for="turn">Max wrist turn</label><span class="input-unit"><input id="turn" name="angular_limit_deg_s" type="number" min="30" max="1440" step="30" required><span>°/s</span></span><input aria-label="Max wrist turn slider" data-for="angular_limit_deg_s" type="range" min="30" max="1440" step="30"></div>
       <div class="knob"><label for="lift">Finger lift</label><span class="input-unit"><input id="lift" name="lift_mm" type="number" min="0" max="30" step="1" required><span>mm</span></span><input aria-label="Finger lift slider" data-for="lift_mm" type="range" min="0" max="30" step="1"></div>
       <div class="knob"><label for="clearance">Preferred hand clearance</label><span class="input-unit"><input id="clearance" name="clearance_mm" type="number" min="0.5" max="8" step="0.5" required><span>mm</span></span><input aria-label="Hand clearance slider" data-for="clearance_mm" type="range" min="0.5" max="8" step="0.5"></div>
@@ -85,7 +95,7 @@
       <details>
         <summary>Planner preferences</summary>
         <label>Comfort speed <span class="input-unit"><input name="comfort_speed_m_s" type="number" min="0.1" max="2" step="0.05" required><span>m/s</span></span></label>
-        <label>Crossing cost <input name="crossing_weight" type="number" min="0" max="30" step="0.5" required></label>
+
         <label>Flight acceleration threshold <span class="input-unit"><input name="planner_accel_m_s2" type="number" min="1" max="200" step="1" required><span>m/s²</span></span></label>
         <p class="hint">Legacy soft threshold for flights and composed jumps; the continuous acceleration penalty below also measures motion inside snakes. Move and turn speed limits are enforced on the animation.</p>
       </details>
