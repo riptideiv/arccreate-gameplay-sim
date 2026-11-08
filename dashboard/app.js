@@ -27,6 +27,7 @@ recorder = new PreviewRecorder(live, video, state => {
 });
 function lockRecording(locked) {
   form.inert = locked;
+  $('export-fps').disabled = locked;
   for (const element of document.querySelectorAll('#live-transport button, #live-transport input, #playback-speed, #history button')) element.disabled = locked;
   $('cancel-webgl').hidden = !locked;
   $('webgl-export-progress').hidden = !locked;
@@ -40,17 +41,17 @@ $('export-webgl').addEventListener('click', async () => {
   const savedSpeed = $('playback-speed').value;
   try {
     // record() starts synchronously inside this user gesture, then awaits media.
-    const task = recorder.record(); $('playback-speed').value = '1'; lockRecording(true);
+    const task = recorder.record({fps: Number($('export-fps').value)}); $('playback-speed').value = '1'; lockRecording(true);
     const result = await task;
     if (webglDownload) URL.revokeObjectURL(webglDownload);
     webglDownload = URL.createObjectURL(result.blob);
-    webglResult = {width:result.width, height:result.height, id:selected.id, scene:selected.live.scene, view:JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))};
+    webglResult = {width:result.width, height:result.height, fps:result.fps, id:selected.id, scene:selected.live.scene, view:JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))};
     $('download-webgl').href = webglDownload;
-    Object.assign($('download-webgl').dataset, {mimeType:result.mimeType,width:result.width,height:result.height,wallSeconds:result.wallSeconds,durationSeconds:result.duration});
-    $('download-webgl').download = `${selected.settings.chart}-${selected.settings.start_s}-${selected.settings.end_s}-preview-${result.width}x${result.height}.${result.extension}`;
+    Object.assign($('download-webgl').dataset, {mimeType:result.mimeType,width:result.width,height:result.height,fps:result.fps,wallSeconds:result.wallSeconds,durationSeconds:result.duration});
+    $('download-webgl').download = `${selected.settings.chart}-${selected.settings.start_s}-${selected.settings.end_s}-preview-${result.width}x${result.height}-${result.fps}fps.${result.extension}`;
     setText($('download-webgl'), `Download ${result.extension.toUpperCase()}`);
     $('download-webgl').hidden = false;
-    setText($('webgl-export-hint'), `Video ready · ${result.width} × ${result.height} · up to 30 fps with game audio.`);
+    setText($('webgl-export-hint'), `Video ready · ${result.width} × ${result.height} · ${result.fps} fps target with game audio.`);
   } catch (error) {
     setText($('webgl-export-hint'), error.message);
     if (!error.message.startsWith('Export cancelled')) showError(error.message);
@@ -221,7 +222,7 @@ function updateExportControls() {
   if (!recorder?.supported()) setText($('webgl-export-hint'), 'This browser cannot record a canvas with audio. Use Blender MP4 export below.');
   $('export-webgl').disabled = !!recorder?.active || !recorder?.supported() || !live?.enabled || invalidCamera;
   $('download-webgl').hidden = !webglResult || webglResult.id !== selected.id || webglResult.scene !== selected.live?.scene;
-  if (webglResult && webglResult.id === selected.id && !recorder.active) setText($('webgl-export-hint'), webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · up to 30 fps with game audio.`);
+  if (webglResult && webglResult.id === selected.id && !recorder.active) setText($('webgl-export-hint'), webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · ${webglResult.fps} fps target with game audio.`);
   $('video-export').hidden = false;
   $('export-video').hidden = !selected.live;
   $('export-video').disabled = running || dirty || invalidCamera;

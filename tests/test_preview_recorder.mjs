@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {PreviewRecorder, recordingFormat} from '../dashboard/preview-recorder.js';
-let sources=0, trackId=0;
+let sources=0, trackId=0, capturedFps;
 class Track { constructor(kind){this.kind=kind;this.id=++trackId;this.stopped=false;} clone(){return new Track(this.kind);} stop(){this.stopped=true;} }
 class Stream {constructor(tracks=[]){this.tracks=tracks;}getTracks(){return this.tracks;}getVideoTracks(){return this.tracks.filter(t=>t.kind==='video');}getAudioTracks(){return this.tracks.filter(t=>t.kind==='audio');}}
 class Audio {constructor(){this.destination={};}createMediaElementSource(){sources++;return {connect(){}};}createMediaStreamDestination(){return {stream:new Stream([new Track('audio')])};}async resume(){}}
@@ -18,15 +18,15 @@ class Video extends EventTarget {
 }
 Object.assign(globalThis,{MediaRecorder:Recorder,MediaStream:Stream,AudioContext:Audio,document:new EventTarget()});
 const video=new Video(),states=[];
-const preview={enabled:true,canvas:{width:640,height:480,captureStream:()=>new Stream([new Track('video')])},beginCapture(){this.captureLock=true;},renderAt(){},resize(){}};
+const preview={enabled:true,canvas:{width:640,height:480,captureStream:fps=>{capturedFps=fps;return new Stream([new Track('video')]);}},beginCapture(){this.captureLock=true;},renderAt(){},resize(){}};
 const recording=new PreviewRecorder(preview,video,s=>states.push(s));
 assert.equal(recordingFormat(),'video/mp4;codecs=avc1.42E01E,mp4a.40.2');
 let result=await recording.record();
-assert.equal(result.extension,'mp4');assert(result.blob.size>0);assert.equal(Recorder.last.stream.getTracks().length,2);
+assert.equal(capturedFps,30);assert.equal(result.fps,30);assert.equal(result.extension,'mp4');assert(result.blob.size>0);assert.equal(Recorder.last.stream.getTracks().length,2);
 assert.deepEqual(video.captured,{rate:1,muted:false,volume:1});
 assert.equal(video.currentTime,1.25);assert.equal(video.playbackRate,.5);assert.equal(video.volume,.2);assert(video.muted&&video.paused);assert(!recording.active&&!preview.captureLock);
 assert(Recorder.last.stream.getTracks().every(t=>t.stopped));
-await recording.record();assert.equal(sources,1,'Repeated exports must reuse the audio graph');
+result=await recording.record({fps:60});assert.equal(capturedFps,60);assert.equal(result.fps,60);await assert.rejects(recording.record({fps:120}),/30 or 60/);assert.equal(sources,1,'Repeated exports must reuse the audio graph');
 video.neverEnd=true;video.ended=false;
 const pending=recording.record();setTimeout(()=>recording.cancel(),2);await assert.rejects(pending,/Export cancelled/);
 assert(!recording.active&&!preview.captureLock);assert(video.paused&&video.muted);assert.equal(video.playbackRate,.5);

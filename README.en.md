@@ -169,3 +169,5 @@ The dashboard defaults to Simplified Chinese with a saved English/简体中文 s
 Current defaults are comfortable repeat gap 167 ms, fast-run gap 133 ms, two unpenalized taps, extra fast-run cost 10, scroll speed 2.5, song delay 0, geometry tracing and visual-end holding both on, camera elevation 70°, and idle/detour speed 1 m/s. Earlier release-policy examples above describe historical takes; explicit historical selection restores that take's original settings. The shared pose cache now works across takes independently of scroll/audio; see [cache layers](docs/cache-layers.md).
 
 All prior feature branches were merged into `main` in eight feature/fix chunks. Localization is isolated on `feature/zh-cn-i18n`; see [Git workflow](docs/rhythm-git-workflow.md) and [i18n maintenance](docs/i18n.md).
+
+Preview recording supports 30/60 fps (default 60). New native touch-replay footage retains its original 60 fps instead of being downsampled; old saved gameplay remains 30 fps until rebuilt. Negative audio start times caused by chart offsets are supported without changing touch timing. The optional Blender export retains its existing 30 fps timeline.

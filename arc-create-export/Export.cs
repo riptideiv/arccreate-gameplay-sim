@@ -23,9 +23,11 @@ public static class Export
         string[] args = Environment.GetCommandLineArgs();
         int flag = Array.IndexOf(args, "--export-aff-video");
         if (flag < 0) return;
+        // Chart zero can precede song zero when AudioOffset is negative.
+        // Native rendering/audio slicing already handle that silent lead-in.
         int from, to;
         if (args.Length <= flag + 4 || !int.TryParse(args[flag + 2], out from)
-            || !int.TryParse(args[flag + 3], out to) || from < 0 || to <= from)
+            || !int.TryParse(args[flag + 3], out to) || to <= from)
         {
             Debug.LogError("Expected --export-aff-video OUTPUT START_MS END_MS FFMPEG.");
             Application.Quit(2);
