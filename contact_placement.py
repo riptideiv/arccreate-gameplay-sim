@@ -142,6 +142,7 @@ def refine(result):
         boxes[i] = box
 
     def objective(i, path):
+        nonlocal serial
         t = touches[i]
         h = 0 if rows[i].hand == "left" else 1
         p = np.asarray(path)
@@ -190,17 +191,15 @@ def refine(result):
                 )
                 overlap = max(0, 0.001 - float(margin.min()))
                 total += (1 - idle / 21) * (overlap / 0.01) ** 2
-        if graph.trace_preference is not None:
-            # Match the existing deviation preference exactly, including time
-            # outside the contact, not a new centre-only constraint.
-            nonlocal serial
-            trial = Touch(
-                serial, t.parts, t.bridges, t.down, t.up, tuple(map(tuple, p)), t.offset
-            )
+        if graph.center_preference is not None or graph.trace_preference is not None:
+            trial = Touch(serial,t.parts,t.bridges,t.down,t.up,tuple(map(tuple,p)),t.offset)
             serial += 1
-            total += plan.options.arc_trace_weight * graph.trace_preference.deviation(
-                trial
-            )
+            if graph.center_preference is not None:
+                total += plan.options.note_center_weight*graph.center_preference.measure(trial)
+            if graph.trace_preference is not None:
+                # Match deviation over the whole snake, including release gaps;
+                # point/ground-hold centering never charges an arc a second time.
+                total += plan.options.arc_trace_weight*graph.trace_preference.deviation(trial)
         total += (
             0.15
             * float(np.mean(np.sum((p - np.asarray(initial[i].path)) ** 2, axis=1)))
@@ -271,6 +270,11 @@ def refine(result):
                 base_delta,
                 ((box[0] + box[1]) / 2, (box[2] + box[3]) / 2),
             ]
+            if graph.center_preference is not None:
+                for part in t.parts:
+                    o=part.candidate.occupation
+                    if o.kind in ('tap','sky','hold'):
+                        requests.append(np.asarray(graph.center_preference.centre(o))-p[0])
             for j in neighbours[i]:
                 other = touches[j]
                 requests.append(

@@ -118,8 +118,13 @@ class PlannerOptions:
     prefer_arc_trace: bool = False
     arc_trace_weight: float = 1000.0
     acceleration_weight: float = 0.0
+    note_center_weight: float = 0.0
+    note_center_free_mm: float = 5.0
 
     def __post_init__(self):
+        for name in ("note_center_weight", "note_center_free_mm"):
+            if not math.isfinite(getattr(self,name)) or getattr(self,name)<0:
+                raise ValueError(f"{name} must be finite and nonnegative")
         if not math.isfinite(self.acceleration_weight) or self.acceleration_weight < 0:
             raise ValueError("acceleration_weight must be finite and nonnegative")
         if not math.isfinite(self.arc_trace_weight) or self.arc_trace_weight < 0:
