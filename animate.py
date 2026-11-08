@@ -167,7 +167,7 @@ def motion_report(paths, poses, max_speed, angular_limit, gap):
     return report
 
 
-def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001, idle_speed=1.0):
+def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001, idle_speed=1.0, winding_active=None, winding_limit=260, lift=.008, comfort_speed=.25):
     """Pose around pinned contacts; overlaps are diagnostics, never plan failures."""
     points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
     active = np.zeros(points.shape[:2], dtype=bool)
@@ -188,7 +188,21 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
         posing = diagnostics(points, np.array(neutral), parts, gap)
         posing['pose_solver_fallback_reason'] = str(error)
         posing['solver'] = POSE_VERSION
+    # Cuffs are the arm attachment points. Route after posing so rotating a
+    # glove cannot hide a complete turn around the other wrist. Contacts stay
+    # pinned; no later cosmetic detour may alter the certified route.
+    from winding_paths import solve as unwind
+    physical = active if winding_active is None else winding_active
+    root_points=np.stack([np.array([tuple(p) for p in path]) for path in output],axis=1)
+    root_points,winding=unwind(root_points,physical,np.asarray(poses),parts,limit_deg=winding_limit,
+                               max_speed=max_speed,lift=lift,comfort_speed=comfort_speed,gap=gap,idle_speed=idle_speed)
+    output=[[Vector(p) for p in root_points[:,h]] for h in range(2)]
+    report=motion_report(output,poses,max_speed,angular_limit,gap)
+    posing.update(diagnostics(root_points,np.asarray(poses),parts,gap))
     report.update(posing)
+    posing['maximum_contact_drift_m']=float(np.linalg.norm((root_points-points)[physical],axis=-1).max(initial=0))
+    report['maximum_contact_drift_m']=posing['maximum_contact_drift_m']
+    report['arm_winding']=winding
     report['idle_speed_m_s'] = min(idle_speed, max_speed)
     return output, poses, report
 
@@ -302,6 +316,7 @@ def main():
     paths = [positions(contacts[side], side, last_frame, settings.get("lift_mm", 8)/1000, max_speed, idle_speed) for side in SIDES]
     active_samples = [{frame for t in contacts[side] for frame in range(t["down_frame"], t["up_frame"])}
                       for side in SIDES]
+    physical_samples=[set(samples) for samples in active_samples]
     # Stationary rests are fixed anchors too. Collision detours may change free
     # travel, but must not stretch a detour through an otherwise idle dwell.
     for h, side in enumerate(SIDES):
@@ -311,7 +326,7 @@ def main():
         import pose_cache
         base = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
         active = np.zeros(base.shape[:2], dtype=bool)
-        for h, samples in enumerate(active_samples):
+        for h, samples in enumerate(physical_samples):
             active[list(samples), h] = True
         signature = pose_cache.request_key(base, active, settings)
         cached = pose_cache.read(args.pose_cache_dir, signature, base, active)
@@ -321,7 +336,9 @@ def main():
             print('Reused contact-preserving glove poses from shared cache.')
         else:
             paths, poses, report = pose_sequence(paths, active_samples, max_speed, angular_limit,
-                                                settings.get("clearance_mm", 1)/1000, idle_speed)
+                                                settings.get("clearance_mm", 1)/1000, idle_speed,
+                                                winding_active=active,winding_limit=settings.get("winding_limit_deg",260),
+                                                lift=lift,comfort_speed=settings.get("comfort_speed_m_s",.25))
             points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
             pose_cache.write(args.pose_cache_dir, signature, points, np.array(poses), report, base, active)
         report['pose_cache'] = {'hit': cached is not None, 'key': signature}

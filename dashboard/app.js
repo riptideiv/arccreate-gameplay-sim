@@ -213,6 +213,8 @@ function updateExportControls() {
   if (!selected) return;
   const current = settings();
   const running = currentJob?.status === 'running' || exportSubmitting || sceneSubmitting || recorder?.active;
+  const winding = selected.metrics?.arm_winding;
+  setText($('winding-status'), winding?.enabled ? `Verified arm winding: ${winding.minimum_deg.toFixed(1)}° to ${winding.maximum_deg.toFixed(1)}°; limit ±${winding.limit_deg}°.` : 'This saved take predates the winding constraint. Generate a new preview to apply it.');
   const currentSet = selected.presentation?.revision === bootstrap.presentation_revision;
   $('presentation-set').hidden = !selected.live;
   $('refresh-scene').disabled = running || currentSet;
