@@ -103,6 +103,9 @@ function normalizeRun(run) {
     acceleration_weight: saved.acceleration_weight ?? 0,
     note_center_weight: saved.note_center_weight ?? 0,
     note_center_free_mm: saved.note_center_free_mm ?? 5,
+    crossing_depth_weight: saved.crossing_depth_weight ?? 0,
+    wrist_twist_weight: saved.wrist_twist_weight ?? 0,
+    wrist_twist_free_deg: saved.wrist_twist_free_deg ?? 30,
     full_arc_hold: saved.full_arc_hold ?? true,
     full_ground_hold: saved.full_ground_hold ?? true,
     repeat_weight: saved.repeat_weight ?? oldRepeat,
@@ -462,6 +465,10 @@ function showTake(run, restoreControls = false) {
   video.playbackRate = Number($("playback-speed").value);
   $("empty").hidden = true;
   $("analysis").hidden = false;
+  const crossing = run.crossing_ergonomics, wrist = run.metrics?.wrist_twist;
+  setText($('crossing-status'), crossing && wrist
+    ? `Crossed contacts ${crossing.crossing_s.toFixed(2)} s · depth ${crossing.depth_m_s.toFixed(3)} m·s · actual held wrist deviation peak ${wrist.active_peak_deg.toFixed(1)}°.`
+    : 'This saved take predates crossing and wrist measurements. Generate a new take to apply these preferences.');
   const centering = run.note_centering?.point_hits;
   setText($('note-center-status'), centering
     ? `Planned tap offsets · median ${centering.median_mm.toFixed(1)} mm · 90th percentile ${centering.p90_mm.toFixed(1)} mm. Measured from this take.`

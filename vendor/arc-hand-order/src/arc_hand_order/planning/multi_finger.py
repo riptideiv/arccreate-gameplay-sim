@@ -434,6 +434,7 @@ class MultiCost:
     missed_red_notes: int = 0
     acceleration_energy_s: float = 0.0
     note_center_deviation: float = 0.0
+    wrist_twist_s: float = 0.0
 
     def __add__(self, other):
         return MultiCost(self.base + other.base, self.shares + other.shares,
@@ -451,7 +452,8 @@ class MultiCost:
                          self.arc_trace_deviation_s + other.arc_trace_deviation_s,
                          self.missed_red_notes + other.missed_red_notes,
                          self.acceleration_energy_s + other.acceleration_energy_s,
-                         self.note_center_deviation + other.note_center_deviation)
+                         self.note_center_deviation + other.note_center_deviation,
+                         self.wrist_twist_s + other.wrist_twist_s)
 
     def weighted(self, options: PlannerOptions, multi: MultiFingerOptions):
         extra = (self.shares * multi.share_weight + self.second_touches * multi.second_finger_weight
@@ -469,7 +471,8 @@ class MultiCost:
                       + self.collision * multi.collision_weight + self.collision_s * multi.collision_s_weight
                       + self.arc_takeovers * multi.arc_takeover_weight)
         extra += (self.acceleration_energy_s * options.acceleration_weight
-                  + self.note_center_deviation * options.note_center_weight)
+                  + self.note_center_deviation * options.note_center_weight
+                  + self.wrist_twist_s * options.wrist_twist_weight)
         if options.scoring_arcs and options.prefer_arc_trace:
             extra += self.arc_trace_deviation_s * options.arc_trace_weight
         return self.base.weighted(options) + extra if extra else self.base.weighted(options)
@@ -811,6 +814,9 @@ class _Graph:
         self.arrival_touches = {}
         from .note_center import NoteCenterPreference
         self.center_preference = NoteCenterPreference(projection,options.note_center_free_mm/1000) if options.note_center_weight else None
+        from .wrist import WristEstimate
+        self.wrist_model = WristEstimate(options.wrist_proxy_parts,options.wrist_twist_free_deg) if options.wrist_twist_weight else None
+        self.wrist_pairs = {}
         self.trace_preference = None
         if options.scoring_arcs and options.prefer_arc_trace and options.arc_trace_weight:
             from .arc_scoring import TracePreference
@@ -1381,6 +1387,12 @@ class _Graph:
         a, b = self.touches[left], self.touches[right]
         margin = self.options.crossing_pass_margin_m
         return sum(max(0.0, a.xy(f)[0] - b.xy(f)[0] - margin) for f in range(max(a.down, b.down), min(a.up, b.up))) / 60
+
+    def wrist_twist(self,left,right):
+        key=(left,right)
+        if key not in self.wrist_pairs:
+            self.wrist_pairs[key]=self.wrist_model.touch_cost(self.touches[left],self.touches[right])
+        return self.wrist_pairs[key]
 
     def crossing_kinds(self, left: int, right: int):
         """``crossing`` seconds split (level, near, clear) by ``kind``, and the hands' overlap times seconds."""
@@ -2102,6 +2114,11 @@ class _Graph:
         if partner_new is not None:
             crossing += self._crossing_delta(hand, theirs, partner_new, mine[1 - k])
         features = dict(features or {})
+        if self.wrist_model is not None:
+            value=self._crossing_delta(hand,theirs,new,old,self.wrist_twist)
+            if partner_new is not None:
+                value+=self._crossing_delta(hand,theirs,partner_new,mine[1-k],self.wrist_twist)
+            features['wrist_twist_s']=value
         if self.options.acceleration_weight:
             from .trajectory import touch_energy
             energy = (touch_energy(new)-touch_energy(old)

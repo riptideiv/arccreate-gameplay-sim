@@ -167,7 +167,7 @@ def motion_report(paths, poses, max_speed, angular_limit, gap):
     return report
 
 
-def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001, idle_speed=1.0, winding_active=None, winding_limit=260, lift=.008, comfort_speed=.25):
+def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001, idle_speed=1.0, winding_active=None, winding_limit=260, lift=.008, comfort_speed=.25, wrist_twist_weight=0, wrist_twist_free_deg=30):
     """Pose around pinned contacts; overlaps are diagnostics, never plan failures."""
     points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
     active = np.zeros(points.shape[:2], dtype=bool)
@@ -178,7 +178,7 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
     base_report = motion_report(paths, neutral, max_speed, angular_limit, gap)
     parts = [hand_parts(s) for s in SIDES]
     try:
-        solved, angles, posing = solve_hand_poses(points, active, parts, max_speed, angular_limit, gap, idle_speed=idle_speed)
+        solved, angles, posing = solve_hand_poses(points, active, parts, max_speed, angular_limit, gap, idle_speed=idle_speed, wrist_twist_weight=wrist_twist_weight, wrist_twist_free_deg=wrist_twist_free_deg)
         output = [[Vector(p) for p in solved[:, h]] for h in range(2)]
         poses = [tuple(tuple(q) for q in pair) for pair in angles]
         report = motion_report(output, poses, max_speed, angular_limit, gap)
@@ -203,6 +203,8 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
     posing['maximum_contact_drift_m']=float(np.linalg.norm((root_points-points)[physical],axis=-1).max(initial=0))
     report['maximum_contact_drift_m']=posing['maximum_contact_drift_m']
     report['arm_winding']=winding
+    from hand_pose import wrist_metrics
+    report['wrist_twist'] = wrist_metrics(root_points,np.asarray(poses),physical,wrist_twist_free_deg)
     report['idle_speed_m_s'] = min(idle_speed, max_speed)
     return output, poses, report
 
@@ -338,7 +340,9 @@ def main():
             paths, poses, report = pose_sequence(paths, active_samples, max_speed, angular_limit,
                                                 settings.get("clearance_mm", 1)/1000, idle_speed,
                                                 winding_active=active,winding_limit=settings.get("winding_limit_deg",260),
-                                                lift=lift,comfort_speed=settings.get("comfort_speed_m_s",.25))
+                                                lift=lift,comfort_speed=settings.get("comfort_speed_m_s",.25),
+                                                wrist_twist_weight=settings.get("wrist_twist_weight",0),
+                                                wrist_twist_free_deg=settings.get("wrist_twist_free_deg",30))
             points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
             pose_cache.write(args.pose_cache_dir, signature, points, np.array(poses), report, base, active)
         report['pose_cache'] = {'hit': cached is not None, 'key': signature}

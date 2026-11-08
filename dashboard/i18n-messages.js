@@ -1,5 +1,14 @@
 // 简体中文消息表；英文原文作为稳定消息键。
 export const zhCN = {
+  "Crossing and wrist preferences": "反手与手腕偏好",
+  "Crossing duration cost": "交叉持续代价",
+  "Crossing depth cost": "交叉深度代价",
+  "Wrist twist cost": "手腕反拧代价",
+  "Comfortable wrist deviation": "手腕舒适偏角",
+  "Depth is the left fingertip's horizontal distance beyond the right fingertip, minus 5 mm, integrated while both touch. Cost is per metre-second: 50 mm crossed for 2 s costs 0.09 times this weight.": "深度按左指尖超出右指尖的水平距离减去 5 mm，在双手同时按住时积分。单位为米·秒：交叉 50 mm 持续 2 秒，代价为此权重的 0.09 倍。",
+  "Pitch and yaw beyond the comfortable angle cost squared deviation, normalized to 90°, per second. Natural direction follows the body's left/right arm anchors. Planning uses a cached static glove-pose estimate; the animation solver penalizes actual angles. This is not full forearm IK. Zero disables each new cost; score and hard motion limits take priority.": "相对自然朝向，俯仰／偏航超过舒适角度的部分按平方、以 90° 归一化并按秒计费。自然朝向依据身体左右两侧的手臂锚点。规划使用缓存的静态手套姿态估计，动画求解对实际角度计费；并非完整前臂 IK。新代价各自设为 0 可关闭；计分和硬运动限制优先。",
+  "Crossed contacts {seconds} s · depth {depth} m·s · actual held wrist deviation peak {angle}°.": "触点交叉 {seconds} 秒 · 深度积分 {depth} 米·秒 · 按住时实际手腕偏角峰值 {angle}°。",
+  "This saved take predates crossing and wrist measurements. Generate a new take to apply these preferences.": "此旧演奏尚无交叉与手腕测量数据，请重新生成以应用这些偏好。",
   "Planned tap offsets · median {median} mm · 90th percentile {p90} mm. Measured from this take.": "规划点按偏心 · 中位数 {median} mm · 第 90 百分位 {p90} mm。测量自此演奏。",
   "This saved take has no note-centre measurements. Generate a new take to measure offsets.": "此旧演奏没有音符偏心测量数据，请重新生成以测量。",
   "Note centre deviation cost": "音符中心偏离代价",

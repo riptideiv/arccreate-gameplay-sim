@@ -120,9 +120,12 @@ class PlannerOptions:
     acceleration_weight: float = 0.0
     note_center_weight: float = 0.0
     note_center_free_mm: float = 5.0
+    wrist_twist_weight: float = 0.0
+    wrist_twist_free_deg: float = 30.0
+    wrist_proxy_parts: tuple = ()
 
     def __post_init__(self):
-        for name in ("note_center_weight", "note_center_free_mm"):
+        for name in ("note_center_weight", "note_center_free_mm", "wrist_twist_weight", "wrist_twist_free_deg"):
             if not math.isfinite(getattr(self,name)) or getattr(self,name)<0:
                 raise ValueError(f"{name} must be finite and nonnegative")
         if not math.isfinite(self.acceleration_weight) or self.acceleration_weight < 0:

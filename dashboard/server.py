@@ -32,11 +32,11 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261107-note-center-preference'
+DEFAULTS_REVISION = '20261107-crossing-wrist-costs'
 STARTUP_PREFERENCES = ('repeat_comfort_ms', 'jack_gap_ms', 'jack_free', 'jack_weight',
                        'scroll_speed', 'song_delay_ms', 'prefer_arc_trace', 'full_arc_hold',
                        'camera_elevation_deg', 'idle_speed_m_s', 'winding_limit_deg', 'acceleration_weight',
-                       'note_center_weight', 'note_center_free_mm')
+                       'note_center_weight', 'note_center_free_mm','crossing_depth_weight','wrist_twist_weight','wrist_twist_free_deg')
 
 
 class Settings(BaseModel):
@@ -52,6 +52,9 @@ class Settings(BaseModel):
     clearance_mm: float = Field(default=1, ge=0.5, le=8)
     comfort_speed_m_s: float = Field(default=0.25, ge=0.1, le=2)
     crossing_weight: float = Field(default=1, ge=0, le=30)
+    crossing_depth_weight: float = Field(default=100, ge=0, le=100000)
+    wrist_twist_weight: float = Field(default=10, ge=0, le=10000)
+    wrist_twist_free_deg: float = Field(default=30, ge=0, le=90)
     planner_accel_m_s2: float = Field(default=75, ge=1, le=200)
     acceleration_weight: float = Field(default=100, ge=0, le=10000)
     repeat_comfort_ms: float = Field(default=167, ge=1, le=1000)
@@ -461,7 +464,7 @@ class RenderQueue:
                         judgement_timeline=media_url(directory / "judgements.json"),
                         planned_misses=plan["misses"], video=media_url(clip),
                         audio_stems=stems, sound_events=sound_events,
-                        planning=plan["planning"], acceleration=plan.get("acceleration"), note_centering=plan.get("note_centering"), arc_tick_validation=tick_validation,
+                        planning=plan["planning"], acceleration=plan.get("acceleration"), note_centering=plan.get("note_centering"), crossing_ergonomics=plan.get("crossing_ergonomics"), arc_tick_validation=tick_validation,
                         blend=media_url(directory / "scene.blend"),
                         log=media_url(directory / "render.log"))
         except InterruptedError as error:
