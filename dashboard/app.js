@@ -35,20 +35,23 @@ function lockRecording(locked) {
   updateExportControls();
 }
 $('cancel-webgl').addEventListener('click', () => recorder.cancel());
+let endingCapture = false;
+$('export-ending').addEventListener('click', () => { endingCapture = true; $('export-webgl').click(); });
 $('export-webgl').addEventListener('click', async () => {
   if (!selected?.live || recorder.active) return;
   $('error').hidden = true;
   const savedSpeed = $('playback-speed').value;
   try {
     // record() starts synchronously inside this user gesture, then awaits media.
-    const task = recorder.record({fps: Number($('export-fps').value)}); $('playback-speed').value = '1'; lockRecording(true);
+    const startTime = endingCapture ? selected.ending.start_s : 0; endingCapture = false;
+    const task = recorder.record({fps: Number($('export-fps').value), startTime}); $('playback-speed').value = '1'; lockRecording(true);
     const result = await task;
     if (webglDownload) URL.revokeObjectURL(webglDownload);
     webglDownload = URL.createObjectURL(result.blob);
-    webglResult = {width:result.width, height:result.height, fps:result.fps, id:selected.id, scene:selected.live.scene, view:JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))};
+    webglResult = {width:result.width, height:result.height, fps:result.fps, startTime:result.startTime, media:selected.video, id:selected.id, scene:selected.live.scene, view:JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))};
     $('download-webgl').href = webglDownload;
-    Object.assign($('download-webgl').dataset, {mimeType:result.mimeType,width:result.width,height:result.height,fps:result.fps,wallSeconds:result.wallSeconds,durationSeconds:result.duration});
-    $('download-webgl').download = `${selected.settings.chart}-${selected.settings.start_s}-${selected.settings.end_s}-preview-${result.width}x${result.height}-${result.fps}fps.${result.extension}`;
+    Object.assign($('download-webgl').dataset, {mimeType:result.mimeType,width:result.width,height:result.height,fps:result.fps,startTime:result.startTime,wallSeconds:result.wallSeconds,durationSeconds:result.duration});
+    $('download-webgl').download = `${selected.settings.chart}-${selected.settings.start_s}-${selected.settings.end_s}-${result.startTime ? "ending-" + result.startTime : "preview"}-${result.width}x${result.height}-${result.fps}fps.${result.extension}`;
     setText($('download-webgl'), `Download ${result.extension.toUpperCase()}`);
     $('download-webgl').hidden = false;
     setText($('webgl-export-hint'), `Video ready · ${result.width} × ${result.height} · ${result.fps} fps target with game audio.`);
@@ -219,20 +222,24 @@ function updateExportControls() {
   const invalidCamera = [...cameraFields].some(name => !byName(name).validity.valid || byName(name).value === '');
   const saved = selected.export_video || (!selected.live ? selected.video : null);
   $('webgl-export').hidden = !selected.live;
+  $('add-ending').hidden = !!selected.ending;
+  $('add-ending').disabled = running || selected.settings.start_s !== 0;
+  $('export-ending').hidden = !selected.ending;
+  $('export-ending').disabled = !!recorder?.active || !live?.enabled;
   if (!recorder?.supported()) setText($('webgl-export-hint'), 'This browser cannot record a canvas with audio. Use Blender MP4 export below.');
   $('export-webgl').disabled = !!recorder?.active || !recorder?.supported() || !live?.enabled || invalidCamera;
-  $('download-webgl').hidden = !webglResult || webglResult.id !== selected.id || webglResult.scene !== selected.live?.scene;
-  if (webglResult && webglResult.id === selected.id && !recorder.active) setText($('webgl-export-hint'), webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · ${webglResult.fps} fps target with game audio.`);
+  $('download-webgl').hidden = !webglResult || webglResult.id !== selected.id || webglResult.scene !== selected.live?.scene || webglResult.media !== selected.video;
+  if (webglResult && webglResult.id === selected.id && webglResult.media === selected.video && !recorder.active) setText($('webgl-export-hint'), webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · ${webglResult.fps} fps target with game audio.`);
   $('video-export').hidden = false;
   $('export-video').hidden = !selected.live;
-  $('export-video').disabled = running || dirty || invalidCamera;
+  $('export-video').disabled = running || dirty || invalidCamera || !!selected.ending;
   const ownExport = currentJob?.export_only && currentJob.id === selected.id;
   setText($('export-video'), exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export Blender MP4');
   $('download-export').hidden = !saved;
   if (saved) $('download-export').href = saved;
   const oldCamera = selected.export_view && [...cameraFields].some(name => current[name] !== selected.export_view[name]);
   const dimensions = current.quality === 'final' ? '1024 × 768' : '640 × 480';
-  let message = !selected.live ? 'The saved 3D video is ready to download.'
+  let message = selected.ending ? 'Results endings export through the WebGL preview.' : !selected.live ? 'The saved 3D video is ready to download.'
     : exportSubmitting ? 'Starting your video export…'
     : running && ownExport ? (currentJob.stage + ' · ' + Math.round(currentJob.progress) + '%')
     : running ? 'The renderer is busy. Export will be available when it finishes.'
@@ -319,6 +326,10 @@ $("export-video").addEventListener('click', async () => {
   catch (error) { showError(error.message); }
   finally { exportSubmitting = false; updateExportControls(); }
 });
+$('add-ending').addEventListener('click', async () => {
+  try { displayJob(normalizeRun(await api('/api/ending', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:selected.id})}))); schedulePoll(300); }
+  catch(error) { showError(error.message); }
+});
 $('refresh-scene').addEventListener('click', async () => {
   if (!selected?.live || $('refresh-scene').disabled) return;
   sceneSubmitting = true; updateExportControls();
@@ -373,8 +384,8 @@ function displayJob(run) {
     const chart = bootstrap.charts[run.settings.chart];
     setText($("job-detail"), chart.title + " · " + run.settings.start_s + "–" + run.settings.end_s +
       " s. The previous take stays available while this renders.");
-  } else if (run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') !== lastTerminal) {
-    lastTerminal = run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '');
+  } else if (run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') + (run.video || '') + (run.ending_error || '') !== lastTerminal) {
+    lastTerminal = run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') + (run.video || '') + (run.ending_error || '');
     if (run.status === "complete") {
       if (selected?.id === run.id && run.live?.scene !== selected.live?.scene) {
         showTake(run);
@@ -382,7 +393,8 @@ function displayJob(run) {
         selected = run;
         updateExportControls();
       } else if (!selected || run.created >= selected.created) showTake(run);
-      if (run.scene_error) showError('The scene update stopped: ' + run.scene_error + ' The previous scene remains available.');
+      if (run.ending_error) showError(run.ending_error);
+      else if (run.scene_error) showError('The scene update stopped: ' + run.scene_error + ' The previous scene remains available.');
       else if (run.export_error) showError('The MP4 export stopped: ' + run.export_error + ' The live preview remains available.');
       else $("error").hidden = true;
     } else if (run.status === "failed") {

@@ -171,3 +171,5 @@ Current defaults are comfortable repeat gap 167 ms, fast-run gap 133 ms, two unp
 All prior feature branches were merged into `main` in eight feature/fix chunks. Localization is isolated on `feature/zh-cn-i18n`; see [Git workflow](docs/rhythm-git-workflow.md) and [i18n maintenance](docs/i18n.md).
 
 Preview recording supports 30/60 fps (default 60). New native touch-replay footage retains its original 60 fps instead of being downsampled; old saved gameplay remains 30 fps until rebuilt. Negative audio start times caused by chart offsets are supported without changing touch timing. The optional Blender export retains its existing 30 fps timeline.
+
+Completed chart takes can add a native results ending from saved judgements. Pure Memory requires all native perfects; an excerpt or a full combo containing GOOD does not qualify. Export ending only records the short tail with the existing WebGL scene; `dashboard/ending.py --finalize ... --body ...` splices it onto a matching 60 fps body without rerendering that body. Results endings currently use the WebGL export path. See [results ending notes](docs/native-results-ending.md).

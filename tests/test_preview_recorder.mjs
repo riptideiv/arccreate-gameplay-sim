@@ -26,7 +26,7 @@ assert.equal(capturedFps,30);assert.equal(result.fps,30);assert.equal(result.ext
 assert.deepEqual(video.captured,{rate:1,muted:false,volume:1});
 assert.equal(video.currentTime,1.25);assert.equal(video.playbackRate,.5);assert.equal(video.volume,.2);assert(video.muted&&video.paused);assert(!recording.active&&!preview.captureLock);
 assert(Recorder.last.stream.getTracks().every(t=>t.stopped));
-result=await recording.record({fps:60});assert.equal(capturedFps,60);assert.equal(result.fps,60);await assert.rejects(recording.record({fps:120}),/30 or 60/);assert.equal(sources,1,'Repeated exports must reuse the audio graph');
+result=await recording.record({fps:60,startTime:2});assert.equal(result.startTime,2);assert.equal(result.duration,1);assert.equal(video.currentTime,1.25);await assert.rejects(recording.record({startTime:3}),/Invalid export start/);assert.equal(capturedFps,60);assert.equal(result.fps,60);await assert.rejects(recording.record({fps:120}),/30 or 60/);assert.equal(sources,1,'Repeated exports must reuse the audio graph');
 video.neverEnd=true;video.ended=false;
 const pending=recording.record();setTimeout(()=>recording.cancel(),2);await assert.rejects(pending,/Export cancelled/);
 assert(!recording.active&&!preview.captureLock);assert(video.paused&&video.muted);assert.equal(video.playbackRate,.5);

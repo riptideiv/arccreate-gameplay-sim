@@ -162,6 +162,8 @@ class RenderQueue:
             directory = RUNS / run_id
             if not (directory / "run.json").is_file():
                 raise ValueError("Unknown take.")
+            if not (directory / "run.json").is_file():
+                raise ValueError("Unknown take.")
             run = json.loads((directory / "run.json").read_text())
             if run["status"] != "complete" or not run.get("live"):
                 raise ValueError("Choose a completed live preview.")
@@ -186,6 +188,31 @@ class RenderQueue:
             self.update(status="complete", stage="Scene update cancelled · previous scene ready", progress=100, scene_only=False)
         except Exception as error:
             self.update(status="complete", stage="Previous scene ready", progress=100, scene_only=False, scene_error=str(error))
+
+    def add_ending(self, run_id):
+        with self.lock:
+            if self.active and self.active["status"] == "running":
+                raise RuntimeError("A build or export is already running.")
+            if not re.fullmatch(r"\d{8}-\d{6}-[a-f0-9]{6}", run_id):
+                raise ValueError("Unknown take.")
+            directory = RUNS / run_id
+            run = json.loads((directory / "run.json").read_text())
+            if run["status"] != "complete" or not run.get("live"):
+                raise ValueError("Choose a completed live preview.")
+            self.cancelled.clear()
+            self.active = run
+            self.update(status="running", stage="Rendering results ending only", progress=20, ending_only=True, ending_error=None)
+            threading.Thread(target=self.work_ending, args=(directory,), daemon=True).start()
+            return self.active.copy()
+
+    def work_ending(self, directory):
+        try:
+            self.command([ROOT / '.venv/bin/python', ROOT / 'dashboard/ending.py', directory], directory, "Rendering results ending only", 30)
+            lines = (directory / 'render.log').read_text().splitlines()
+            result = json.loads(next(line.removeprefix('ENDING_RESULT ') for line in reversed(lines) if line.startswith('ENDING_RESULT ')))
+            self.update(status="complete", stage="Results ending ready", progress=100, ending_only=False, ending=result, video=result['video'], export_video=None, export_view=None)
+        except Exception as error:
+            self.update(status="complete", stage="Live preview ready", ending_only=False, ending_error=str(error))
 
     def export_video(self, run_id, view=None):
         with self.lock:
@@ -486,6 +513,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({"cancelled": True})
             elif path == "/api/presentation":
                 self.json(QUEUE.refresh_scene(data["id"]), 202)
+            elif path == "/api/ending":
+                self.json(QUEUE.add_ending(data["id"]), 202)
             elif path == "/api/export":
                 self.json(QUEUE.export_video(data["id"], data.get("view")), 202)
             else:

@@ -49,12 +49,14 @@ export class PreviewRecorder {
     if (this.recorder?.state !== 'inactive') this.recorder?.stop();
   }
 
-  async record({fps = 30} = {}) {
+  async record({fps = 30, startTime = 0} = {}) {
     if (![30, 60].includes(fps)) throw new Error('Choose 30 or 60 fps.');
     if (this.active) throw new Error('A preview export is already running.');
     if (!this.supported()) throw new Error('This browser cannot record the preview with audio. Use the Blender MP4 export below.');
     const {video, preview} = this;
     if (!preview.enabled || !Number.isFinite(video.duration) || video.duration <= 0) throw new Error('Wait for the live preview to finish loading.');
+    if (!Number.isFinite(startTime) || startTime < 0 || startTime >= video.duration) throw new Error('Invalid export start time.');
+    const captureDuration = video.duration - startTime;
     const began = performance.now();
     const saved = {time:video.currentTime, rate:video.playbackRate, paused:video.paused, muted:video.muted, volume:video.volume};
     this.active = true; this.cancelReason = null; this.abort = new AbortController();
@@ -66,7 +68,7 @@ export class PreviewRecorder {
       const audio = this.audioGraph(); await audio.context.resume();
       video.pause(); video.playbackRate = 1; video.muted = false; video.volume = 1;
       if (video.readyState < 2) await mediaReady(video, 'loadeddata', () => video.load(), signal);
-      if (video.currentTime !== 0) await mediaReady(video, 'seeked', () => { video.currentTime = 0; }, signal);
+      if (video.currentTime !== startTime) await mediaReady(video, 'seeked', () => { video.currentTime = startTime; }, signal);
       if (signal.aborted) throw new Error(this.cancelReason);
       preview.beginCapture(); // Lock encoded dimensions even if the phone rotates.
       const canvasStream = preview.canvas.captureStream(fps);
@@ -88,7 +90,7 @@ export class PreviewRecorder {
       signal.addEventListener('abort', end, {once:true});
       onVisibility = () => { if (document.hidden) this.cancel('Export stopped because the page was hidden. Keep it visible and try again.'); };
       document.addEventListener('visibilitychange', onVisibility);
-      onProgress = () => this.changed({active:true, progress:Math.min(99,100*video.currentTime/video.duration), message:`Recording preview · ${Math.floor(video.currentTime)} / ${Math.ceil(video.duration)} s`});
+      onProgress = () => this.changed({active:true, progress:Math.min(99,100*(video.currentTime-startTime)/captureDuration), message:`Recording preview · ${Math.floor(video.currentTime-startTime)} / ${Math.ceil(captureDuration)} s`});
       video.addEventListener('timeupdate', onProgress);
       let previousTime = video.currentTime, advancedAt = performance.now();
       watchdog = setInterval(() => {
@@ -98,7 +100,7 @@ export class PreviewRecorder {
       try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* A visible tab still works without a wake lock. */ }
       if (signal.aborted) throw new Error(this.cancelReason);
       recorder.start(250);
-      preview.renderAt(0);
+      preview.renderAt(startTime);
       await video.play();
       await stopped;
       video.removeEventListener('ended', end); signal.removeEventListener('abort', end);
@@ -108,7 +110,7 @@ export class PreviewRecorder {
       const blob = new Blob(chunks, {type});
       if (!blob.size) throw new Error('The browser returned an empty recording.');
       const result = {fps, blob, extension:type.startsWith('video/mp4') ? 'mp4' : 'webm', mimeType:type,
-        width:preview.canvas.width, height:preview.canvas.height, duration:video.duration, wallSeconds:(performance.now()-began)/1000};
+        width:preview.canvas.width, height:preview.canvas.height, startTime, duration:captureDuration, wallSeconds:(performance.now()-began)/1000};
       this.changed({active:false, progress:100, message:'Preview video ready to download.'});
       return result;
     } finally {

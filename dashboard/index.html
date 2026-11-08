@@ -162,7 +162,7 @@
     </section>
     <section class="video-export" id="webgl-export" hidden aria-label="Preview video export">
       <div><h2>Export preview video</h2><p id="webgl-export-hint" class="hint" aria-live="polite">Records this view with game audio at 1×. Keep the page visible until it finishes.</p><progress id="webgl-export-progress" max="100" value="0" hidden aria-label="Preview recording progress"></progress></div>
-      <div class="export-actions"><label for="export-fps">Video frame rate</label><select id="export-fps"><option value="30">30 fps</option><option value="60" selected>60 fps</option></select><button id="export-webgl" type="button">Export preview video</button><button id="cancel-webgl" type="button" hidden>Cancel export</button><a id="download-webgl" download hidden>Download video</a></div>
+      <div class="export-actions"><button id="add-ending" type="button">Add results ending</button><button id="export-ending" type="button" hidden>Export ending only</button><label for="export-fps">Video frame rate</label><select id="export-fps"><option value="30">30 fps</option><option value="60" selected>60 fps</option></select><button id="export-webgl" type="button">Export preview video</button><button id="cancel-webgl" type="button" hidden>Cancel export</button><a id="download-webgl" download hidden>Download video</a></div>
     </section>
     <details id="video-export" class="analysis" hidden><summary>Blender MP4 export</summary>
       <p id="export-hint" class="hint" aria-live="polite">Offline Blender rendering with the current camera and audio.</p>
