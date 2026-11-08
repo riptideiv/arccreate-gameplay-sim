@@ -115,7 +115,8 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                              if item.continuous_contact else item.up_window))
     occupations = replace(occupations, items=tuple(items))
     native_items = occupations.items
-    multi = {"second_finger": False, "second_finger_again": False}
+    multi = {"second_finger": False, "second_finger_again": False,
+             "crossing_depth_weight": settings.get("crossing_depth_weight",0)}
     if scoring:
         multi.update(tick_contacts=True, max_states=settings.get('search_width',256), meeting_swaps=False,
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
@@ -129,12 +130,17 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         'acceleration_weight': settings.get('acceleration_weight', 0),
         'note_center_weight': settings.get('note_center_weight', 0),
         'note_center_free_mm': settings.get('note_center_free_mm', 5),
+        'wrist_twist_weight': settings.get('wrist_twist_weight',0),
+        'wrist_twist_free_deg': settings.get('wrist_twist_free_deg',30),
         "contact_exclusions": tuple((x['parent'],x['start_ms'],x['end_ms']) for x in avoid_contacts),
         "full_arc_hold": settings.get("full_arc_hold", False),
         "partial_hold_weight": settings.get("partial_hold_weight", 1000),
         "full_ground_hold": settings.get("full_ground_hold", True),
         "partial_ground_hold_weight": settings.get("partial_ground_hold_weight", 500),
     }
+    if planner["wrist_twist_weight"]:
+        from hand_pose import HAND_PARTS
+        planner["wrist_proxy_parts"] = HAND_PARTS
     if settings:
         planner["speed_max_m_s"] = settings.get("max_speed_m_s",3.0)
         planner["speed_comfort_m_s"] = min(settings.get("comfort_speed_m_s", 0.25),
@@ -238,6 +244,19 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     from arc_hand_order.planning.note_center import NoteCenterPreference
     from arc_hand_order.planning.projection import GameplayProjection
     output['note_centering'] = NoteCenterPreference(GameplayProjection(result.device),planner['note_center_free_mm']/1000).metrics(result.plan.touches)
+    from arc_hand_order.planning.wrist import WristEstimate
+    model=WristEstimate(planner['wrist_proxy_parts'],planner['wrist_twist_free_deg']) if planner['wrist_twist_weight'] else None
+    crossing=depth=twist=0.
+    for left in (ft.touch for ft in result.plan.touches if ft.hand=='left'):
+        for right in (ft.touch for ft in result.plan.touches if ft.hand=='right'):
+            start,stop=max(left.down,right.down),min(left.up,right.up)
+            crossing += sum(left.xy(f)[0]>right.xy(f)[0] for f in range(start,stop))/60
+            depth += sum(max(0,left.xy(f)[0]-right.xy(f)[0]-result.plan.options.crossing_pass_margin_m) for f in range(start,stop))/60
+            if model is not None:twist += model.touch_cost(left,right)
+    output['crossing_ergonomics']={'crossing_s':crossing,'depth_m_s':depth,
+        'estimated_wrist_strain_s':twist if model is not None else None,
+        'depth_free_mm':result.plan.options.crossing_pass_margin_m*1000,
+        'wrist_model':'5 mm static glove-body pose estimate; actual temporal poses measured separately'}
     return output
 
 

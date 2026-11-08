@@ -14,7 +14,7 @@ def test_key_separates_every_planner_input_but_reuses_presentation_changes(chart
  def key(settings=None,**kwargs):return cache.request_key(chart,0,1000,settings or {},False,kwargs.get('excluded',()),kwargs.get('avoid',()))[0]
  original=key({'max_speed_m_s':4,'arc_path_mode':'score'})
  assert key({'max_speed_m_s':4,'arc_path_mode':'score','camera_yaw_deg':30,'quality':'final','lift_mm':20})==original
- for name,value in {'max_speed_m_s':3,'prefer_arc_trace':True,'full_arc_hold':True,'partial_hold_weight':999,'search_width':64,'point_contact_frames':3,'acceleration_weight':100,'note_center_weight':50,'note_center_free_mm':4,'future_planner_setting':1}.items():
+ for name,value in {'max_speed_m_s':3,'prefer_arc_trace':True,'full_arc_hold':True,'partial_hold_weight':999,'search_width':64,'point_contact_frames':3,'acceleration_weight':100,'note_center_weight':50,'note_center_free_mm':4,'crossing_depth_weight':100,'wrist_twist_weight':10,'wrist_twist_free_deg':20,'future_planner_setting':1}.items():
   assert key({'max_speed_m_s':4,'arc_path_mode':'score',name:value})!=original
  assert key(excluded=['a'])!=key()
  assert key(avoid=[{'parent':'arc','start_ms':0,'end_ms':5}])!=key()

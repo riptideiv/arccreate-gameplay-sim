@@ -170,6 +170,17 @@ def refine(result):
                 a,b = (trial,touches[j]) if t.down < touches[j].down else (touches[j],trial)
                 energy += transfer_energy(a,b,plan.options.speed_max_m_s)
             total += plan.options.acceleration_weight*energy
+        if plan.multi.crossing_depth_weight or graph.wrist_model is not None:
+            trial=replace(t,path=tuple(map(tuple,p)))
+            for j in opponents[i]:
+                left,right=(trial,touches[j]) if h==0 else (touches[j],trial)
+                start,stop=max(left.down,right.down),min(left.up,right.up)
+                if plan.multi.crossing_depth_weight:
+                    total += plan.multi.crossing_depth_weight*sum(
+                        max(0,left.xy(f)[0]-right.xy(f)[0]-plan.options.crossing_pass_margin_m)
+                        for f in range(start,stop))/60
+                if graph.wrist_model is not None:
+                    total += plan.options.wrist_twist_weight*graph.wrist_model.touch_cost(left,right)
         for j in opponents[i]:
             other = touches[j]
             for f in np.unique(

@@ -24,22 +24,14 @@ HAND_PARTS = (
 
 
 VERSION = "pivot-beam-1"
-NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
 
 
-def bases(angles):
-    p, y = np.moveaxis(np.radians(angles), -1, 0)
-    cp, sp, cy, sy = np.cos(p), np.sin(p), np.cos(y), np.sin(y)
-    out = np.zeros(angles.shape[:-1] + (3, 3))
-    out[..., 0, 0] = cy
-    out[..., 0, 1] = -sy * cp
-    out[..., 0, 2] = -sy * sp
-    out[..., 1, 0] = sy
-    out[..., 1, 1] = cy * cp
-    out[..., 1, 2] = cy * sp
-    out[..., 2, 1] = -sp
-    out[..., 2, 2] = cp
-    return out
+# Blender uses its own Python; load the same pure-math convention as planning.
+from pathlib import Path
+import sys
+if str(Path(__file__).resolve().parent/'vendor/arc-hand-order/src') not in sys.path:
+    sys.path.insert(0,str(Path(__file__).resolve().parent/'vendor/arc-hand-order/src'))
+from arc_hand_order.planning.wrist import NEUTRAL, bases, strain as wrist_strain, metrics as wrist_metrics
 
 
 def proxies(angles, parts):
@@ -207,7 +199,11 @@ def solve(
     beam=96,
     stride=6,
     idle_speed=math.inf,
+    wrist_twist_weight=0.0,
+    wrist_twist_free_deg=30.0,
 ):
+    if not math.isfinite(wrist_twist_weight) or wrist_twist_weight<0 or not math.isfinite(wrist_twist_free_deg) or wrist_twist_free_deg<0:
+        raise ValueError("wrist twist settings must be finite and nonnegative")
     points = np.asarray(points, dtype=float)
     active = np.asarray(active, dtype=bool)
     # Slow wrists need wider key intervals to traverse the angular catalogue;
@@ -281,7 +277,10 @@ def solve(
             for d, w in ((6, 0.4), (12, 0.3), (24, 0.15), (36, 0.05))
         )
 
-    initial = cost(0) + neutral * 0.03
+    def wrist(f):
+        return wrist_strain(states,points[f],wrist_twist_free_deg)*wrist_twist_weight if wrist_twist_weight else 0.0
+
+    initial = cost(0) + neutral * 0.03 + wrist(0)/60
     chosen = np.argsort(initial + ahead(0), kind="stable")[:beam]
     previous = states[chosen]
     values = initial[chosen]
@@ -293,7 +292,7 @@ def solve(
         )
         feasible = np.all(distance <= cap[None, None, :] + 1e-6, axis=-1)
         edge = np.sum(distance**2, axis=-1) / 10000 * 0.2
-        scores = values[:, None] + edge + cost(b)[None, :] + neutral[None, :] * 0.03
+        scores = values[:, None] + edge + cost(b)[None, :] + neutral[None, :] * 0.03 + wrist(b)*(b-a)/60
         scores[~feasible] = np.inf
         parents = np.argmin(scores, axis=0)
         best = scores[parents, np.arange(len(states))]

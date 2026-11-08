@@ -22,7 +22,7 @@ def test_shared_key_ignores_view_media_and_planner_metadata_but_tracks_pose_inpu
     assert first==cache.request_key(points,active,{'scroll_speed':2.5,'song_delay_ms':200,'hit_sounds':False,
         'camera_elevation_deg':70,'quality':'final','start_s':56.55,'chart':'different-id','search_width':2048})
     assert first==cache.request_key(points,active,cache.POSE_DEFAULTS)
-    for name,value in {'max_speed_m_s':4,'angular_limit_deg_s':180,'lift_mm':6,'clearance_mm':2,'idle_speed_m_s':.5,'winding_limit_deg':230,'comfort_speed_m_s':.5}.items():
+    for name,value in {'max_speed_m_s':4,'angular_limit_deg_s':180,'lift_mm':6,'clearance_mm':2,'idle_speed_m_s':.5,'winding_limit_deg':230,'comfort_speed_m_s':.5,'wrist_twist_weight':10,'wrist_twist_free_deg':20}.items():
         assert first!=cache.request_key(points,active,{name:value})
     moved=points.copy();moved[5,0,0]=.01
     assert first!=cache.request_key(moved,active,{})
@@ -61,8 +61,8 @@ def test_unverified_or_contact_altering_poses_are_never_cached(tmp_path,pose_inp
 
 def test_solver_code_changes_invalidate_shared_poses(tmp_path,pose_input):
     points,active,_,_=pose_input
-    for name in ('animate.py','hand_pose.py','motion_paths.py','pose_cache.py','winding_paths.py'):
-        (tmp_path/name).write_text('version one')
+    for name in ('animate.py','hand_pose.py','motion_paths.py','pose_cache.py','winding_paths.py','vendor/arc-hand-order/src/arc_hand_order/planning/wrist.py'):
+        (tmp_path/name).parent.mkdir(parents=True,exist_ok=True);(tmp_path/name).write_text('version one')
     key=cache.request_key(points,active,{},root=tmp_path)
     (tmp_path/'hand_pose.py').write_text('different finger geometry or solver')
     assert key!=cache.request_key(points,active,{},root=tmp_path)
