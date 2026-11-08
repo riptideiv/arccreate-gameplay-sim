@@ -433,6 +433,7 @@ class MultiCost:
     arc_trace_deviation_s: float = 0.0
     missed_red_notes: int = 0
     acceleration_energy_s: float = 0.0
+    note_center_deviation: float = 0.0
 
     def __add__(self, other):
         return MultiCost(self.base + other.base, self.shares + other.shares,
@@ -449,7 +450,8 @@ class MultiCost:
                          self.crossing_depth + other.crossing_depth, self.missed_ticks + other.missed_ticks,
                          self.arc_trace_deviation_s + other.arc_trace_deviation_s,
                          self.missed_red_notes + other.missed_red_notes,
-                         self.acceleration_energy_s + other.acceleration_energy_s)
+                         self.acceleration_energy_s + other.acceleration_energy_s,
+                         self.note_center_deviation + other.note_center_deviation)
 
     def weighted(self, options: PlannerOptions, multi: MultiFingerOptions):
         extra = (self.shares * multi.share_weight + self.second_touches * multi.second_finger_weight
@@ -466,7 +468,8 @@ class MultiCost:
                       + self.second_held * multi.second_held_weight + self.trades * multi.trade_weight
                       + self.collision * multi.collision_weight + self.collision_s * multi.collision_s_weight
                       + self.arc_takeovers * multi.arc_takeover_weight)
-        extra += self.acceleration_energy_s * options.acceleration_weight
+        extra += (self.acceleration_energy_s * options.acceleration_weight
+                  + self.note_center_deviation * options.note_center_weight)
         if options.scoring_arcs and options.prefer_arc_trace:
             extra += self.arc_trace_deviation_s * options.arc_trace_weight
         return self.base.weighted(options) + extra if extra else self.base.weighted(options)
@@ -806,6 +809,8 @@ class _Graph:
         self.extension_prefix_speed = {}
         self.transfer_acceleration = {}
         self.arrival_touches = {}
+        from .note_center import NoteCenterPreference
+        self.center_preference = NoteCenterPreference(projection,options.note_center_free_mm/1000) if options.note_center_weight else None
         self.trace_preference = None
         if options.scoring_arcs and options.prefer_arc_trace and options.arc_trace_weight:
             from .arc_scoring import TracePreference
@@ -2105,6 +2110,11 @@ class _Graph:
                 energy += (touch_energy(partner_new)-touch_energy(mine[1-k])
                            + self.arrival_energy(partner_new)-self.arrival_energy(mine[1-k]))
             features['acceleration_energy_s'] = features.get('acceleration_energy_s',0)+energy
+        if self.center_preference is not None:
+            centre = self.center_preference.measure
+            value = centre(new)-centre(old)
+            if partner_new is not None:value += centre(partner_new)-centre(mine[1-k])
+            features['note_center_deviation'] = value
         trace_distance = 0.0
         if self.trace_preference is not None:
             deviation = self.trace_preference.deviation

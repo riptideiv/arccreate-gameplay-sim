@@ -101,6 +101,8 @@ function normalizeRun(run) {
     arc_path_mode: saved.arc_path_mode ?? run.planning?.arc_path_mode ?? 'trace',
     prefer_arc_trace: saved.prefer_arc_trace ?? false,
     acceleration_weight: saved.acceleration_weight ?? 0,
+    note_center_weight: saved.note_center_weight ?? 0,
+    note_center_free_mm: saved.note_center_free_mm ?? 5,
     full_arc_hold: saved.full_arc_hold ?? true,
     full_ground_hold: saved.full_ground_hold ?? true,
     repeat_weight: saved.repeat_weight ?? oldRepeat,
@@ -460,6 +462,10 @@ function showTake(run, restoreControls = false) {
   video.playbackRate = Number($("playback-speed").value);
   $("empty").hidden = true;
   $("analysis").hidden = false;
+  const centering = run.note_centering?.point_hits;
+  setText($('note-center-status'), centering
+    ? `Planned tap offsets · median ${centering.median_mm.toFixed(1)} mm · 90th percentile ${centering.p90_mm.toFixed(1)} mm. Measured from this take.`
+    : 'This saved take has no note-centre measurements. Generate a new take to measure offsets.');
   const acceleration = run.acceleration;
   setText($('acceleration-status'), acceleration
     ? `Held fingertip acceleration · peak ${acceleration.held_peak_m_s2.toFixed(1)} m/s² · RMS ${acceleration.held_rms_m_s2.toFixed(1)} m/s². Measured from this take; includes no wrist rotation or airborne motion.`

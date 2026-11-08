@@ -5,6 +5,7 @@ import {translate, getLanguage, setLanguage, setText, setAttributeText} from '..
 assert.equal(getLanguage(), 'zh-CN');
 const examples = [
  ['Play', '播放'],
+ ['Planned tap offsets · median 8.5 mm · 90th percentile 17.0 mm. Measured from this take.', '规划点按偏心 · 中位数 8.5 mm · 第 90 百分位 17.0 mm。测量自此演奏。'],
  ['Held fingertip acceleration · peak 43.8 m/s² · RMS 2.4 m/s². Measured from this take; includes no wrist rotation or airborne motion.', '按住时指尖加速度 · 峰值 43.8 m/s² · 均方根 2.4 m/s²。测量自此回放，不含转腕和腾空移动。'],
  ['Video ready · 640 × 480 · up to 30 fps with game audio.', '视频已就绪 · 640 × 480 · 最高 30 fps，含游戏音频。'],
  ['270 charts · grouped by song and difficulty.', '共 270 张谱面 · 按歌曲和难度分组。'],

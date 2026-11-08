@@ -127,6 +127,8 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         'prefer_arc_trace': settings.get('prefer_arc_trace', False),
         'arc_trace_weight': settings.get('arc_trace_weight', 1000),
         'acceleration_weight': settings.get('acceleration_weight', 0),
+        'note_center_weight': settings.get('note_center_weight', 0),
+        'note_center_free_mm': settings.get('note_center_free_mm', 5),
         "contact_exclusions": tuple((x['parent'],x['start_ms'],x['end_ms']) for x in avoid_contacts),
         "full_arc_hold": settings.get("full_arc_hold", False),
         "partial_hold_weight": settings.get("partial_hold_weight", 1000),
@@ -233,6 +235,9 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         "duration_ms": end_ms - start_ms,
     }
     output['acceleration'] = motion_metrics(output['touches'])
+    from arc_hand_order.planning.note_center import NoteCenterPreference
+    from arc_hand_order.planning.projection import GameplayProjection
+    output['note_centering'] = NoteCenterPreference(GameplayProjection(result.device),planner['note_center_free_mm']/1000).metrics(result.plan.touches)
     return output
 
 

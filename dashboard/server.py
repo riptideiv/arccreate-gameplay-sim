@@ -32,10 +32,11 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261107-continuous-acceleration'
+DEFAULTS_REVISION = '20261107-note-center-preference'
 STARTUP_PREFERENCES = ('repeat_comfort_ms', 'jack_gap_ms', 'jack_free', 'jack_weight',
                        'scroll_speed', 'song_delay_ms', 'prefer_arc_trace', 'full_arc_hold',
-                       'camera_elevation_deg', 'idle_speed_m_s', 'winding_limit_deg', 'acceleration_weight')
+                       'camera_elevation_deg', 'idle_speed_m_s', 'winding_limit_deg', 'acceleration_weight',
+                       'note_center_weight', 'note_center_free_mm')
 
 
 class Settings(BaseModel):
@@ -63,6 +64,8 @@ class Settings(BaseModel):
     held_release_air_frames: int = Field(default=4, ge=0, le=30)
     arc_path_mode: Literal["score", "trace"] = "score"
     off_center_contacts: bool = True
+    note_center_weight: float = Field(default=50, ge=0, le=10000)
+    note_center_free_mm: float = Field(default=5, ge=0, le=15)
     prefer_arc_trace: bool = True
     arc_trace_weight: float = Field(default=1000, ge=0, le=10000)
     full_arc_hold: bool = True
@@ -458,7 +461,7 @@ class RenderQueue:
                         judgement_timeline=media_url(directory / "judgements.json"),
                         planned_misses=plan["misses"], video=media_url(clip),
                         audio_stems=stems, sound_events=sound_events,
-                        planning=plan["planning"], acceleration=plan.get("acceleration"), arc_tick_validation=tick_validation,
+                        planning=plan["planning"], acceleration=plan.get("acceleration"), note_centering=plan.get("note_centering"), arc_tick_validation=tick_validation,
                         blend=media_url(directory / "scene.blend"),
                         log=media_url(directory / "render.log"))
         except InterruptedError as error:
