@@ -58,6 +58,6 @@
 
 合并操作在临时 worktree 中进行，未中断现有工作台。十次合并后的 main 文件树与 `feature/crossing-wrist-costs` 完全相同；随后只更新本维护记录并清理片尾模块末尾空行。导入曲包、媒体、工具、演奏输出与父仓库房间／椅子文件均未纳入发布。
 
-发布目标为 [riptideiv/arcaea-gameplay-simulator](https://github.com/riptideiv/arcaea-gameplay-simulator)，默认分支为 `main`。只推送合并后的 main；原功能分支引用保留在本地，完整提交历史随 main 发布。
+发布目标为 [riptideiv/arccreate-gameplay-sim](https://github.com/riptideiv/arccreate-gameplay-sim)，默认分支为 `main`。只推送合并后的 main；原功能分支引用保留在本地，完整提交历史随 main 发布。
 
 发布前验证：Python 测试 **229 项通过**；Node 的界面翻译（377 条消息）、预览录制器及规划进度三个检查全部通过；`git diff --check` 通过。本次验证未重新生成原生回放或 Blender 视频，既有验证证据见各功能说明。
