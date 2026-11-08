@@ -1,20 +1,34 @@
-# Rhythm simulator Git workflow
+# 模拟器 Git 工作流
 
-This folder is an independent local Git repository. It contains only the simulator; the parent `dafeiyu-3d-room` repository owns the room, character and chair animation work and ignores this folder.
+这是独立本地仓库，父 `dafeiyu-3d-room` 负责房间、角色与椅子动画，并忽略此目录。模拟器 Git 命令只在本目录运行。
 
-| Branch | Purpose | Simulator-only feature commit |
+## 2026-11-07：已有工作按功能并入 main
+
+原功能分支彼此叠加，因此按依赖顺序使用 `--no-ff` 合并，保留原提交和分支，未压缩或改写历史。
+
+| main 合并提交 | 来源分支 | 功能块 |
 | --- | --- | --- |
-| `main` | Original simulator baseline | `2aa579c` |
-| `feature/webgl-video-export` | Canvas + gameplay-audio recording | `08101b4` |
-| `perf/contact-planner` | Memoization, completed-plan cache and benchmark evidence | `260a5d9` |
-| `integration/rhythm-updates` | Combined live dashboard, plus subsequent maintenance/import commits | Integration based on `bdb4d7f` |
+| `d2d9ca4` | `feature/webgl-video-export` | 同 WebGL 画面与游戏音频录制 |
+| `253f754` | `perf/contact-planner` | 搜索记忆化、完成规划缓存及可重复基准 |
+| `86b3bdd` | `chore/standalone-repository` | 独立仓库、维护记录与曲包清点；保留原 integration 分支 |
+| `882a871` | `feature/chart-library` | 全量曲库导入、分组选择与兼容性提示 |
+| `7ae1168` | `feature/red-notes` | 零分红键显示与追打两个开关 |
+| `90df2c9` | `feature/scroll-audio-settings` | 流速、歌曲延迟与实际命中音效 |
+| `838ea6f` | `fix/idle-detour-speed` | 新默认值、Arghena 调查及可选移动限速 |
+| `fbc66da` | `fix/shared-hand-pose-cache` | 跨演奏复用已验证姿态 |
 
-The original parent commit IDs changed when histories were filtered to remove room/animation files. [Repository separation](repository-separation.md) records the mapping. The packaged pre-optimization source snapshot and benchmark evidence remain unchanged and runnable without Git. No remote was created or pushed.
+合并后 main 与合并前最后工作分支 `fix/shared-hand-pose-cache` 文件树完全一致。没有把父仓库的房间／椅子修改带入，也没有创建远端或执行推送。旧基线是 `2aa579c`，原父仓库提交映射见[拆分记录](repository-separation.md)。
 
-Work directly from this folder. Use separate worktrees here for future feature work; the older worktrees under the parent project's `work/branches/` are historical parent-repository snapshots, not the canonical simulator checkout. Do not switch the live checkout during a running build/export.
+## 中文化分支
 
-Git's interactive signing prompt was unavailable during setup. Task commits used per-command `commit.gpgsign=false`; global signing and identity settings were not changed. Downloaded tools, environments, imported media, saved takes and caches remain local and ignored. Chart manifests and reproducible source/configuration are tracked.
+`feature/zh-cn-i18n` 从上述 main 创建，单独维护简体中文默认界面、无重载 English／中文切换、中文文档及 `README.en.md`。不与规划／姿态实现混在同一功能块，不改变计分规则和缓存键。
 
-The normal dashboard remains at loopback:8765 and the existing Tailscale URL. Its launchd service explicitly configures `BLENDER_BIN`; source defaults use PATH or `.tools/Blender.app`. There is no original-room scene dependency.
+项目自有文档用中文，技术标识、命令、数据报告保留原值。第三方说明和许可证不改写。维护与验证见[中文化说明](i18n.md)。
 
-Validation of the combined features: 150 Python tests, recorder lifecycle checks, native frame/audio inspection and unchanged Blender/WebGL alignment checks. See the [optimization report](ipad-rhythm-planner-optimization.md), [recording notes](ipad-rhythm-webgl-export.md), and [porting guide](ipad-rhythm-environment-porting.md).
+## 后续开发与运行
+
+未来可从本仓库创建分支／worktree；父项目 `work/branches/` 的旧 worktree 是父历史快照，不是当前模拟器规范工作区。运行规划／导出时不要切换实时工作区。已打开页面保留原内存代码，重新加载页面后才使用新的 UI。
+
+下载工具、虚拟环境、导入媒体、演奏与缓存忽略于 Git；清单与可复现源码／配置提交。交互签名提示在当前执行环境不可用，任务提交按命令使用 `commit.gpgsign=false`，未修改全局签名或身份。
+
+服务仍为 loopback:8765 与已有 Tailscale 地址；launchd 显式配置 `BLENDER_BIN`，源码默认 PATH／本地安装，不加载房间场景。重载前检查 `/api/state`；新增 UI 模块要检查静态白名单，不能为加载新界面中断活动演奏。

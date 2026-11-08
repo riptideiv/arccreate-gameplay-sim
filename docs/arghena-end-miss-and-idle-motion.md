@@ -1,37 +1,37 @@
-# Arghena end-region miss and fast free-hand motion
+# Arghena 末段漏键与空闲手快速移动调查
 
-Source take: `20261107-042826-bb0f61`, Arghena Future 11, chart window **56.550–118.378 s**. Original source assets, contact plan, replay and media remain unchanged. Revised motion-only take: **20261107-044336-ca9335**, linked into normal saved takes; artifacts live in `output/idle-qa/reposed/`.
+源演奏 **`20261107-042826-bb0f61`**：Arghena Future 11，范围 **56.550–118.378 s**。源谱面、触点规划、回放与媒体不改。仅更新动作的版本为 **`20261107-044336-ca9335`**，已加入正常演奏列表，产物在 `output/idle-qa/reposed/`。
 
-## The miss
+## 漏键原因
 
-The lane-3 ground tap at **114.485 s** (57.935 s into the video) is explicitly skipped in `plan.json`, with reason `no feasible contact in the bounded search`. ArcCreate reports its MissLate at **114.617 s**. The chosen plan reserves the left finger for a blue arc chain from 114.000 to 114.583 s and uses the right finger for the simultaneous sky tap at 114.483–114.517 s. The ground tap is therefore absent from that chosen contact sequence.
+**114.485 s** 的第三轨地键（视频内 **57.935 s**）在 `plan.json` 中主动跳过，理由 `no feasible contact in the bounded search`（有界搜索未找到可行触点）。ArcCreate 在 **114.617 s** 判 MissLate。所选方案让左手占蓝蛇 **114.000–114.583 s**，右手打同时的天键 **114.483–114.517 s**，因此这条触点序列没有地键。
 
-This is not evidence that the chart requires three fingers. Native scoring had already secured the blue chain's ticks at **114.000, 114.167 and 114.333 s**. The planner nevertheless retains the combined left contact until **114.583 s**, including a conservatively late reservation for an earlier arc tick. It does not choose the available release/repress allocation.
+这不说明谱面必须三指。原生已在 **114.000、114.167、114.333 s** 接住蓝蛇物量，但规划器保留左手合并触点至 **114.583 s**，包括较早计分点一个保守偏晚的占用，没有选到可用的松开／重按交接。
 
-A diagnostic two-finger input alternative truncates that left contact at 114.467 s, re-presses the left finger for the sky note at 114.483 s, and moves the right finger's simultaneous press to lane 3. Native ArcCreate on the same 113.9–115.4 s test window changes from **14 hits / 1 miss** to **15 hits / 0 misses**, without losing the snake ticks. This establishes a contact-search/handoff limitation, rather than a necessary chart miss. This investigation does not install that hand-edited input as an automatic planner fix.
+诊断性双指替代输入把左手触点缩到 **114.467 s**，**114.483 s** 左手重新按天键，右手同时去第三轨。同一 **113.9–115.4 s** 原生窗口从 **14 命中／1 漏键** 变 **15／0**，蛇物量未丢。这证明是接触搜索／交接局限，而非必漏。本次调查未把手改输入冒充自动规划器修复。
 
-The other end-of-window planned skip, the blue arc tick at **118.376 s**, was actually caught incidentally at **118.383 s**. The selected interval ends at 118.378 s; the subsequent five native misses occur after the cutoff during the existing judgement tail. The initial skipped sky tap at 56.594 s is a separate motion-boundary exclusion.
+另一个末尾计划跳过的蓝蛇计分点 **118.376 s**，实际在 **118.383 s** 顺带接到了。选段截止 **118.378 s**，之后五个原生漏键来自截止后的既有判定收尾。开头 **56.594 s** 天键跳过属于独立的动作边界排除。
 
-## Why the hand flew around
+## 为什么手突然飞走
 
-Around the lane-3 miss the original right-hand touch sequence has short release gaps, not a return-to-home dwell. `motion_paths.positions` only inserts optional home rests for gaps of at least one second, so it did not send this hand home.
+地键漏掉附近的右手离屏间隔较短，不属于回家等候。`motion_paths.positions` 只在至少一秒空闲时插入回位，因此这里没有把手送回初始位置。
 
-The later `hand_pose.air_paths` pass adds collision-avoidance excursions. It could add **up to roughly 12.7 cm** to this hand's path while spending the full **4 m/s** main move budget. The original direct transfer peaks at about **1.19 m/s**, but the fitted detour peaks at **3.46 m/s** around 114.55 s. Similar excursions also occur later in this take.
+后续 `hand_pose.air_paths` 会插入避碰绕行，原先可用完整 **4 m/s** 主预算，给右手路径增加最多约 **12.7 cm**。原直接转移峰值约 **1.19 m/s**，拟合绕行在 **114.55 s** 附近达 **3.46 m/s**，同段稍后还有类似现象。
 
-## Motion change
+## 动作修复
 
-The dashboard now exposes **Idle / detour speed**, default **1 m/s**. Optional home-return scheduling may not raise its speed to squeeze in a full rest excursion. Terminal retreat time is allocated with this slower limit. When a full home trip will not fit, no forced high-speed excursion is inserted.
+新增「待机／避让速度」，默认 **1 m/s**。可选回位不能为了挤进完整等候而提速；末尾撤回按慢速分配时长，时间不足则不强行绕远。
 
-Both pad-avoidance and full-glove avoidance passes now cap optional translation to the idle limit, with an allowance for any faster direct movement already required by the fixed contacts. They also retain the existing combined translation/rotation main speed bound. Avoidance cannot use the main speed budget just to make a larger detour. The solver continues trying wrist pivots; unresolved overlap stays diagnostic and cannot trigger contact replanning or a failure loop.
+指腹避让和整手避让都把可选平移限在待机预算内，同时允许固定触点本来就需要的更快直接转移。平移＋旋转仍受主速度约束，避让不能借主预算额外兜圈。求解器继续尝试转腕；未解重叠只作诊断，不重规划、不无限失败循环。
 
-Reposing the **entire original saved plan**, with its original ArcCreate video, reduces the right-hand translation peak over 114.3–114.7 s from **3.4606 to 1.1885 m/s**. The remaining speed is the required sky-to-ground transfer. Every contact position, timing and plan byte is preserved. The resulting motion has the same 3,746 samples, so the gameplay clock stays aligned. The full take passes its main glove speed and wrist-turn checks.
+复用**完整原规划与原 ArcCreate 视频**重新求姿态后，**114.3–114.7 s** 右手平移峰值由 **3.4606 降至 1.1885 m/s**，剩余是天键转地键所需移动。每个触点位置、时刻和规划字节保留，仍为 **3,746** 样本，游戏时钟不变，整段通过主速度／转腕校验。
 
-The bounded pose solver still reports residual proxy overlap: 14 sampled intervals versus 9 in the original, with the same approximately 12 mm worst proxy penetration. These include very close fixed-touch configurations. The idle cap trades away large airborne detours; it does not claim a collision-free solution for every coincident contact. Both takes remain viewable without collision gates.
+有界姿态求解仍有碰撞代理重叠：原 **9** 个采样区间变 **14** 个，最深均约 **12 mm**，包括非常接近的固定触点。限制空中大绕行有这一代价，不宣称所有接近触点都能完全无碰撞；两段都能正常播放。
 
-## Defaults and validation
+## 默认值与证据
 
-Dashboard defaults now use repeat comfort 167 ms, fast-run gap 133 ms, two free presses, extra fast-run cost 10, scroll speed 2.5, song delay 0, arc-geometry preference on, visual-end arc holding on, camera elevation 70°, and idle/detour speed 1 m/s. Default migration preserves the selected chart/window and other existing controls; explicit historical take selection still restores the saved values. A defaults revision on new runs prevents this migration from overwriting subsequent tuning on every page load.
+默认舒适连打 **167 ms**、快速阈值 **133 ms**、免费 **2** 次、额外代价 **10**、流速 **2.5**、歌曲延迟 **0**、描蛇和按到视觉尾端开启、俯视角 **70°**、待机／避让 **1 m/s**。默认迁移保留谱面范围及其他设置，显式选历史演奏仍恢复保存值，新演奏版本标记防止每次刷新覆盖后续调参。
 
-**170 project/vendor tests pass**, including separate idle caps, bounded avoidance, contact preservation, faster required transfers, defaults and cache separation. Early-release tests still exercise the explicit off policy; the dashboard's new default prefers holding to the visual end. Idle speed is excluded from contact-plan cache keys but included in pose identity.
+该修复版本 **170 项项目／上游测试通过**，覆盖独立待机限制、有界避让、触点保持、必须更快的转移、默认值和缓存隔离。提前松手测试仍显式关闭全程偏好；新界面默认优先按到尾端。待机速度不进入触点缓存，但进入姿态身份。
 
-Evidence: `output/idle-qa/verification.json`, original/alternative native replay results under `output/idle-qa/native/`, regenerated motion/scene/report under `output/idle-qa/reposed/`, and live browser screenshot `output/idle-qa/dashboard.jpg`. The browser loads the revised GLB, exposes the 1 m/s control, shows the requested migrated defaults, and was inspected around 57.9–58.05 s into the replay without browser errors. Original contacts/gameplay were reused; no ArcCreate rerender was needed for the motion-only saved take.
+证据：`output/idle-qa/verification.json`、`native/` 原／替代输入判定、`reposed/` 动作／场景／报告及 `dashboard.jpg`。浏览器已加载新 GLB 和 1 m/s 设置，在视频 **57.9–58.05 s** 检查无错误。动作修改复用原触点／视频，无需重渲染 ArcCreate。

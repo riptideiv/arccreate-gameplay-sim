@@ -1,6 +1,9 @@
+import { setText, setAttributeText, initI18n } from './i18n.js';
 import { RhythmPreview } from './live-preview.js';
 import { ChartRange } from './chart-range.js';
 import { PreviewRecorder } from './preview-recorder.js';
+
+initI18n();
 
 const form = document.querySelector("#settings");
 const video = document.querySelector("#video");
@@ -15,10 +18,10 @@ let sceneSubmitting = false;
 const chartRange = new ChartRange(form, () => markDirty());
 let live, recorder, deferredTake, webglDownload, webglResult;
 try { live = new RhythmPreview($("live-scene"), video, $("live-performance")); }
-catch (error) { $("live-performance").textContent = "Live 3D unavailable: " + error.message; }
+catch (error) { setText($("live-performance"), "Live 3D unavailable: " + error.message); }
 
 recorder = new PreviewRecorder(live, video, state => {
-  $('webgl-export-hint').textContent = state.message;
+  setText($('webgl-export-hint'), state.message);
   $('webgl-export-progress').hidden = !state.active;
   $('webgl-export-progress').value = state.progress;
 });
@@ -45,11 +48,11 @@ $('export-webgl').addEventListener('click', async () => {
     $('download-webgl').href = webglDownload;
     Object.assign($('download-webgl').dataset, {mimeType:result.mimeType,width:result.width,height:result.height,wallSeconds:result.wallSeconds,durationSeconds:result.duration});
     $('download-webgl').download = `${selected.settings.chart}-${selected.settings.start_s}-${selected.settings.end_s}-preview-${result.width}x${result.height}.${result.extension}`;
-    $('download-webgl').textContent = `Download ${result.extension.toUpperCase()}`;
+    setText($('download-webgl'), `Download ${result.extension.toUpperCase()}`);
     $('download-webgl').hidden = false;
-    $('webgl-export-hint').textContent = `Video ready · ${result.width} × ${result.height} · up to 30 fps with game audio.`;
+    setText($('webgl-export-hint'), `Video ready · ${result.width} × ${result.height} · up to 30 fps with game audio.`);
   } catch (error) {
-    $('webgl-export-hint').textContent = error.message;
+    setText($('webgl-export-hint'), error.message);
     if (!error.message.startsWith('Export cancelled')) showError(error.message);
   } finally {
     $('playback-speed').value = savedSpeed;
@@ -66,12 +69,12 @@ $("play-preview").addEventListener('click', async () => {
 });
 $("seek-preview").addEventListener('input', event => { video.currentTime = Number(event.target.value); live?.pose(video.currentTime); });
 function updateTransport() {
-  $("play-preview").textContent = video.paused ? 'Play' : 'Pause';
-  $("play-preview").setAttribute('aria-label', video.paused ? 'Play preview' : 'Pause preview');
+  setText($("play-preview"), video.paused ? 'Play' : 'Pause');
+  setAttributeText($("play-preview"), 'aria-label', video.paused ? 'Play preview' : 'Pause preview');
   const duration = Number.isFinite(video.duration) ? video.duration : 0;
   $("seek-preview").max = duration || 1;
   $("seek-preview").value = video.currentTime;
-  $("preview-time").textContent = clock(video.currentTime) + ' / ' + clock(duration);
+  setText($("preview-time"), clock(video.currentTime) + ' / ' + clock(duration));
 }
 for (const event of ['timeupdate', 'loadedmetadata', 'play', 'pause', 'seeked']) video.addEventListener(event, updateTransport);
 
@@ -106,9 +109,9 @@ function updateReleasePolicy() {
   const fullArc = byName("full_arc_hold").checked;
   byName("partial_hold_weight").disabled = !fullArc;
   byName("partial_ground_hold_weight").disabled = !byName("full_ground_hold").checked;
-  $("arc-release-summary").textContent = fullArc
+  setText($("arc-release-summary"), fullArc
     ? "Arcs prefer full contact; tick-based early release is available at a cost."
-    : "Arcs release once their final scoring tick is secured, before the visual tail ends.";
+    : "Arcs release once their final scoring tick is secured, before the visual tail ends.");
 }
 
 function updateClickInterval() {
@@ -117,12 +120,12 @@ function updateClickInterval() {
   const down = byName("point_contact_frames");
   const air = byName("min_air_frames");
   if (!down.value || !air.value || !down.validity.valid || !air.validity.valid) {
-    $("click-interval").textContent = "";
+    setText($("click-interval"), "");
     return;
   }
   const frames = Number(down.value) + Number(air.value);
-  $("click-interval").textContent = "Point taps require at least " + (frames * 1000 / 60).toFixed(1) +
-    " ms between presses, at most " + (60 / frames).toFixed(1) + " taps/s per hand before movement is considered.";
+  setText($("click-interval"), "Point taps require at least " + (frames * 1000 / 60).toFixed(1) +
+    " ms between presses, at most " + (60 / frames).toFixed(1) + " taps/s per hand before movement is considered.");
 }
 
 function settings() {
@@ -158,28 +161,31 @@ function populateCharts() {
     const groupName = chart.group || 'Original projects';
     let group = groups.get(groupName);
     if (!group) {
-      group = document.createElement('optgroup'); group.label = groupName;
+      group = document.createElement('optgroup');
+      if (chart.group) group.label = chart.group;
+      else setAttributeText(group, 'label', groupName);
       groups.set(groupName, group); select.append(group);
     }
     const option = document.createElement('option');
     option.value = key;
-    option.textContent = chart.title + (chart.available === false ? ' · unavailable' : '');
+    if (chart.available === false) setText(option, chart.title + ' · unavailable');
+    else option.textContent = chart.title;
     option.disabled = chart.available === false;
-    if (chart.unavailable_reason) option.title = chart.unavailable_reason;
+    if (chart.unavailable_reason) setAttributeText(option, 'title', chart.unavailable_reason);
     group.append(option);
   }
   const unavailable = entries.filter(([, chart]) => chart.available === false).length;
-  $('chart-library-info').textContent = `${entries.length} charts · grouped by song and difficulty` +
-    (unavailable ? ` · ${unavailable} require newer chart-format support.` : '.');
+  setText($('chart-library-info'), `${entries.length} charts · grouped by song and difficulty` +
+    (unavailable ? ` · ${unavailable} require newer chart-format support.` : '.'));
 }
 
 function updateChartCompatibility() {
   const chart = bootstrap?.charts[byName('chart').value];
   const warnings = Object.entries(chart?.warnings || {});
   $('chart-compatibility').hidden = !warnings.length && !chart?.unavailable_reason;
-  $('chart-compatibility').textContent = chart?.unavailable_reason || (warnings.length ?
+  setText($('chart-compatibility'), chart?.unavailable_reason || (warnings.length ?
     'Compatibility notice: this chart uses features the planner may not fully model (' +
-    warnings.map(([code]) => code.replace(/^unsupported_/, '').replaceAll('_', ' ')).join(', ') + ').' : '');
+    warnings.map(([code]) => code.replace(/^unsupported_/, '').replaceAll('_', ' ')).join(', ') + ').' : ''));
 }
 
 function syncSliders() {
@@ -194,7 +200,7 @@ function sameSettings(a, b) {
 function markDirty() {
   if (!selected) return;
   const dirty = !sameSettings(settings(), selected.settings);
-  $("preview-tag").textContent = dirty ? "Settings changed" : selected.metrics.contact_preserving_pose_solver ? "Contacts preserved" : selected.metrics.collision_verification === false ? "Speed verified" : "Motion verified";
+  setText($("preview-tag"), dirty ? "Settings changed" : selected.metrics.contact_preserving_pose_solver ? "Contacts preserved" : selected.metrics.collision_verification === false ? "Speed verified" : "Motion verified");
   $("preview-tag").className = "tag " + (dirty ? "dirty" : "ready");
   updateExportControls();
 }
@@ -206,21 +212,21 @@ function updateExportControls() {
   const currentSet = selected.presentation?.revision === bootstrap.presentation_revision;
   $('presentation-set').hidden = !selected.live;
   $('refresh-scene').disabled = running || currentSet;
-  $('refresh-scene').textContent = sceneSubmitting || (running && currentJob?.scene_only) ? 'Updating…' : currentSet ? 'Set up to date' : 'Update presentation';
-  $('presentation-hint').textContent = currentSet ? 'Walnut tabletop · woven mat · plant · ballpoint pen.' : 'Update this saved take’s scene. Reuses its hands, contact plan and gameplay; clears the old MP4 download.';
+  setText($('refresh-scene'), sceneSubmitting || (running && currentJob?.scene_only) ? 'Updating…' : currentSet ? 'Set up to date' : 'Update presentation');
+  setText($('presentation-hint'), currentSet ? 'Walnut tabletop · woven mat · plant · ballpoint pen.' : 'Update this saved take’s scene. Reuses its hands, contact plan and gameplay; clears the old MP4 download.');
   const dirty = !sameSettings(current, selected.settings);
   const invalidCamera = [...cameraFields].some(name => !byName(name).validity.valid || byName(name).value === '');
   const saved = selected.export_video || (!selected.live ? selected.video : null);
   $('webgl-export').hidden = !selected.live;
-  if (!recorder?.supported()) $('webgl-export-hint').textContent = 'This browser cannot record a canvas with audio. Use Blender MP4 export below.';
+  if (!recorder?.supported()) setText($('webgl-export-hint'), 'This browser cannot record a canvas with audio. Use Blender MP4 export below.');
   $('export-webgl').disabled = !!recorder?.active || !recorder?.supported() || !live?.enabled || invalidCamera;
   $('download-webgl').hidden = !webglResult || webglResult.id !== selected.id || webglResult.scene !== selected.live?.scene;
-  if (webglResult && webglResult.id === selected.id && !recorder.active) $('webgl-export-hint').textContent = webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · up to 30 fps with game audio.`;
+  if (webglResult && webglResult.id === selected.id && !recorder.active) setText($('webgl-export-hint'), webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · up to 30 fps with game audio.`);
   $('video-export').hidden = false;
   $('export-video').hidden = !selected.live;
   $('export-video').disabled = running || dirty || invalidCamera;
   const ownExport = currentJob?.export_only && currentJob.id === selected.id;
-  $('export-video').textContent = exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export Blender MP4';
+  setText($('export-video'), exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export Blender MP4');
   $('download-export').hidden = !saved;
   if (saved) $('download-export').href = saved;
   const oldCamera = selected.export_view && [...cameraFields].some(name => current[name] !== selected.export_view[name]);
@@ -233,7 +239,7 @@ function updateExportControls() {
     : invalidCamera ? 'Enter valid camera settings before exporting.'
     : oldCamera ? 'The saved MP4 uses an earlier camera. Export again to use this view.'
     : `Hands, tablet and presentation set with audio · MP4 · 30 fps · ${dimensions}. Uses the current camera.`;
-  if ($('export-hint').textContent !== message) $('export-hint').textContent = message;
+  setText($('export-hint'), message);
 }
 
 for (const slider of form.querySelectorAll("[data-for]")) {
@@ -267,7 +273,7 @@ async function api(url, options) {
 
 function showError(message, log) {
   $("error").hidden = false;
-  $("error-message").textContent = message;
+  setText($("error-message"), message);
   $("error-log").hidden = !log;
   if (log) $("error-log").href = log;
 }
@@ -298,7 +304,7 @@ $("cancel").addEventListener("click", async () => {
     await api("/api/cancel", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: currentJob.id })
     });
-    $("job-stage").textContent = "Stopping render…";
+    setText($("job-stage"), "Stopping render…");
   } catch (error) { showError(error.message); }
 });
 $("playback-speed").addEventListener("change", () => { video.playbackRate = Number($("playback-speed").value); });
@@ -337,7 +343,7 @@ function displayJob(run) {
   if (!run) return;
   if (running) {
     $("cancel").disabled = false;
-    $("job-stage").textContent = run.stage;
+    setText($("job-stage"), run.stage);
     $("progress").value = run.progress;
     const planning = run.planning_progress;
     $("planning-status").hidden = !planning;
@@ -349,10 +355,10 @@ function displayJob(run) {
         done: 'Touchpoint search complete', writing: 'Saving contact plan'};
       const known = planning.total > 0;
       const percent = known ? Math.min(100, 100 * planning.completed / planning.total) : null;
-      $("planning-label").textContent = (labels[planning.phase] || planning.phase)
+      setText($("planning-label"), (labels[planning.phase] || planning.phase)
         + (known ? ' · ' + percent.toFixed(1) + '% · ' + planning.completed.toLocaleString() + ' / '
           + planning.total.toLocaleString() + (planning.phase === 'arc_profiles' ? ' snakes' : ' items') : '')
-        + (planning.attempt > 1 ? ' · retry with individual scoring ticks' : '');
+        + (planning.attempt > 1 ? ' · retry with individual scoring ticks' : ''));
       if (known) $("planning-progress").value = percent;
       else $("planning-progress").removeAttribute('value');
       const elapsed = Math.max(0, Math.floor((planning.elapsed_s || 0)
@@ -361,11 +367,11 @@ function displayJob(run) {
       if (planning.chart_ms != null) details.push('chart ' + (run.settings.start_s + planning.chart_ms/1000).toFixed(2) + ' s');
       if (planning.states != null) details.push(planning.states.toLocaleString() + ' alternatives retained');
       if (planning.phase === 'search') details.push('Progress counts processed items; remaining items can take different amounts of time.');
-      $("planning-detail").textContent = details.join(' · ');
+      setText($("planning-detail"), details.join(' · '));
     }
     const chart = bootstrap.charts[run.settings.chart];
-    $("job-detail").textContent = chart.title + " · " + run.settings.start_s + "–" + run.settings.end_s +
-      " s. The previous take stays available while this renders.";
+    setText($("job-detail"), chart.title + " · " + run.settings.start_s + "–" + run.settings.end_s +
+      " s. The previous take stays available while this renders.");
   } else if (run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') !== lastTerminal) {
     lastTerminal = run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '');
     if (run.status === "complete") {
@@ -391,8 +397,8 @@ function showTake(run, restoreControls = false) {
   if (restoreControls) fill(run.settings);
   const chart = bootstrap.charts[run.settings.chart];
   $("preview-title").textContent = chart.title;
-  $("preview-description").textContent = run.settings.start_s + "–" + run.settings.end_s +
-    " s · " + (run.live ? "live 3D · ArcCreate touch replay" : "saved MP4 · original autoplay");
+  setText($("preview-description"), run.settings.start_s + "–" + run.settings.end_s +
+    " s · " + (run.live ? "live 3D · ArcCreate touch replay" : "saved MP4 · original autoplay"));
   video.pause();
   video.src = run.video;
   video.controls = !run.live;
@@ -407,9 +413,9 @@ function showTake(run, restoreControls = false) {
   $("arc-tick-report").hidden = !run.arc_tick_validation;
   if (run.arc_tick_validation) {
     const check=run.arc_tick_validation;
-    $("arc-tick-summary").textContent = check.confirmed_hits + ' / ' + check.predicted_hits + ' planned arc catches confirmed by native replay'
+    setText($("arc-tick-summary"), check.confirmed_hits + ' / ' + check.predicted_hits + ' planned arc catches confirmed by native replay'
       + (check.unconfirmed ? ' · ' + check.unconfirmed + ' unconfirmed; see report.' : '.')
-      + (check.incidental_hits ? ' Also caught ' + check.incidental_hits + ' additional arc ticks.' : '');
+      + (check.incidental_hits ? ' Also caught ' + check.incidental_hits + ' additional arc ticks.' : ''));
     $("arc-tick-report").href=check.report;
   }
   if (run.judgements) {
@@ -417,41 +423,41 @@ function showTake(run, restoreControls = false) {
     $('hit-audio-report').hidden = !run.audio_stems?.hits;
     if (run.audio_stems?.hits) {
       $('hit-audio-download').href = run.audio_stems.hits;
-      $('hit-audio-counts').textContent = `${run.sound_events.block_hits} block clicks · ${run.sound_events.arc_tick_hits} snake tick clicks from actual catches.`;
+      setText($('hit-audio-counts'), `${run.sound_events.block_hits} block clicks · ${run.sound_events.arc_tick_hits} snake tick clicks from actual catches.`);
     }
-    $("judgement-summary").textContent = j.hits + ' hits · ' + j.misses + ' misses · score ' + j.score.toLocaleString()
+    setText($("judgement-summary"), j.hits + ' hits · ' + j.misses + ' misses · score ' + j.score.toLocaleString()
       + ((j.red_hits || j.red_misses) ? ` · red: ${j.red_hits || 0} caught / ${j.red_misses || 0} missed (no score)` : '')
-      + (run.planning?.arc_reacquisitions ? ' · ' + run.planning.arc_reacquisitions + ' planned arc reacquisitions' : '');
+      + (run.planning?.arc_reacquisitions ? ' · ' + run.planning.arc_reacquisitions + ' planned arc reacquisitions' : ''));
     $("skipped-targets").replaceChildren();
     for (const miss of run.planned_misses || []) {
       const li = document.createElement('li'), button = document.createElement('button');
       button.type = 'button';
-      button.textContent = (run.settings.start_s + miss.start_ms / 1000).toFixed(2) + ' s · ' +
-        (miss.kind === 'red_sky' ? 'red sky note · no score' : (miss.kind === 'arc_tick' ? 'arc tick' : miss.kind) + ' · ' + miss.scoring_ticks + ' scoring tick' + (miss.scoring_ticks === 1 ? '' : 's'));
-      button.title = miss.reason || '';
+      setText(button, (run.settings.start_s + miss.start_ms / 1000).toFixed(2) + ' s · ' +
+        (miss.kind === 'red_sky' ? 'red sky note · no score' : (miss.kind === 'arc_tick' ? 'arc tick' : miss.kind) + ' · ' + miss.scoring_ticks + ' scoring tick' + (miss.scoring_ticks === 1 ? '' : 's')));
+      setAttributeText(button, 'title', miss.reason || '');
       button.addEventListener('click', () => { video.currentTime = Math.max(0, miss.start_ms / 1000 - 1); $("preview").scrollIntoView({block:'start'}); });
       li.append(button); $("skipped-targets").append(li);
     }
-    if (!run.planned_misses?.length) { const li = document.createElement('li'); li.textContent = 'No targets deliberately skipped by the planner.'; $("skipped-targets").append(li); }
+    if (!run.planned_misses?.length) { const li = document.createElement('li'); setText(li, 'No targets deliberately skipped by the planner.'); $("skipped-targets").append(li); }
   }
   video.playbackRate = Number($("playback-speed").value);
   $("empty").hidden = true;
   $("analysis").hidden = false;
   const metrics = run.metrics;
   const hands = Object.values(metrics.hands);
-  $("peak-speed").textContent = Math.max(...hands.map(hand => hand.peak_surface_bound_m_s)).toFixed(2) + " m/s";
-  $("speed-limit").textContent = "Limit " + metrics.max_speed_m_s.toFixed(2) + " m/s";
-  $("peak-turn").textContent = Math.max(...hands.map(hand => hand.peak_angular_deg_s)).toFixed(0) + "°/s";
-  $("turn-limit").textContent = "Limit " + metrics.angular_limit_deg_s + "°/s";
+  setText($("peak-speed"), Math.max(...hands.map(hand => hand.peak_surface_bound_m_s)).toFixed(2) + " m/s");
+  setText($("speed-limit"), "Limit " + metrics.max_speed_m_s.toFixed(2) + " m/s");
+  setText($("peak-turn"), Math.max(...hands.map(hand => hand.peak_angular_deg_s)).toFixed(0) + "°/s");
+  setText($("turn-limit"), "Limit " + metrics.angular_limit_deg_s + "°/s");
   const collisionsOff = metrics.collision_verification === false;
   const fitted = metrics.contact_preserving_pose_solver;
-  $("gap-label").textContent = fitted ? "Closest glove gap" : collisionsOff ? "Glove collision check" : "Closest hand gap";
-  $("gap").textContent = fitted || !collisionsOff ? metrics.minimum_clearance_mm.toFixed(1) + " mm" : "Disabled";
-  $("gap-note").textContent = fitted ? (metrics.minimum_clearance_mm < 0 ? "Residual overlap · playback continues" : "Contact pivots · quarter-step samples") : collisionsOff ? "Touch points preserved" : "Sampled at quarter steps";
-  $("contacts").textContent = metrics.contacts;
+  setText($("gap-label"), fitted ? "Closest glove gap" : collisionsOff ? "Glove collision check" : "Closest hand gap");
+  setText($("gap"), fitted || !collisionsOff ? metrics.minimum_clearance_mm.toFixed(1) + " mm" : "Disabled");
+  setText($("gap-note"), fitted ? (metrics.minimum_clearance_mm < 0 ? "Residual overlap · playback continues" : "Contact pivots · quarter-step samples") : collisionsOff ? "Touch points preserved" : "Sampled at quarter steps");
+  setText($("contacts"), metrics.contacts);
   $("blend-link").href = run.blend;
   $("video-link").href = run.video;
-  $("video-link").textContent = 'Download gameplay only';
+  setText($("video-link"), 'Download gameplay only');
   $("video-link").hidden = !run.live;
   $("run-log").href = run.log;
   const scale = metrics.max_speed_m_s * 1.17;
@@ -463,8 +469,8 @@ function showTake(run, restoreControls = false) {
     $(side + "-line").setAttribute("d", path);
   }
   $("limit-line").setAttribute("d", "M35," + y(metrics.max_speed_m_s) + "H785");
-  $("axis-limit").textContent = metrics.max_speed_m_s.toFixed(1) + " m/s";
-  $("axis-end").textContent = metrics.duration_s.toFixed(1) + " s";
+  setText($("axis-limit"), metrics.max_speed_m_s.toFixed(1) + " m/s");
+  setText($("axis-end"), metrics.duration_s.toFixed(1) + " s");
   $("playhead").setAttribute("x1", 35);
   $("playhead").setAttribute("x2", 35);
   markDirty();
@@ -477,7 +483,7 @@ function history(runs) {
   lastHistory = identity;
   const container = $("history");
   const takes = runs.filter(run => run.status === "complete");
-  $("take-count").textContent = takes.length ? takes.length + " saved locally" : "Saved locally";
+  setText($("take-count"), takes.length ? takes.length + " saved locally" : "Saved locally");
   if (!takes.length) return;
   container.replaceChildren();
   for (const run of takes.slice(0, 8)) {
@@ -488,18 +494,18 @@ function history(runs) {
     button.setAttribute("aria-pressed", String(run.id === selected?.id));
     const mark = document.createElement("span");
     mark.className = "take-mark";
-    mark.textContent = "▷";
+    setText(mark, "▷");
     const info = document.createElement("span");
     info.className = "take-info";
     const title = document.createElement("strong");
     title.textContent = bootstrap.charts[run.settings.chart].title;
     const description = document.createElement("small");
-    description.textContent = run.settings.start_s + "–" + run.settings.end_s + " s · " +
-      run.settings.max_speed_m_s + " m/s · lift " + run.settings.lift_mm + " mm";
+    setText(description, run.settings.start_s + "–" + run.settings.end_s + " s · " +
+      run.settings.max_speed_m_s + " m/s · lift " + run.settings.lift_mm + " mm");
     info.append(title, description);
     const timestamp = document.createElement("span");
     timestamp.className = "take-time";
-    timestamp.textContent = new Date(run.created * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    setText(timestamp, new Date(run.created * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     button.append(mark, info, timestamp);
     button.addEventListener("click", () => { showTake(run, true); history(runs); });
     container.append(button);
@@ -518,7 +524,7 @@ async function poll() {
     history(state.history.map(normalizeRun));
     schedulePoll(state.active?.status === "running" ? 1000 : 3000);
   } catch (error) {
-    document.querySelector(".connection").textContent = "Renderer disconnected";
+    setText(document.querySelector(".connection"), "Renderer disconnected");
     schedulePoll(3000);
   }
 }

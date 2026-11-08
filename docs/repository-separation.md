@@ -1,18 +1,18 @@
-# Independent simulator repository
+# 独立模拟器仓库
 
-The simulator is a standalone Git repository at ``, even though its local folder remains inside the room project. Its `.git` contains only simulator history and files. The parent `dafeiyu-3d-room` repository ignores this entire folder. Chair, room and dafeiyu animation work belongs only to that parent project.
+模拟器是独立 Git 仓库，当前本地路径为 `prototypes/ipad-rhythm/`。虽然位于房间项目文件夹内，其 `.git` 只含模拟器历史与文件；父 `dafeiyu-3d-room` 忽略整个目录。椅子、房间、dafeiyu 动画只属于父仓库。
 
-The split retained all simulator source/runtime files in place and preserved the branch topology. The filtered histories have new commit IDs because room files were removed from their trees:
+拆分保留原地源码／运行文件和分支拓扑；去掉房间文件后树改变，因此过滤后的提交 ID 不同：
 
-| Branch | Old parent commit | Simulator-only commit |
+| 分支 | 原父仓库提交 | 模拟器提交 |
 | --- | --- | --- |
-| `main` baseline | `25f6003` | `2aa579c` |
+| `main` 基线 | `25f6003` | `2aa579c` |
 | `feature/webgl-video-export` | `fdb5173` | `08101b4` |
 | `perf/contact-planner` | `1cd19e2` | `260a5d9` |
 | `integration/rhythm-updates` | `74a220b` | `bdb4d7f` |
 
-Subsequent separation/documentation/chart-import commits extend the integration branch. Historical benchmark archives still identify the original baseline as `25f6003`; the packaged source snapshot remains runnable without Git and is unchanged. No planner, scoring, hand animation or presentation geometry was altered by the split.
+后续拆分说明与曲库提交延伸 integration 历史。历史基准归档仍标记原基线 `25f6003`，打包源未改、不依赖 Git 可运行。拆仓库没有改变规划器、计分、动作或展示几何，也没有创建远端或推送。
 
-Blender is a configurable external tool: set `BLENDER_BIN`, install `blender` on PATH, or place the application under `.tools/Blender.app`. This Mac's launchd service uses an explicit `BLENDER_BIN` pointing to the existing installation. It does not depend on the original room blend. ArcCreate, the virtual environment, imported packages, extracted media, saved takes and caches remain local and untracked.
+Blender 通过 `BLENDER_BIN`、PATH 或 `.tools/Blender.app` 配置；本机 launchd 显式指向现有安装，不依赖原房间 blend。ArcCreate、虚拟环境、导入包、媒体、演奏与缓存仍是本地忽略资源。
 
-Use `git -C prototypes/ipad-rhythm ...` from the parent folder, or work directly in this simulator folder. Future simulator documentation lives under this repo's `docs/`. The parent retains its own Git history and chair edits; those were neither moved nor included in simulator commits.
+在父目录可用 `git -C prototypes/ipad-rhythm ...`，或直接进入模拟器目录。后续文档在本仓库 `docs/`。父仓库历史及椅子修改没有移入模拟器提交。
