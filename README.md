@@ -136,3 +136,5 @@ node tests/check_webgl_alignment.mjs output/runs/TAKE
 [文档目录](docs/README.md) · [Git 分支与合并记录](docs/rhythm-git-workflow.md) · [中文化维护](docs/i18n.md) · [视频导出](docs/ipad-rhythm-webgl-export.md) · [Arghena 漏键调查](docs/arghena-end-miss-and-idle-motion.md)
 
 双臂现在默认限制袖口连线的累计缠绕角为 **±260°**；可在「手部动作」调整。松手后可绕远路主动解缠，运动代价仍计入轨迹选择，所有按住的触点保持固定。旧演奏会提示需要更新动作。详见[双臂缠绕与 Dantalion 验证](docs/arm-winding.md)。
+
+默认开启[判定区落指](docs/contact-placement.md)：纵连可让双手在音符两侧交替落指，蛇可搜索共同静止接取区。实际接触、动画及 ArcCreate 回放保持一致；工作台「利用音符判定区域」可关闭作对照。

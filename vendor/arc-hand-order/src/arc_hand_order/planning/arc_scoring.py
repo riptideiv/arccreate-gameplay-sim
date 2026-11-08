@@ -401,7 +401,7 @@ def covers(item, path, down, offset, projection, points=None):
     return result
 
 
-def anchors(item, projection):
+def anchors(item, projection, *, spatial=False, offset=0):
     samples = np.array(
         [
             n.position(n.start + (n.end - n.start) * f / 4)
@@ -420,6 +420,9 @@ def anchors(item, projection):
         for i in np.linspace(0, len(samples) - 1, min(10, len(samples)), dtype=int)
     )
     pool = []
+    if spatial:
+        from .contact_regions import common_tick_boxes, centre
+        pool.extend(centre(box) for box in common_tick_boxes(item,projection,offset)[:6])
     for world in centres:
         p = projection.judgement_to_device(*world)
         if (
@@ -431,7 +434,7 @@ def anchors(item, projection):
     return tuple(pool)
 
 
-def profile(item, projection, max_speed, offset):
+def profile(item, projection, max_speed, offset, *, spatial=False):
     """Bounded single-chain search; return a fully covered path or None.
 
     First try stable anchors. Otherwise visit tick regions with a small beam,
@@ -439,7 +442,7 @@ def profile(item, projection, max_speed, offset):
     """
     from .two_finger import frame_ms, frame_at_or_after
 
-    pool = anchors(item, projection)
+    pool = anchors(item, projection, spatial=spatial, offset=offset)
     first = max(
         0,
         frame_at_or_after(

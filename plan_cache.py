@@ -18,7 +18,7 @@ def canonical(value):
 
 def implementation_version(root=None):
     root=Path(root or Path(__file__).resolve().parent)
-    files=[root/'plan_excerpt.py',root/'plan_cache.py',*sorted((root/'vendor/arc-hand-order/src/arc_hand_order').rglob('*.py'))]
+    files=[root/'plan_excerpt.py',root/'plan_cache.py',root/'contact_placement.py',root/'hand_pose.py',*sorted((root/'vendor/arc-hand-order/src/arc_hand_order').rglob('*.py'))]
     digest=hashlib.sha256()
     for f in files:
         digest.update(str(f.relative_to(root)).encode());digest.update(b'\0');digest.update(f.read_bytes())

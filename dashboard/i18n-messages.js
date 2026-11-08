@@ -1,5 +1,8 @@
 // 简体中文消息表；英文原文作为稳定消息键。
 export const zhCN = {
+  "Optimizing contact placement": "优化判定区域内的落指位置",
+  "Use note judgement areas": "利用音符判定区域",
+  "Allow off-center contacts to reduce travel and wrist twisting. Uses the same touch coordinates in the animation and ArcCreate replay; generate a new preview to apply.": "允许偏离音符中心落指，减少移动与过度转腕。动画和 ArcCreate 回放使用同一组触点；重新生成预览后生效。",
   "±": "±",
   "Verified arm winding: {minimum}° to {maximum}°; limit ±{limit}°.": "已验证袖口累计转角：{minimum}° 至 {maximum}°；上限 ±{limit}°。",
   "Arm winding limit": "双臂缠绕角上限",

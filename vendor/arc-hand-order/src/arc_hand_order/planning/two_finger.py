@@ -113,6 +113,7 @@ class PlannerOptions:
     # Local physical-contact failures supplied by the glove verification pass:
     # (parent occupation id, first forbidden chart ms, last forbidden chart ms).
     contact_exclusions: tuple[tuple[str, int, int], ...] = ()
+    off_center_contacts: bool = False
     scoring_arcs: bool = False
     prefer_arc_trace: bool = False
     arc_trace_weight: float = 1000.0
@@ -429,7 +430,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
             if progress:
                 progress('arc_profiles', index, len(parents))
             o = replace(o, parent_occupation_id=None, score_points=tuple(sorted(set(o.score_points),key=lambda p:p.time_ms)))
-            profiles[key] = (profile(o,projection,options.speed_max_m_s,offset), anchors(o,projection))
+            profiles[key] = (profile(o,projection,options.speed_max_m_s,offset, spatial=options.off_center_contacts), anchors(o,projection, spatial=options.off_center_contacts, offset=offset))
     for k, item in enumerate(occupations.items):
         if progress:
             progress('candidates', k, len(occupations.items), chart_ms=item.start_ms)
@@ -566,8 +567,15 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                          for f, (a, b) in enumerate(zip(points, points[1:]), down)), default=0.0)
             if speed > options.speed_max_m_s:
                 continue
-            candidates.append(Candidate(next_id, k, item, down, up, points[0], points[-1], offset, speed))
-            next_id += 1
+            if options.off_center_contacts and item.kind in ('tap','sky'):
+                from .contact_regions import point_targets
+                for q in dict.fromkeys((points[0], *point_targets(item,projection,occupations.items))):
+                    path=(q,)*(up-down)
+                    candidates.append(Candidate(next_id,k,item,down,up,q,q,offset,0,contact_path=path))
+                    next_id+=1
+            else:
+                candidates.append(Candidate(next_id, k, item, down, up, points[0], points[-1], offset, speed))
+                next_id += 1
         groups.append(tuple(candidates))
     if options.full_arc_hold and not any(o.parent_occupation_id for o in occupations.items):
         # A full hold presses before the chain's first tick, so process items in press order.
