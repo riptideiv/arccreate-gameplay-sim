@@ -117,8 +117,11 @@ class PlannerOptions:
     scoring_arcs: bool = False
     prefer_arc_trace: bool = False
     arc_trace_weight: float = 1000.0
+    acceleration_weight: float = 0.0
 
     def __post_init__(self):
+        if not math.isfinite(self.acceleration_weight) or self.acceleration_weight < 0:
+            raise ValueError("acceleration_weight must be finite and nonnegative")
         if not math.isfinite(self.arc_trace_weight) or self.arc_trace_weight < 0:
             raise ValueError("arc_trace_weight must be finite and nonnegative")
         if not math.isfinite(self.distance_weight) or self.distance_weight < 0:
@@ -480,6 +483,9 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                 if stop > first:
                     centre = tuple(trace_position(item, f, offset, projection) for f in range(first, stop))
                     variants.append((first, centre))
+                    if options.acceleration_weight:
+                        from .trajectory import smooth_guides
+                        variants.extend((first,p) for p in smooth_guides(item,first,stop,offset,projection))
                     if fitted is not None:
                         guide_down, guide, _ = fitted
                         base = tuple(guide[min(max(f-guide_down, 0), len(guide)-1)] for f in range(first, stop))

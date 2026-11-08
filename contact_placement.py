@@ -161,6 +161,14 @@ def refine(result):
                 + max(0, distance / dt - plan.options.speed_comfort_m_s) ** 2
             )
         total += 5 * np.linalg.norm(np.diff(p, axis=0), axis=1).sum()
+        if plan.options.acceleration_weight:
+            from arc_hand_order.planning.trajectory import acceleration_energy, transfer_energy
+            trial = replace(t, path=tuple(map(tuple,p)))
+            energy = acceleration_energy(p)
+            for j in neighbours[i]:
+                a,b = (trial,touches[j]) if t.down < touches[j].down else (touches[j],trial)
+                energy += transfer_energy(a,b,plan.options.speed_max_m_s)
+            total += plan.options.acceleration_weight*energy
         for j in opponents[i]:
             other = touches[j]
             for f in np.unique(
