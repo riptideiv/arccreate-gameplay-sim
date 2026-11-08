@@ -1,5 +1,10 @@
 // 简体中文消息表；英文原文作为稳定消息键。
 export const zhCN = {
+  "Planned tap offsets · median {median} mm · 90th percentile {p90} mm. Measured from this take.": "规划点按偏心 · 中位数 {median} mm · 第 90 百分位 {p90} mm。测量自此演奏。",
+  "This saved take has no note-centre measurements. Generate a new take to measure offsets.": "此旧演奏没有音符偏心测量数据，请重新生成以测量。",
+  "Note centre deviation cost": "音符中心偏离代价",
+  "Free centre radius": "中心免费偏移半径",
+  "Prefer the centre of taps and sky notes once per hit, and ground holds per second. Offsets inside the free radius cost nothing; beyond it, squared distance is normalized to 20 mm. Zero cost disables this preference. Snake geometry uses its existing cost only.": "偏好地键与天键的中心，每次击打计费一次；地面长条按持指秒数计费。免费半径内不收费，超出部分按距离平方计算，以 20 mm 归一化。代价为 0 时关闭。蛇只使用现有描线代价，不重复计费。",
   "Flight acceleration threshold": "腾空移动加速度阈值",
   "Legacy soft threshold for flights and composed jumps; the continuous acceleration penalty below also measures motion inside snakes. Move and turn speed limits are enforced on the animation.": "原有的腾空移动及拼接跳变软阈值；下方的连续加速度惩罚还会计算蛇内部的运动。移动速度和转腕速度上限会在动画中强制执行。",
   "Held fingertip acceleration · peak {peak} m/s² · RMS {rms} m/s². Measured from this take; includes no wrist rotation or airborne motion.": "按住时指尖加速度 · 峰值 {peak} m/s² · 均方根 {rms} m/s²。测量自此回放，不含转腕和腾空移动。",
