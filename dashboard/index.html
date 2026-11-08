@@ -82,8 +82,8 @@
         <summary>Planner preferences</summary>
         <label>Comfort speed <span class="input-unit"><input name="comfort_speed_m_s" type="number" min="0.1" max="2" step="0.05" required><span>m/s</span></span></label>
         <label>Crossing cost <input name="crossing_weight" type="number" min="0" max="30" step="0.5" required></label>
-        <label>Acceleration preference <span class="input-unit"><input name="planner_accel_m_s2" type="number" min="1" max="200" step="1" required><span>m/s²</span></span></label>
-        <p class="hint">Acceleration is an upstream planner preference. Move and turn speeds above are enforced on the animation.</p>
+        <label>Flight acceleration threshold <span class="input-unit"><input name="planner_accel_m_s2" type="number" min="1" max="200" step="1" required><span>m/s²</span></span></label>
+        <p class="hint">Legacy soft threshold for flights and composed jumps; the continuous acceleration penalty below also measures motion inside snakes. Move and turn speed limits are enforced on the animation.</p>
       </details>
     </section>
     <section id="click-timing">
@@ -117,8 +117,11 @@
       <p class="hint">Score-aware paths can wait inside a hitbox and cut between catches. ArcCreate judges the resulting touches; colour locks still apply.</p>
       <label><input name="prefer_arc_trace" type="checkbox"> Prefer tracing arc geometry</label>
       <label for="arc-trace-cost">Geometry deviation cost <span class="input-unit"><input id="arc-trace-cost" name="arc_trace_weight" type="number" min="0" max="10000" step="any" required><span>/s</span></span></label>
-      <p class="hint">Small positive values such as 0.5–2 give a gentle tracing preference. Zero disables it; larger values can favour following rapid zig-zags too.</p>
+      <p class="hint">Balance geometry deviation against acceleration cost: smooth snakes can be traced while sharp zig-zags are rounded or caught from a stable position.</p>
       <p class="hint">In Score-aware mode, higher costs favour tracing the centreline throughout the snake, including its tail and release gaps. Full cost applies at 20 mm away or while released; closer offsets cost proportionally less. Scoring and speed limits take priority. The full-hold cost below is additional when enabled.</p>
+      <label for="acceleration-cost">Acceleration penalty <input id="acceleration-cost" name="acceleration_weight" type="number" min="0" max="10000" step="any" required></label>
+      <p class="hint">Continuous squared fingertip acceleration, normalized to 5 m/s². Higher values favour smooth motion over sharp reversals; 0 disables it. Scoring takes priority. Use Score-aware mode to allow shortcuts; Trace mode still requires the centreline.</p>
+      <p class="hint" id="acceleration-status" aria-live="polite"></p>
       <p class="hint" id="arc-release-summary" aria-live="polite"></p>
       <label><input name="full_arc_hold" type="checkbox"> Prefer holding arcs to the visual end</label>
       <p class="hint">Leave off to free the hand once the final scoring tick is secured. If a whole snake is infeasible, the planner can release and reacquire it around individual ticks, respecting ArcCreate’s colour lock and grace periods.</p>

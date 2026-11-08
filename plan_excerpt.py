@@ -126,6 +126,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         'scoring_arcs': scoring,
         'prefer_arc_trace': settings.get('prefer_arc_trace', False),
         'arc_trace_weight': settings.get('arc_trace_weight', 1000),
+        'acceleration_weight': settings.get('acceleration_weight', 0),
         "contact_exclusions": tuple((x['parent'],x['start_ms'],x['end_ms']) for x in avoid_contacts),
         "full_arc_hold": settings.get("full_arc_hold", False),
         "partial_hold_weight": settings.get("partial_hold_weight", 1000),
@@ -174,6 +175,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     report({'phase': 'writing', 'completed': None, 'total': None})
     output = api.plan_to_dict(result)
     if placement is not None: output['contact_placement'] = placement
+    from arc_hand_order.planning.trajectory import motion_metrics
     output['chart']['source_audio_offset_ms'] = source_offset_ms
     # A point at the excerpt boundary may have an early press in frame -1.
     # Keep only the visible portion of that contact in the playback timeline.
@@ -230,6 +232,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         "audio_start_ms": start_ms + source_offset_ms,
         "duration_ms": end_ms - start_ms,
     }
+    output['acceleration'] = motion_metrics(output['touches'])
     return output
 
 

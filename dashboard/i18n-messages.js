@@ -1,5 +1,12 @@
 // 简体中文消息表；英文原文作为稳定消息键。
 export const zhCN = {
+  "Flight acceleration threshold": "腾空移动加速度阈值",
+  "Legacy soft threshold for flights and composed jumps; the continuous acceleration penalty below also measures motion inside snakes. Move and turn speed limits are enforced on the animation.": "原有的腾空移动及拼接跳变软阈值；下方的连续加速度惩罚还会计算蛇内部的运动。移动速度和转腕速度上限会在动画中强制执行。",
+  "Held fingertip acceleration · peak {peak} m/s² · RMS {rms} m/s². Measured from this take; includes no wrist rotation or airborne motion.": "按住时指尖加速度 · 峰值 {peak} m/s² · 均方根 {rms} m/s²。测量自此回放，不含转腕和腾空移动。",
+  "This saved take predates continuous acceleration measurement. Generate a new take to apply this penalty.": "此旧回放尚未计算连续加速度。请生成新回放以应用此惩罚。",
+  "Acceleration penalty": "加速度惩罚",
+  "Balance geometry deviation against acceleration cost: smooth snakes can be traced while sharp zig-zags are rounded or caught from a stable position.": "将偏离中心线的代价与加速度惩罚配合使用：平滑的蛇可以正常描线，急剧锯齿则可以圆滑处理或停留在稳定位置接住。",
+  "Continuous squared fingertip acceleration, normalized to 5 m/s². Higher values favour smooth motion over sharp reversals; 0 disables it. Scoring takes priority. Use Score-aware mode to allow shortcuts; Trace mode still requires the centreline.": "连续计算指尖加速度的平方，以 5 m/s² 归一化。数值越大越偏好平滑运动、避免急剧折返；0 表示关闭。计分优先。请选择计分优先模式以允许抄近路；强制描线模式仍须跟随中心线。",
   "Small positive values such as 0.5–2 give a gentle tracing preference. Zero disables it; larger values can favour following rapid zig-zags too.": "可从 0.5–2 等小正数尝试温和的描线偏好。0 表示关闭；数值较大时也可能倾向追随快速锯齿。",
   "Optimizing contact placement": "优化判定区域内的落指位置",
   "Use note judgement areas": "利用音符判定区域",
