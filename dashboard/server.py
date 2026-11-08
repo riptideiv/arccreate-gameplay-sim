@@ -32,10 +32,10 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261107-arm-winding'
+DEFAULTS_REVISION = '20261107-continuous-acceleration'
 STARTUP_PREFERENCES = ('repeat_comfort_ms', 'jack_gap_ms', 'jack_free', 'jack_weight',
                        'scroll_speed', 'song_delay_ms', 'prefer_arc_trace', 'full_arc_hold',
-                       'camera_elevation_deg', 'idle_speed_m_s', 'winding_limit_deg')
+                       'camera_elevation_deg', 'idle_speed_m_s', 'winding_limit_deg', 'acceleration_weight')
 
 
 class Settings(BaseModel):
@@ -52,6 +52,7 @@ class Settings(BaseModel):
     comfort_speed_m_s: float = Field(default=0.25, ge=0.1, le=2)
     crossing_weight: float = Field(default=1, ge=0, le=30)
     planner_accel_m_s2: float = Field(default=75, ge=1, le=200)
+    acceleration_weight: float = Field(default=100, ge=0, le=10000)
     repeat_comfort_ms: float = Field(default=167, ge=1, le=1000)
     repeat_weight: float = Field(default=5, ge=0, le=100)
     jack_gap_ms: int = Field(default=133, ge=0, le=1000)
@@ -457,7 +458,7 @@ class RenderQueue:
                         judgement_timeline=media_url(directory / "judgements.json"),
                         planned_misses=plan["misses"], video=media_url(clip),
                         audio_stems=stems, sound_events=sound_events,
-                        planning=plan["planning"], arc_tick_validation=tick_validation,
+                        planning=plan["planning"], acceleration=plan.get("acceleration"), arc_tick_validation=tick_validation,
                         blend=media_url(directory / "scene.blend"),
                         log=media_url(directory / "render.log"))
         except InterruptedError as error:
