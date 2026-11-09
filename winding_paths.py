@@ -13,6 +13,7 @@ import numpy as np
 RATE = 60
 POLE_RADIUS = 0.001
 UNWIND_RADIUS = 0.018
+EDIT_COST_PER_SECOND = 5.0
 
 
 class WindingError(ValueError):
@@ -90,6 +91,7 @@ class Route:
     high: float
     cost: float
     extra_distance: float
+    edited_samples: int
 
 
 def _orbit(a, b, delta, radius, u):
@@ -143,6 +145,23 @@ def _orbit(a, b, delta, radius, u):
     return out
 
 
+def _free_spans(active):
+    edges = np.diff(np.r_[False, ~active, False].astype(int))
+    starts, stops = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+    for first, last in zip(starts, stops):
+        start, end = max(0, first - 1), min(len(active) - 1, last)
+        yield start, end
+        if end - start >= 0.4 * RATE:
+            # A long release can contain an unwind while leaving the rest of
+            # the original approach or return motion exactly as it was.
+            quarter = (end - start) // 4
+            yield start + quarter, end
+            yield start, end - quarter
+            yield start + quarter, end - quarter
+            yield start + 2 * quarter, end
+            yield start, end - 2 * quarter
+
+
 def route(
     points,
     active,
@@ -157,7 +176,7 @@ def route(
     geometry_cost=None,
     idle_speed=1,
 ):
-    """Shortest bounded-winding schedule over free-gap homotopy alternatives.
+    """Find a low-cost winding correction that preserves the original path.
 
     At most two winding branches survive at a time for limits below 360°.
     Every route is checked at 60 Hz and along each interpolated line segment.
@@ -191,10 +210,7 @@ def route(
     candidates = {}
     generated = 0
     for h in range(2):
-        edges = np.diff(np.r_[False, ~active[:, h], False].astype(int))
-        for first, last in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
-            a = max(0, first - 1)
-            b = min(count - 1, last)
+        for a, b in _free_spans(active[:, h]):
             if b - a < 2:
                 continue
             theirs = anchors[a : b + 1, 1 - h]
@@ -208,6 +224,7 @@ def route(
             t = np.linspace(0, 1, b - a + 1)
             eased = t**3 * (10 - 15 * t + 6 * t * t)
             baseline_distance = np.linalg.norm(np.diff(own, axis=0), axis=1).sum()
+            baseline_cost = float(frame_cost[a:b].sum())
             # Keep the cheapest physical route for each homotopy and angular
             # envelope; a narrower envelope can remain useful at another branch.
             local = {}
@@ -281,6 +298,14 @@ def route(
                                 cost += (
                                     float(np.sum(geometry_cost(pair, (a, b)))) / RATE
                                 )
+                            edited_samples = int(np.count_nonzero(np.any(path != own, axis=1)))
+                            # A cheaper alternate path cannot offset the cost
+                            # of replacing otherwise usable original motion.
+                            cost = (
+                                max(0.0, cost - baseline_cost)
+                                + EDIT_COST_PER_SECOND * edited_samples / RATE
+                                + 1e-8
+                            )
                             edge = Route(
                                 a,
                                 b,
@@ -291,6 +316,7 @@ def route(
                                 float(phi.max()),
                                 float(cost),
                                 float(extra),
+                                edited_samples,
                             )
                             key = (branch, round(edge.low, 5), round(edge.high, 5))
                             if key not in local or cost < local[key].cost:
@@ -325,13 +351,7 @@ def route(
                 ):
                     continue
                 new = branch + edge.turns
-                total = (
-                    cost
-                    + max(
-                        0.0, edge.cost - float(frame_cost[edge.start : edge.end].sum())
-                    )
-                    + 1e-8
-                )
+                total = cost + edge.cost
                 if new not in states[edge.end] or total < states[edge.end][new][0]:
                     states[edge.end][new] = (total, (node, edge))
     if not states[-1]:
@@ -370,7 +390,8 @@ def route(
     measured.pop("angles_deg")
     measured["extra_distance_m"] = float(sum(e.extra_distance for e in chosen))
     measured.update(
-        enabled=True, unwinds=events, candidate_routes=generated, cost=float(cost)
+        enabled=True, unwinds=events, candidate_routes=generated, cost=float(cost),
+        edited_samples=sum(edge.edited_samples for edge in chosen),
     )
     return result, measured
 

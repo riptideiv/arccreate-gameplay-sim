@@ -33,6 +33,7 @@ def test_ground_hold_release_allows_a_costly_unwind_with_every_contact_pinned():
     assert report["final_deg"] == pytest.approx(0, abs=1e-7)
     assert any(e["turns_relative_to_direct"] == -1 for e in report["unwinds"])
     assert report["extra_distance_m"] > 0 and report["cost"] > 0
+    assert 0 < report["edited_samples"] < np.count_nonzero(~active)
     assert np.linalg.norm(np.diff(solved, axis=0), axis=-1).max() * 60 <= 1.00001
 
 
@@ -58,13 +59,14 @@ def test_coincidence_cannot_teleport_a_hand_to_the_other_side():
     assert measure(p)["pole_crossings"] == 0
 
 
-def test_no_unwind_needed_keeps_idle_motion_exactly_unchanged():
-    p = np.zeros((121, 2, 3))
-    p[:, :, 2] = 0.02
-    p[:, 0, 0] = -0.085
-    p[:, 1, 0] = 0.085
-    solved, report = route(p, np.zeros((121, 2), bool))
-    np.testing.assert_array_equal(solved, p)
+@pytest.mark.parametrize("normal_crossing", [False, True])
+def test_no_unwind_needed_keeps_original_motion_exactly_unchanged(normal_crossing):
+    points = circular_points()[:211].copy()
+    if not normal_crossing:
+        points[:] = points[0]
+    solved, report = route(points, np.zeros(points.shape[:2], bool))
+    np.testing.assert_array_equal(solved, points)
+    assert report["edited_samples"] == 0
     assert not report["unwinds"]
 
 
