@@ -26,7 +26,7 @@ def travel(a, b, frames, lift, max_speed):
     return path
 
 
-def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0):
+def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf):
     home = home_position(side, lift)
     knots = {0: home, last_frame: home}
     for touch in touches:
@@ -42,11 +42,10 @@ def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_sp
         a, b = knots[start], knots[end]
         distances = (np.linalg.norm(home - a), np.linalg.norm(b - home))
         dwell = 15
-        cap = min(idle_speed, max_speed * 0.8)
-        speed = min(0.30, cap)
+        speed = min(0.30, max_speed * 0.55)
         needed = 1.875 * sum(distances) * RATE / max(gap - dwell, 1)
         speed = max(speed, needed)
-        if speed > cap:
+        if speed > max_speed * 0.8:
             continue
         durations = [
             0 if d < 1e-9 else max(8, math.ceil(1.875 * d / speed * RATE))
@@ -61,13 +60,9 @@ def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_sp
     for start, end in zip(keys, keys[1:]):
         # Home dwells stay still; released taps lift even at identical XY.
         resting = np.array_equal(knots[start], home) and np.array_equal(knots[end], home)
-        # Home is optional; its approach/departure must respect the idle cap.
-        # Contact-to-contact transfers retain the main limit when necessary.
-        home_leg = np.array_equal(knots[start], home) or np.array_equal(knots[end], home)
-        needed = np.linalg.norm(knots[end] - knots[start]) * RATE / (end - start)
-        cap = min(max_speed, max(idle_speed, needed)) if home_leg else max_speed
-        result[start : end + 1] = travel(knots[start], knots[end], end - start,
-                                       0 if resting else lift, cap)
+        result[start : end + 1] = travel(
+            knots[start], knots[end], end - start, 0 if resting else lift, max_speed
+        )
     if not keys or last_frame == 0:
         result[0] = knots[0]
     return result

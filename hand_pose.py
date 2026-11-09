@@ -24,14 +24,22 @@ HAND_PARTS = (
 
 
 VERSION = "pivot-beam-1"
+NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
 
 
-# Blender uses its own Python; load the same pure-math convention as planning.
-from pathlib import Path
-import sys
-if str(Path(__file__).resolve().parent/'vendor/arc-hand-order/src') not in sys.path:
-    sys.path.insert(0,str(Path(__file__).resolve().parent/'vendor/arc-hand-order/src'))
-from arc_hand_order.planning.wrist import NEUTRAL, bases, strain as wrist_strain, metrics as wrist_metrics
+def bases(angles):
+    p, y = np.moveaxis(np.radians(angles), -1, 0)
+    cp, sp, cy, sy = np.cos(p), np.sin(p), np.cos(y), np.sin(y)
+    out = np.zeros(angles.shape[:-1] + (3, 3))
+    out[..., 0, 0] = cy
+    out[..., 0, 1] = -sy * cp
+    out[..., 0, 2] = -sy * sp
+    out[..., 1, 0] = sy
+    out[..., 1, 1] = cy * cp
+    out[..., 1, 2] = cy * sp
+    out[..., 2, 1] = -sp
+    out[..., 2, 2] = cp
+    return out
 
 
 def proxies(angles, parts):
@@ -60,7 +68,7 @@ def margins(points, angles, parts):
 
 
 def air_paths(
-    points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None, idle_speed=math.inf
+    points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None
 ):
     """Lift only free portions of a hand path; preserve every contact sample."""
     result = points.copy()
@@ -161,12 +169,6 @@ def air_paths(
             ).reshape(-1, b - a + 1, 3)
             candidates = np.concatenate((result[a : b + 1, h][None], candidates))
             speed = np.linalg.norm(np.diff(candidates, axis=1), axis=-1) * 60
-            # Optional avoidance must not spend the full contact-travel budget.
-            # If the fixed contacts already demand faster travel, preserve that
-            # baseline allowance rather than dropping a note to slow a detour.
-            required = np.linalg.norm(np.diff(base, axis=0), axis=-1).max(initial=0) * 60
-            free_cap = min(max_speed, max(idle_speed, required))
-            valid_translation = speed.max(axis=1) <= free_cap + 1e-5
             if poses is not None:
                 speed += (
                     radius
@@ -175,7 +177,7 @@ def air_paths(
                         * 60
                     )[None, :]
                 )
-            valid = valid_translation & (speed.max(axis=1) <= max_speed + 1e-5)
+            valid = speed.max(axis=1) <= max_speed + 1e-5
             penalty = penalty_for(candidates, other, a, b, h)
             penalty[~valid] = np.inf
             choice = int(np.argmin(penalty))
@@ -198,19 +200,14 @@ def solve(
     gap=0.001,
     beam=96,
     stride=6,
-    idle_speed=math.inf,
-    wrist_twist_weight=0.0,
-    wrist_twist_free_deg=30.0,
 ):
-    if not math.isfinite(wrist_twist_weight) or wrist_twist_weight<0 or not math.isfinite(wrist_twist_free_deg) or wrist_twist_free_deg<0:
-        raise ValueError("wrist twist settings must be finite and nonnegative")
     points = np.asarray(points, dtype=float)
     active = np.asarray(active, dtype=bool)
     # Slow wrists need wider key intervals to traverse the angular catalogue;
     # the final 60 Hz interpolation still respects each frame's turn budget.
     stride = max(stride, math.ceil(30 * 60 / max(angular_limit, 1)))
     original = points.copy()
-    points, lifts = air_paths(points, active, max_speed, gap=gap, idle_speed=idle_speed)
+    points, lifts = air_paths(points, active, max_speed, gap=gap)
     count = len(points)
     # Each state is a pair of pitch/yaw choices. The pad centre is the pivot.
     pitches = (10, 25, 40, 55, 70, 85) if angular_limit < 200 else (10, 30, 50, 70, 85)
@@ -277,10 +274,7 @@ def solve(
             for d, w in ((6, 0.4), (12, 0.3), (24, 0.15), (36, 0.05))
         )
 
-    def wrist(f):
-        return wrist_strain(states,points[f],wrist_twist_free_deg)*wrist_twist_weight if wrist_twist_weight else 0.0
-
-    initial = cost(0) + neutral * 0.03 + wrist(0)/60
+    initial = cost(0) + neutral * 0.03
     chosen = np.argsort(initial + ahead(0), kind="stable")[:beam]
     previous = states[chosen]
     values = initial[chosen]
@@ -292,7 +286,7 @@ def solve(
         )
         feasible = np.all(distance <= cap[None, None, :] + 1e-6, axis=-1)
         edge = np.sum(distance**2, axis=-1) / 10000 * 0.2
-        scores = values[:, None] + edge + cost(b)[None, :] + neutral[None, :] * 0.03 + wrist(b)*(b-a)/60
+        scores = values[:, None] + edge + cost(b)[None, :] + neutral[None, :] * 0.03
         scores[~feasible] = np.inf
         parents = np.argmin(scores, axis=0)
         best = scores[parents, np.arange(len(states))]
@@ -342,7 +336,7 @@ def solve(
         )
         poses[a : b + 1] = route[k] + (route[k + 1] - route[k]) * alpha[:, :, None]
     points, body_lifts = air_paths(
-        points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed
+        points, active, max_speed, gap=gap, poses=poses, parts=parts
     )
     lifts += body_lifts
     report = diagnostics(points, poses, parts, gap)

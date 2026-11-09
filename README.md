@@ -1,170 +1,137 @@
-# arccreate-gameplay-sim
+# iPad rhythm prototype
 
-**简体中文** · [English](README.en.md)
+Two chunky pointing gloves play on a rounded tablet in an independent walnut tabletop presentation set, with a charcoal mousepad, ceramic plant pot and ballpoint pen. Each hand has one playable index finger. ArcCreate renders the perspective track, sky input, arcs, effects, and HUD from the supplied charts. The live Three.js preview uses Blender-exported meshes and verified 60 Hz hand motion, with ArcCreate touch-replay footage on the tablet.
 
-这是一个模拟双手打 AFF 谱面的工具。程序会规划两根食指的落点和移动路线，用 ArcCreate 回放并记录判定，再把手部动作做成三维动画。
+Earlier offline exports (retained for comparison):
 
-可以在浏览器里调整动作参数、拖动进度、慢放看手序，也可以导出带音频的视频。规划器基于 arc-hand-order，游戏画面和判定使用 ArcCreate，三维部分使用 Blender 和 Three.js。整理出来分享给对手序规划或打谱动画感兴趣的朋友。
+| Chart | Full contact plan | Hand animation and gameplay |
+| --- | --- | --- |
+| BIBBIDIBA | The strict planner reported no candidate path. | 35 contacts from the 3.50–11.75 s chart window in `output/bibideba-excerpt.blend` and `output/bibideba-excerpt.mp4` |
+| Ex-Otogibanashi | `output/ex-otogibanashi.plan.json`, 586 contacts | 40 contacts from the 0–6.65 s chart window in `output/ex-otogibanashi-excerpt.blend` and `output/ex-otogibanashi-excerpt.mp4` |
 
-## 能做什么
+The packages and their extracted projects are under `charts/imported/`. The Blender files use relative paths to their ArcCreate footage under `output/gameplay/`. Keep that folder next to the scenes when moving them. The MP4s include ArcCreate's source audio and hit sounds.
 
-- 导入 AFF 歌曲文件夹，按歌曲和难度选择谱面，可以生成整首或其中一段。
-- 调整移动速度、连打习惯、蛇的路径、落指位置和转腕偏好，比较不同设置下的手序。
-- 查看 ArcCreate 实际回放得到的命中、失误、连击和分数。
-- 在三维预览中调整相机、拖动进度或慢放，检查双手动作。
-- 导出带游戏音频的 30／60 fps 视频，添加 ArcCreate 结算片尾，也可以用 Blender 离线渲染。
+## Tune in the dashboard
 
-目前每只手使用一根食指。规划会考虑速度、松手间隔和手臂缠绕等限制，但不保证找到最好的手序；规划中跳过的音符和实际回放中的失误会分别显示。
+Run `./dashboard.sh`, then open [Rhythm workbench](http://127.0.0.1:8765). The dashboard uses the two copied chart packages and runs the planner, ArcCreate, and Blender on this Mac. It binds to loopback and saves each take under `output/runs/`.
 
-## 安装
+For phone access, connect Tailscale on the phone and open [the tailnet dashboard](https://macbook-pro---riptideiv.tail57056e.ts.net/). Tailscale Serve proxies HTTPS to the loopback server, using the tailnet's existing access policy. Enable it with `tailscale serve --bg --https=443 http://127.0.0.1:8765`; disable this endpoint with `tailscale serve --https=443 off`. Serve persists in the background, but the dashboard process and Mac must remain running. An idle-sleep assertion is currently tied to the dashboard process for remote use.
 
-下面的步骤面向 macOS。其他系统需要适配 ArcCreate 原生导出脚本，目前还没有完整的安装流程。
+The current Mac login runs the dashboard as the launchd job `com.dafeiyu.rhythm-workbench`, with `KeepAlive` and `caffeinate`, independently of the agent's terminal session. Its generated definition is `output/workbench.launchd.plist`, and output/errors go to `output/dashboard-server.log`. Inspect it with `launchctl print gui/$(id -u)/com.dafeiyu.rhythm-workbench`; stop it with `launchctl bootout gui/$(id -u)/com.dafeiyu.rhythm-workbench`. After logging out or rebooting, load this session job again with `launchctl bootstrap gui/$(id -u) "$PWD/output/workbench.launchd.plist"` from this directory. Do not start another server on port 8765 while that job is loaded.
 
-### 1. 准备依赖
+On phones, the preview comes first. The sticky Preview / Settings / Build bar jumps between the video and controls and submits the current settings from anywhere on the page. Inputs use 16 px text with decimal or numeric keyboards; controls have larger touch targets, and the video plays inline. Build submission returns to the preview and progress display.
 
-需要先安装：
+Choose any window inside the song, including the full song, then press **Build live preview**. The old 20-second cap is removed. Hand settings require a new plan; camera sliders update the existing 3D preview immediately. Draft uses a device-pixel ratio capped at 1; High caps it at 2. Completed takes retain their settings, touch plan, motion samples, GLB, Blender scene, gameplay footage, actual judgements, log, and measured speeds. **Export MP4** separately runs the slower EEVEE image-sequence render using the current live camera. Each view gets its own export file and preserves the verified source scene. Cancellation stops the current process group and leaves previous takes available.
 
-| 依赖 | 用途 |
-| --- | --- |
-| Git | 下载仓库 |
-| [uv](https://docs.astral.sh/uv/getting-started/installation/) 和 Python 3.13 | 创建 Python 环境、运行规划器和工作台 |
-| [Blender](https://www.blender.org/download/) | 生成手套、场景和动画，离线渲染视频 |
-| FFmpeg（含 ffprobe） | 读取音频、处理和导出视频 |
-| [Mono](https://www.mono-project.com/docs/getting-started/install/mac/) 和 Mono.Cecil 0.11 | 编译 ArcCreate 的输入与导出适配器 |
+The shared chart-range track has independently draggable start/end handles, synchronized exact numeric fields, and a **Full chart** shortcut. It preserves the chart's exact end time (including Ex-Otogibanashi's 109.894 s duration) and a minimum 0.5 s window. Arrow keys adjust a focused handle by 0.1 s, Shift+arrows by 1 s, Page Up/Down by 5 s, and Home/End to the allowed edge. Track taps and numeric entry provide alternatives to dragging.
 
-Mono 的 macOS 安装包会安装到 `/Library/Frameworks/Mono.framework/`，适配脚本默认在那里查找 Cecil。安装后，确认终端能运行 `mono`、`mcs`、`ffmpeg` 和 `ffprobe`。
+**Export video** sits directly below playback. **Export MP4** renders the displayed take, with hands/tablet/presentation set, source audio and current camera, at 30 fps (640 × 480 Draft, 1024 × 768 High). **Download MP4** appears when ready; **Download gameplay only** remains separate under the motion report. Build first when chart or hand settings change. Camera changes can export directly, and the UI labels a saved MP4 made with an earlier camera. Export progress and cancellation preserve the live take; repeated exports of the same view reuse the saved MP4. The current 65–75 s verification take includes a tested H.264/AAC MP4 with video and audio streams.
 
-### 2. 下载项目并安装 Python 依赖
+**Presentation set** is directly below playback. New builds use the independent set automatically. For an older saved take, press **Update presentation** to regenerate only its Blender/GLB snapshots, preserving the exact hand meshes, baked motion, plan, native judgements and gameplay footage. A successful update clears the stale MP4 download; export again for the new set. Cancellation/failure leaves the previous scene usable. Versioned scene paths and scene-aware MP4 cache identities prevent reuse of the old room export. The latest 120–150 s take and the 65–75 s cross-hand verification take have been updated.
 
-```sh
-git clone https://github.com/riptideiv/arccreate-gameplay-sim.git
-cd arccreate-gameplay-sim
-uv venv --python 3.13 .venv
-uv pip install --python .venv/bin/python -e 'vendor/arc-hand-order[dev]'
-```
+See [the environment-porting guide](../../docs/ipad-rhythm-environment-porting.md) for hierarchy/coordinate contracts, material portability, snapshot regeneration, cache handling, repeatable validation and experience from this port. Original room assets are preserved; the simulator no longer loads `whale-room-final.blend`.
 
-后面的命令都在仓库根目录运行，不需要另外激活虚拟环境。
+Move speed is now checked on the animated glove after airborne detours and wrist rotation. A conservative bound combines translation with the speed of the farthest point turning around the index pad. Turn speed has its own hard limit. Active index pads stay on their chart targets. Glove overlap is handled by contact-preserving posing; it never blocks a build. The planner's acceleration control remains a preference. Playback speed in the video player is only for inspection.
 
-如果 `blender` 不在 PATH 中，可以指定它的位置。下面是安装到「应用程序」后的常见路径：
+The earlier animation measured approximately 2.8 m/s translation and 3,240°/s wrist turns. Those airborne and rotational changes had bypassed the contact planner's 3 m/s limit. The new default Ex-Otogibanashi take uses a 1.6 m/s cap and smooth 6 mm lifts. Its measured peak is 1.57 m/s. A lower limit may require additional missed notes. With Allow missed notes disabled, infeasible windows still fail explicitly.
 
-```sh
-export BLENDER_BIN="/Applications/Blender.app/Contents/MacOS/Blender"
-```
+The **Click timing** group exposes the original planner's same-hand repeat preferences. Comfortable repeat gap maps to both effective `repeat_comfort_s` fields, with a 180 ms on5 default, and Fast-repeat cost maps to `repeat_weight`, default 5. Fast-run gap, Unpenalized taps per run, and Extra cost per tap map to `jack_gap_ms`, `jack_free`, and `jack_weight`, with defaults 150 ms, 4, and 20. These add costs rather than forbidding fast taps. The old Prefer same-hand repeats shortcut zeroed both costs. Historical takes load those zeros explicitly.
 
-### 3. 配置 ArcCreate
+Under **Hard timing limits**, Tap duration, Minimum release gap, and Release gap after a hold or arc map to `point_contact_frames`, `min_air_frames`, and `held_release_air_frames`. Their defaults are 2, 1, and 4 frames at 60 Hz. Point taps therefore have a theoretical minimum press-to-press interval of 50 ms before movement is considered. New renders use the visible values. Reset controls restores the upstream repeat defaults.
 
-适配器目前对应 [ArcCreate 1.2.68](https://github.com/Arcthesia/ArcCreate/releases/tag/1.2.68)。下载 macOS 版本并解压到脚本预期的位置：
+Under **Arc paths and release**, **Score-aware** is the default for new dashboard work. The planner can wait inside a valid hitbox or cut across a zigzag instead of tracing every bend. It fits stationary anchors first, then short connecting paths, and checks catches on the actual 60 Hz input samples. Tick timing, asymmetric request/expiry windows, segmented hitbox geometry, zero-duration connectors, density factors, colour ownership and cross-colour grace follow the local ArcCreate 1.2.68 implementation. A later segment cannot substitute for the specific segment that owns a tick. **Trace** retains the earlier centre-following planner for comparison; saved takes without this setting retain their old behaviour.
 
-```sh
-mkdir -p .tools/ArcCreate/build
-curl -fL https://github.com/Arcthesia/ArcCreate/releases/download/1.2.68/StandaloneOSX.zip \
-  -o .tools/ArcCreate/StandaloneOSX.zip
-ditto -x -k .tools/ArcCreate/StandaloneOSX.zip .tools/ArcCreate/build
-./arc-create-export/setup.sh
-```
+`planning/native_input.py` adds the native world-or-screen overlap rule and screen-space hitboxes calibrated from the fixed 1148 × 802 exporter. Scoring checks inverse-project each contact across the built-in camera tilt range (up-vector X from −0.05 to +0.05), rather than assuming an unchanging camera. Binding checks conservatively consider every colour the contact can enter across those views; simultaneous ownership conflicts are rejected across the hands. Around possible grace exits, candidate paths briefly favour the intended colour's centre before returning to tick-based shortcuts. These guards are part of planning and are checked for coverage, physical screen bounds and speed; they are not manual replay edits or a full-tracing requirement. The bounded search and camera envelope are conservative, not a proof of a globally optimal native score.
 
-运行 `setup.sh` 前，确认应用位于 `.tools/ArcCreate/build/StandaloneOSX/ArcCreate.app`。脚本会生成用于回放和导出的应用副本 `.tools/ArcCreate/ArcCreate-media.app`。
+Native seek initialization consumes arc ticks exactly at the window start through `Arc.ResetJudgeTo` / inclusive `ComboAt`. Such ticks are excluded from the planner's remaining scoring jobs and prediction ledger. Notes after the window remain in the exported chart and continue producing native judgements during the video tail.
 
-如果 Cecil 安装在其他位置，先将 `MONO_CECIL_DLL` 设为 Mono.Cecil 0.11 的 DLL 文件路径，再运行 `setup.sh`。
+The fresh 65–75 s score-aware take `20261107-000550-9a4498` disables tracing preference and plans zero skipped ticks. Native ArcCreate confirms 76/76 remaining arc catches: 96 total hits, zero misses within the requested window, and two tail misses at 75.383 s and 75.633 s. It uses the unedited output of the dashboard planner. The saved take retains its actual touch replay, native judgement report, scene, and `input_model` identifier.
 
-### 4. 导入谱面
+**Prefer tracing arc geometry** adds a soft preference within Score-aware mode, with an adjustable **Geometry deviation cost** (`prefer_arc_trace`, `arc_trace_weight`, 1000/s when enabled). It measures the entire visual snake, including its head, tail and release gaps: one second released or at least 20 mm from the projected centreline costs the full rate; smaller offsets cost proportionally less. Tick jobs partition that lifetime, so adding ticks does not multiply the penalty. The planner considers full traces, partial traces and shortcuts, and measures the actual composed contact path rather than just a tick's target. Contact travel also contributes to the existing distance cost, letting small deviation costs favour less motion. Missed ticks rank before these preferences, and the movement cap remains hard. The existing full-hold tail cost is additional when enabled. This new preference is off by default; old saved takes retain their original paths.
 
-歌曲和音频需要自行准备，仓库不附带曲包。当前批量导入器读取的是带 `songlist` 元数据的歌曲文件夹，不能直接导入任意 `.arcpkg` 或单独的 `.aff` 文件。
+Tick-based release (`full_arc_hold=false`) lets a finger leave once the final scoring tick is secured, rather than following the visual tail. Connected same-colour arc segments form one snake. Score-aware mode uses native judgement windows instead of the upstream approximation of half a tick interval early. Contact ends on a 60 Hz frame after settlement; exported contact and Blender movement use that same release time.
 
-将曲包解压到 `charts/imported/` 下，例如：
+Enable **Prefer holding arcs to the visual end** to restore the upstream policy. Early arc-release cost (`partial_hold_weight`, 1000 per untouched second) then discourages partial contact without forbidding it. The equivalent ground-hold preference and cost (`full_ground_hold`, `partial_ground_hold_weight`) are also exposed; ground holds retain the upstream full-hold default and 500 cost. The extra held-release gap applies only to contacts held through their visual end. Costs are inactive while their full-hold preference is off.
 
-```text
-charts/imported/my-collection/
-└── song-id/
-    ├── songlist
-    ├── base.ogg
-    ├── base.jpg
-    └── 2.aff
-```
+Historical takes retain their original full-hold policy when selected. On opening the dashboard with a historical take, new arc controls start with early release and mark the settings as changed; existing renders stay intact. The local vendor patch to `multi_finger._release` removes hypothetical early air time from the acceleration calculation. Early release now must be an actual selected candidate, so acceleration departure, exported contact end, and animation agree, including when full holding is enabled. The upstream arrival-window preference remains unchanged.
 
-`songlist` 应包含歌曲信息及与 AFF 文件名对应的难度。歌曲也可以有多个难度，或使用单独的音频、封面；具体格式见[曲库说明](charts/README.md)。
+The camera now uses perspective projection from in front of the tablet. Its default distance is 0.29 m with a 30 mm lens and 52° elevation. You can adjust distance, view angle, horizontal angle, and lens independently.
 
-```sh
-.venv/bin/python import_charts.py charts/imported/my-collection
-```
+## Missed notes and live playback
 
-导入器会生成工作台曲目列表和 ArcCreate 工程。导入完成后再启动工作台；如果工作台已经在运行，等当前任务结束后重启，让新曲目出现在列表中。
+The planner first attempts a perfect-contact search in the selected arc mode. If that fails, it expands arcs into individual scoring-tick jobs with their judgement windows. A touch can catch successive ticks, release, and reacquire the same snake when a hand becomes available. With **Allow missed notes** enabled, skip transitions rank paths by missed scoring ticks before ergonomic cost. Ground holds and point notes remain whole jobs. Search width defaults to 256 states and is adjustable under Search effort; the finite candidate/beam search does not prove a globally optimal score. Dependent covered-note/meeting shortcuts are disabled in the fallback search. Strict mode still permits release/reacquisition, but rejects plans requiring missed ticks.
 
-### 5. 启动工作台
+Arc reacquisition respects ArcCreate 1.2.68's colour input lock after lifting an assigned finger: up to `min(4 × judgement interval, 1000 ms)`, cleared when no arc of that colour remains or when cross-colour grace starts. Tick windows can allow later recovery despite that delay. The planner retains colour-lock history across intervening ground contacts. Native ArcCreate replay remains the authority for actual judgements, including incidental hits and the engine's exact hitboxes; reports distinguish planned misses from native results.
+
+Gloves now pivot around their fixed index-pad centres instead of feeding collision failures back into note planning. `hand_pose.py` searches a bounded, look-ahead corridor of paired pitch/yaw poses. Rotations use the angular and full-glove speed budgets left after fingertip translation. Only released hands can lift or detour; every active contact sample stays pinned. Pose fitting never adds misses or contact-exclusion retries. Truly incompatible contacts or a search shortfall remain non-blocking diagnostics.
+
+Long idle gaps now use return–wait–approach motion. Each released hand returns to its own starting side (left/right), rests there, then approaches the next contact late enough to avoid drifting across the gap. The home detour needs at least a one-second gap and room for a stationary dwell; otherwise the hand takes the direct transfer. Smooth travel is fitted under the movement cap, all chart contacts remain fixed, and stationary home samples are pinned through collision posing. `motion_paths.py` contains this path construction; its source is included in the motion-cache signature.
+
+The idle-motion take `20261106-233453-9d2967` reuses the unchanged, native-confirmed BIBBIDIBA 20–40 s touch replay. Its right-hand home waits remain stationary through pose solving, and all 141 Blender/WebGL checks pass. The tracing-preference take `20261106-233629-41d276` covers BIBBIDIBA 20–26.5 s with a 1000/s geometry cost: native replay confirms 27/27 planned arc catches (50 total hits, two misses), zero residual proxy overlaps, and all 57 baked/WebGL checks pass.
+
+The collision model encloses each glove/cuff ellipsoid in a sphere and checks pose interpolation at quarter-frame steps. It is conservative rather than an exact skin-contact model. The dashboard exposes preferred clearance and distinguishes overlap from missing the preferred clearance by a fraction of a millimetre. Solved poses are cached by the exact plan, settings and solver sources, so Blender scene export reuses the motion pass. Blender and WebGL use the same 60 Hz root samples and pitch/yaw interpolation.
+
+Pivot-pose verification used the unchanged 20–40 s BIBBIDIBA contact plan in `output/pose-validation`: 1.130 mm minimum proxy clearance, zero active-contact drift in the solver, no mesh intersections in 192 sampled baked poses, and 141 passing independent Blender/WebGL alignment checks. Maximum baked root drift was 0.000063 mm. The user's 40–101.4 s take (`20261106-221443-ff38a7`) also completed with the new poses: 0.687 mm minimum proxy clearance, 3.19 m/s peak glove speed and 300°/s peak turn. Positive clearances below the preferred 1 mm remain valid, non-intersecting poses. Local live playback measured 116 fps at 1280 × 720 in Draft mode; that is a Mac browser measurement, not a phone benchmark.
+
+The replay adapter subclasses ArcCreate's native TouchInputHandler. It projects tablet coordinates through ArcCreate's own camera, supplies down/move/up events, disables autoplay, and records native ScoreService judgements. The original chart remains intact, so skipped notes visibly miss. ArcCreate results, rather than planner predictions, drive the dashboard hit/miss totals. A replay-specific cache includes the input samples, chart, stable project metadata, media assets, and adapter version; perfect autoplay footage is never reused for a missed-note replay.
+
+Score-aware takes also include `arc-tick-check.json`. A passive wrapper around native arc judgement receivers records each tick's real result without changing input or scoring rules. The dashboard shows how many predicted catches native replay confirmed and exposes unconfirmed predictions and incidental hits separately. A synthetic 12-segment zigzag scores 12/12 with a stationary finger at a 0.1 m/s movement limit, whereas tracing skips all 12; the empty-input native control scores 0/12. BIBBIDIBA 20–40 s at 4 m/s (`20261106-225755-32889f`) produces 136 native hits and 9 misses versus 129/16 in the earlier trace take. Native replay confirms all 107 planned arc catches. It retains zero solver contact drift; closely spaced catches can still leave residual glove overlap, reported without blocking playback.
+
+WebGL loads the same glove/tablet/set geometry from the selected take’s GLB and samples `motion.json`. Video media time is the only clock, including seeks and 0.5×/0.25× playback. Blender Z-up coordinates and XYZ rotation conventions are converted to glTF/Three.js explicitly. Exported area lights are approximated by broad fill and a directional key in the live view; MP4 export retains Blender lighting. Paused previews stop redrawing until a pose, video frame or camera changes.
+
+Verification of the 10–35 s BIBBIDIBA take (`20261106-205842-d8dd7b`) passed 177 independent baked-frame and between-frame comparisons: maximum position error below 0.1 micrometre, rotation error below 0.00001 degrees, and camera-projection error below 0.000001 normalized units. Its final native result was 150 hits and 20 misses with a verified 4 m/s glove-speed cap. An empty native replay produced zero hits and zero score, proving that the replay export is not secretly autoplaying.
+
+The per-tick recovery take (`20261106-213200-6ba879`, BIBBIDIBA 10–35 s with full-hold preferences) plans 11 individual missed arc ticks and three reacquisitions. Native ArcCreate reports 159 hits and 13 misses, including window/release-tail judgements. The glove check retains 4 m/s, 360°/s and 1 mm limits; all 177 independent WebGL/Blender alignment checks pass. The previous same-settings whole-chain take (`20261106-211512-04c1db`) reported 151 hits and 21 misses. Neither take skips the cross-hand arc at 23.75–24.75 s; the 25.75/26 s arcs originally conflicted with ground holds, and the 33.12 s failure is an independently diagnosed glove-clearance failure.
+
+Recheck a saved take with:
 
 ```sh
-./dashboard.sh
-```
-
-打开 [http://127.0.0.1:8765/](http://127.0.0.1:8765/)。界面默认简体中文，可以在页首切换 English。程序在本机处理谱面，生成结果保存在 `output/`。
-
-如果端口已被占用，可以用 `./dashboard.sh --port 8766` 换一个端口。手机访问和后台运行的配置见[环境指南](docs/ipad-rhythm-environment-porting.md)。
-
-## 怎么用
-
-1. 选择自己导入的歌曲和难度，先选几秒钟的片段试跑，也可以点「整首」。
-2. 可以先保留默认动作设置，点击「生成实时预览」。程序会依次规划触点、生成手部动作并录制 ArcCreate 回放。
-3. 完成后播放预览。拖动进度或慢放查看手序，相机可以直接调整。
-4. 如果想试其他手序，修改动作参数后再次生成。曲目、流速和音频设置的改动也需要重新生成才能生效。
-5. 点击「导出当前预览视频」，选择 30 或 60 fps。录制时保持页面可见，完成后下载；浏览器支持时使用 MP4，否则使用 WebM。
-
-完整谱面可以添加 ArcCreate 结算片尾。「仅导出片尾」可以复用已有正文，具体用法见[结算片尾说明](docs/native-results-ending.md)。如果需要离线渲染，可以展开「Blender MP4 导出」。
-
-生成记录保存在 `output/runs/`，可以在工作台重新打开。导入的曲包、下载的工具和生成结果都不会被 Git 跟踪。
-
-## 调整手序
-
-不熟悉参数时，可以先只改下面几项：
-
-| 想调整的效果 | 对应设置 |
-| --- | --- |
-| 限制手的移动和转腕速度 | 最大移动速度、最大转腕速度 |
-| 改变同一只手连续点按的倾向 | 舒适连打间隔、快速连打代价 |
-| 让蛇更贴近中心线，或更多利用判定区域 | 优先描线、利用音符判定区域 |
-| 减少交叉、反拧和手臂缠绕 | 交叉与手腕相关代价、缠绕角限制 |
-| 在动作限制较严格时允许跳过部分音符 | 允许漏键 |
-
-规划结果有限制：它不是最优手序的证明，部分谱面扩展或场景控制也可能没有完整支持。工作台会显示已知兼容性提示；最终成绩以 ArcCreate 实际回放为准。动作中仍可能出现手套重叠，程序会报告这些情况。
-
-具体参数的实现和示例见[判定区落指](docs/contact-placement.md)、[连续加速度](docs/continuous-acceleration.md)和[交叉与手腕代价](docs/crossing-wrist-costs.md)。
-
-## 只运行规划器
-
-如果只想生成触点计划，不需要游戏画面或三维动画，安装 Python 依赖后就可以运行。仓库里有一张小型测试谱面：
-
-```sh
-./plan.sh charts/desk-study.aff output/desk-study.plan.json
-```
-
-也可以规划自己的 AFF 片段。下面的起止时间单位是毫秒，输出为 JSON：
-
-```sh
-.venv/bin/python plan_excerpt.py path/to/chart.aff 0 10000 output/excerpt.plan.json
-```
-
-`plan.sh` 使用较严格的上游策略；片段入口和工作台默认允许漏键。
-
-## 参与贡献
-
-欢迎直接提 PR，不用先开 issue。修 bug、改规划逻辑、调整界面、适配其他系统或补文档都可以。PR 里简单说明改了什么、怎么验证的；界面和动画改动可以附上截图或视频。
-
-涉及代码改动时，可以运行这些检查，需要另外安装 Node.js：
-
-```sh
+../../work/tools/Blender.app/Contents/MacOS/Blender --factory-startup -b output/runs/TAKE/scene.blend \
+  --python-exit-code 1 -P tests/export_alignment_reference.py -- output/runs/TAKE
+node tests/check_webgl_alignment.mjs output/runs/TAKE
 .venv/bin/python -m pytest vendor/arc-hand-order/tests tests -q
-node tests/test_i18n.mjs
-node tests/test_preview_recorder.mjs
-node tests/check_planning_progress.mjs
 ```
 
-`dashboard/` 是浏览器界面和本地服务，`vendor/arc-hand-order/` 是带本地修改的规划器，`arc-create-export/` 是 ArcCreate 适配器，手部动作主要在 `hand_pose.py`、`motion_paths.py` 和 `animate.py`。
+Three.js 0.187.0 and the required GLTFLoader helpers are served locally from `dashboard/vendor/` under the included MIT license. No CDN is needed on the phone. ArcCreate source for the matching 1.2.68 tag is available locally under `.tools/ArcCreate/source`; adapters modify a separate app copy.
 
-更多说明见[文档目录](docs/README.md)，包括[视频导出](docs/ipad-rhythm-webgl-export.md)、[缓存复用](docs/cache-layers.md)、[界面翻译](docs/i18n.md)和[场景与动画验证](docs/ipad-rhythm-environment-porting.md)。文档主要使用简体中文，英文 README 与中文介绍保持同步。
+## Generate the contacts
 
-## 致谢
+The prototype vendors [arc-hand-order](https://github.com/BFvX/arc-hand-order/tree/73604eea75c088db39d332be5e6f77ab16d850aa) at commit `73604ee` under GPL-3.0, with local release-timing, skip-search, and excerpt-occupation patches described above. Run the commands below from the prototype directory.
 
-感谢以下开源项目的作者与贡献者，为这个项目提供基础：
+```sh
+uv venv --python python3.13 .venv
+uv pip install --python .venv/bin/python -e 'vendor/arc-hand-order[dev]'
+./plan.sh charts/imported/ex-otogibanashi/2.aff output/ex-otogibanashi.plan.json
+.venv/bin/python plan_excerpt.py charts/imported/bibideba/2.aff 3500 11750 output/bibideba-excerpt.plan.json
+.venv/bin/python plan_excerpt.py charts/imported/ex-otogibanashi/2.aff 0 6650 output/ex-otogibanashi-excerpt.plan.json --prefer-same-hand
+```
 
-- **[ArcCreate](https://github.com/Arcthesia/ArcCreate)** — 由 Arcthesia 与贡献者开发的谱面编辑器和播放器。本项目基于 **1.2.68** 的原生渲染、触摸判定、音效及结算流程，通过自定义输入与导出适配器生成实际回放。上游采用 [GPL-3.0](https://github.com/Arcthesia/ArcCreate/blob/trunk/LICENSE) 许可。
-- **[arc-hand-order](https://github.com/BFvX/arc-hand-order)** — BFvX 的 AFF 手序与触点规划器，是本项目规划代码的基础。`vendor/arc-hand-order/` 从上游提交 [`73604ee`](https://github.com/BFvX/arc-hand-order/commit/73604eea75c088db39d332be5e6f77ab16d850aa) 引入，并加入计分感知路径、接触点优化与动作代价等扩展；保留[上游说明](vendor/arc-hand-order/README.md)和 [GPL-3.0 许可证](vendor/arc-hand-order/LICENSE)。
-- **[Three.js](https://github.com/mrdoob/three.js)** — 提供浏览器中的三维预览与 glTF 加载；随附依赖保留 [MIT 许可证](dashboard/vendor/THREE-LICENSE)。
+Both planner entry points disable the second finger and its repeat behavior. The excerpt helper reconnects retained arcs and keeps the audio start time. It preserves original scoring-tick placement for notes crossing window boundaries, then clips the planning occupation and contact windows. `plan.sh` retains the upstream strict policy; `plan_excerpt.py` and the dashboard allow misses by default. Ex-Otogibanashi favors same-index repeats to avoid rapid exchanges at one screen position.
+
+## Export ArcCreate gameplay
+
+[ArcCreate 1.2.68](https://github.com/Arcthesia/ArcCreate/releases/tag/1.2.68) is the AFF renderer. Its local copy lives under `.tools/ArcCreate`. The adapter in `arc-create-export/` adds command-line arguments to a separate copy of the app and calls ArcCreate's built-in frame and audio exporters. It requires Mono with Cecil 0.11 and FFmpeg. The setup script accepts a `MONO_CECIL_DLL` path if Mono is installed elsewhere.
+
+```sh
+mkdir -p .tools/ArcCreate
+curl -fL https://github.com/Arcthesia/ArcCreate/releases/download/1.2.68/StandaloneOSX.zip -o /tmp/ArcCreate-1.2.68.zip
+ditto -x -k /tmp/ArcCreate-1.2.68.zip .tools/ArcCreate
+./arc-create-export/setup.sh
+./arc-create-export/export.sh charts/imported/bibideba/project.arcproj output/gameplay/bibideba.mp4 3500 12167
+./arc-create-export/export.sh charts/imported/ex-otogibanashi/project.arcproj output/gameplay/ex-otogibanashi.mp4 0 7134
+```
+
+The export is 1148 × 802 at 30 fps to match the planner's landscape iPad screen ratio. Each export starts at the plan's audio start time and includes the short hand release at the end. The four-argument legacy command above uses autoplay. New dashboard builds pass a fifth argument, `replay.json`, and use real touch judgement instead. Their HUD, hit/miss effects, combo, and score are engine results; successful native hit callbacks supply the mixed hit sounds. The engine simulates at 60 Hz and footage is encoded at 30 fps. Source music remains unmodified, with a silent judgement-expiry tail added in memory when needed.
+
+## Rebuild a saved take manually
+
+For a geometry-only refresh, keep the dashboard running and use its presentation endpoint (or the **Update presentation** button):
+
+```sh
+curl -fsS http://127.0.0.1:8765/api/presentation \
+  -H 'Content-Type: application/json' -d '{"id":"your-take-id"}'
+```
+
+This asynchronous operation updates the take metadata as well as its versioned `.blend` and `.glb`. Poll `/api/state` or watch the dashboard, then use **Export MP4**. Avoid invoking `animate.py` for an environment-only change: that entry point builds a new animation, while `refresh_scene.py` preserves the existing baked keys. The porting guide includes direct Blender audit commands.
+
+The upstream planner suite passed 81 tests during setup. The one-index configuration rejected three disjoint simultaneous holds. Targeted motion checks verify that movement obeys the glove speed cap and wrist turns obey the angular cap. A Blender regression check confirms that identical, overlapping glove paths preserve their touch points and finish successfully; excessive speed still fails.

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,10 +11,7 @@
 <body>
 <header>
   <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 22V12M10 26V6M16 21V11M22 26V6M28 22V12"/></svg><div><h1>Rhythm workbench</h1><p>Give the hands a rhythm that feels right.</p></div></div>
-  <div class="header-tools"><label class="language-control" for="language"><span>Language</span>
-    <select id="language" data-no-i18n aria-label="Language"><option value="zh-CN">简体中文</option><option value="en">English</option></select>
-  </label>
-  <span class="connection"><span></span>Local renderer</span></div>
+  <span class="connection"><span></span>Local renderer</span>
 </header>
 <nav class="mobile-nav" aria-label="Workbench views">
   <a href="#preview">Preview</a>
@@ -27,8 +24,6 @@
       <h2>Chart window</h2>
       <label for="chart">Chart</label>
       <select name="chart" id="chart"><option value="ex-otogibanashi">Ex-Otogibanashi</option><option value="bibideba">BIBBIDIBA</option></select>
-      <p id="chart-library-info" class="hint"></p>
-      <p id="chart-compatibility" class="hint" role="status" hidden></p>
       <div class="range-heading"><span>Selected window</span><button id="full-chart" type="button">Full chart</button></div>
       <div id="chart-range" class="chart-range" role="group" aria-label="Chart window">
         <div class="range-track" aria-hidden="true"><span></span></div>
@@ -49,45 +44,9 @@
       </details>
     </section>
     <section>
-      <h2>Scroll and audio</h2>
-      <div class="knob"><label for="scroll-speed">Chart scroll speed</label><input id="scroll-speed" name="scroll_speed" type="number" min="1" max="10" step="0.1" required><input aria-label="Chart scroll speed slider" data-for="scroll_speed" type="range" min="1" max="10" step="0.1"></div>
-      <p class="hint">ArcCreate scale 1–10. Higher values bring notes toward you faster. Note timing and song tempo stay unchanged.</p>
-      <div class="knob"><label for="song-delay">Song audio delay</label><span class="input-unit"><input id="song-delay" name="song_delay_ms" type="number" min="-2000" max="2000" step="1" required><span>ms</span></span><input aria-label="Song audio delay slider" data-for="song_delay_ms" type="range" min="-2000" max="2000" step="10"></div>
-      <p class="hint">Positive = song later than video; negative = earlier. Video, hand contacts and hit sounds stay fixed.</p>
-      <label><input name="hit_sounds" type="checkbox"> Hit sounds</label>
-      <p class="hint">Clicks for caught block notes and snake scoring ticks. Missed notes stay silent. Build to apply; these controls reuse contact plans.</p>
-    </section>
-    <section>
-      <h2>Red sky notes</h2>
-      <label class="check"><input type="checkbox" name="enable_red_notes"> Enable red notes</label>
-      <label class="check"><input type="checkbox" name="target_all_red_notes" id="target-red"> Target every red note</label>
-      <p class="hint">Red notes award no score and never break combo. With targeting off, hands focus on scoring notes; incidental red catches still register. With targeting on, the planner seeks every feasible red catch after protecting normal score.</p>
-    </section>
-    <section>
       <h2>Hand motion</h2>
       <div class="knob"><label for="speed">Max move speed</label><span class="input-unit"><input id="speed" name="max_speed_m_s" type="number" min="0.1" max="4" step="0.05" required><span>m/s</span></span><input aria-label="Max move speed slider" data-for="max_speed_m_s" type="range" min="0.1" max="4" step="0.05"></div>
       <p class="hint">Checked on the full glove, including movement from wrist turns.</p>
-      <label class="check"><input name="off_center_contacts" type="checkbox">Use note judgement areas</label>
-      <p class="hint">Allow off-center contacts to reduce travel and wrist twisting. Uses the same touch coordinates in the animation and ArcCreate replay; generate a new preview to apply.</p>
-      <label for="note-center-cost">Note centre deviation cost <input id="note-center-cost" name="note_center_weight" type="number" min="0" max="10000" step="any" required></label>
-      <label for="note-center-free">Free centre radius <span class="input-unit"><input id="note-center-free" name="note_center_free_mm" type="number" min="0" max="15" step="any" required><span>mm</span></span></label>
-      <p class="hint">Prefer the centre of taps and sky notes once per hit, and ground holds per second. Offsets inside the free radius cost nothing; beyond it, squared distance is normalized to 20 mm. Zero cost disables this preference. Snake geometry uses its existing cost only.</p>
-      <p class="hint" id="note-center-status" aria-live="polite"></p>
-      <div class="knob"><label for="idle-speed">Idle / detour speed</label><span class="input-unit"><input id="idle-speed" name="idle_speed_m_s" type="number" min="0.05" max="4" step="0.05" required><span>m/s</span></span><input aria-label="Idle movement speed slider" data-for="idle_speed_m_s" type="range" min="0.05" max="4" step="0.05"></div>
-      <p class="hint">Limits optional returns to the side and collision detours. Required moves between notes can use the main move-speed limit. Hands stay nearer the notes when a leisurely return will not fit.</p>
-      <div class="knob"><label for="winding-limit">Arm winding limit</label><span class="input-unit"><span>±</span><input id="winding-limit" name="winding_limit_deg" type="number" min="90" max="355" step="5" required><span>°</span></span><input aria-label="Arm winding limit slider" data-for="winding_limit_deg" type="range" min="90" max="355" step="5"></div>
-      <p class="hint">Limits accumulated rotation between the cuffs from idle. Released hands take longer routes to unwind; lifting or returning home never resets the angle. Required unwinds may use the main move-speed limit.</p>
-      <p class="hint" id="winding-status"></p>
-      <details id="crossing-preferences" open>
-        <summary>Crossing and wrist preferences</summary>
-        <label for="cross-duration">Crossing duration cost <input id="cross-duration" name="crossing_weight" type="number" min="0" max="30" step="any" required></label>
-        <label for="cross-depth">Crossing depth cost <input id="cross-depth" name="crossing_depth_weight" type="number" min="0" max="100000" step="any" required></label>
-        <p class="hint">Depth is the left fingertip's horizontal distance beyond the right fingertip, minus 5 mm, integrated while both touch. Cost is per metre-second: 50 mm crossed for 2 s costs 0.09 times this weight.</p>
-        <label for="wrist-cost">Wrist twist cost <input id="wrist-cost" name="wrist_twist_weight" type="number" min="0" max="10000" step="any" required></label>
-        <label for="wrist-free">Comfortable wrist deviation <span class="input-unit"><input id="wrist-free" name="wrist_twist_free_deg" type="number" min="0" max="90" step="any" required><span>°</span></span></label>
-        <p class="hint">Pitch and yaw beyond the comfortable angle cost squared deviation, normalized to 90°, per second. Natural direction follows the body's left/right arm anchors. Planning uses a cached static glove-pose estimate; the animation solver penalizes actual angles. This is not full forearm IK. Zero disables each new cost; score and hard motion limits take priority.</p>
-        <p class="hint" id="crossing-status" aria-live="polite"></p>
-      </details>
       <div class="knob"><label for="turn">Max wrist turn</label><span class="input-unit"><input id="turn" name="angular_limit_deg_s" type="number" min="30" max="1440" step="30" required><span>°/s</span></span><input aria-label="Max wrist turn slider" data-for="angular_limit_deg_s" type="range" min="30" max="1440" step="30"></div>
       <div class="knob"><label for="lift">Finger lift</label><span class="input-unit"><input id="lift" name="lift_mm" type="number" min="0" max="30" step="1" required><span>mm</span></span><input aria-label="Finger lift slider" data-for="lift_mm" type="range" min="0" max="30" step="1"></div>
       <div class="knob"><label for="clearance">Preferred hand clearance</label><span class="input-unit"><input id="clearance" name="clearance_mm" type="number" min="0.5" max="8" step="0.5" required><span>mm</span></span><input aria-label="Hand clearance slider" data-for="clearance_mm" type="range" min="0.5" max="8" step="0.5"></div>
@@ -95,9 +54,9 @@
       <details>
         <summary>Planner preferences</summary>
         <label>Comfort speed <span class="input-unit"><input name="comfort_speed_m_s" type="number" min="0.1" max="2" step="0.05" required><span>m/s</span></span></label>
-
-        <label>Flight acceleration threshold <span class="input-unit"><input name="planner_accel_m_s2" type="number" min="1" max="200" step="1" required><span>m/s²</span></span></label>
-        <p class="hint">Legacy soft threshold for flights and composed jumps; the continuous acceleration penalty below also measures motion inside snakes. Move and turn speed limits are enforced on the animation.</p>
+        <label>Crossing cost <input name="crossing_weight" type="number" min="0" max="30" step="0.5" required></label>
+        <label>Acceleration preference <span class="input-unit"><input name="planner_accel_m_s2" type="number" min="1" max="200" step="1" required><span>m/s²</span></span></label>
+        <p class="hint">Acceleration is an upstream planner preference. Move and turn speeds above are enforced on the animation.</p>
       </details>
     </section>
     <section id="click-timing">
@@ -130,12 +89,8 @@
       <select id="arc-path" name="arc_path_mode"><option value="score">Score-aware · catch ticks with less movement</option><option value="trace">Trace · follow the snake centre</option></select>
       <p class="hint">Score-aware paths can wait inside a hitbox and cut between catches. ArcCreate judges the resulting touches; colour locks still apply.</p>
       <label><input name="prefer_arc_trace" type="checkbox"> Prefer tracing arc geometry</label>
-      <label for="arc-trace-cost">Geometry deviation cost <span class="input-unit"><input id="arc-trace-cost" name="arc_trace_weight" type="number" min="0" max="10000" step="any" required><span>/s</span></span></label>
-      <p class="hint">Balance geometry deviation against acceleration cost: smooth snakes can be traced while sharp zig-zags are rounded or caught from a stable position.</p>
+      <label for="arc-trace-cost">Geometry deviation cost <span class="input-unit"><input id="arc-trace-cost" name="arc_trace_weight" type="number" min="0" max="10000" step="50" required><span>/s</span></span></label>
       <p class="hint">In Score-aware mode, higher costs favour tracing the centreline throughout the snake, including its tail and release gaps. Full cost applies at 20 mm away or while released; closer offsets cost proportionally less. Scoring and speed limits take priority. The full-hold cost below is additional when enabled.</p>
-      <label for="acceleration-cost">Acceleration penalty <input id="acceleration-cost" name="acceleration_weight" type="number" min="0" max="10000" step="any" required></label>
-      <p class="hint">Continuous squared fingertip acceleration, normalized to 5 m/s². Higher values favour smooth motion over sharp reversals; 0 disables it. Scoring takes priority. Use Score-aware mode to allow shortcuts; Trace mode still requires the centreline.</p>
-      <p class="hint" id="acceleration-status" aria-live="polite"></p>
       <p class="hint" id="arc-release-summary" aria-live="polite"></p>
       <label><input name="full_arc_hold" type="checkbox"> Prefer holding arcs to the visual end</label>
       <p class="hint">Leave off to free the hand once the final scoring tick is secured. If a whole snake is infeasible, the planner can release and reacquire it around individual ticks, respecting ArcCreate’s colour lock and grace periods.</p>
@@ -183,16 +138,11 @@
       <div><h2>Presentation set</h2><p id="presentation-hint" class="hint" aria-live="polite"></p></div>
       <div class="export-actions"><button id="refresh-scene" type="button">Update presentation</button></div>
     </section>
-    <section class="video-export" id="webgl-export" hidden aria-label="Preview video export">
-      <div><h2>Export preview video</h2><p id="webgl-export-hint" class="hint" aria-live="polite">Records this view with game audio at 1×. Keep the page visible until it finishes.</p><progress id="webgl-export-progress" max="100" value="0" hidden aria-label="Preview recording progress"></progress></div>
-      <div class="export-actions"><button id="add-ending" type="button">Add results ending</button><button id="export-ending" type="button" hidden>Export ending only</button><label for="export-fps">Video frame rate</label><select id="export-fps"><option value="30">30 fps</option><option value="60" selected>60 fps</option></select><button id="export-webgl" type="button">Export preview video</button><button id="cancel-webgl" type="button" hidden>Cancel export</button><a id="download-webgl" download hidden>Download video</a></div>
+    <section class="video-export" id="video-export" hidden aria-label="Video export">
+      <div><h2>Export video</h2><p id="export-hint" class="hint" aria-live="polite">Export this take with the current camera and audio.</p></div>
+      <div class="export-actions"><button id="export-video" type="button">Export MP4</button><a id="download-export" download hidden>Download MP4</a></div>
     </section>
-    <details id="video-export" class="analysis" hidden><summary>Blender MP4 export</summary>
-      <p id="export-hint" class="hint" aria-live="polite">Offline Blender rendering with the current camera and audio.</p>
-      <div class="export-actions"><button id="export-video" type="button">Export Blender MP4</button><a id="download-export" download hidden>Download Blender MP4</a></div>
-    </details>
     <section class="analysis" id="judgement-report" hidden>
-      <p id="hit-audio-report" class="hint" hidden><span id="hit-audio-counts"></span> <a id="hit-audio-download" download>Download hit sounds (WAV)</a></p>
       <h2>ArcCreate results</h2><p id="judgement-summary"></p><p id="arc-tick-summary" class="hint" hidden></p><a id="arc-tick-report" hidden target="_blank" rel="noopener">Native arc-tick report</a>
       <p class="hint">Score, combo, effects and hit sounds follow the two-hand touch replay. Window boundaries can also cause misses.</p>
       <details><summary>Planned missed ticks and notes</summary><ul id="skipped-targets"></ul></details>

@@ -54,68 +54,8 @@ internal static class Patch
             requestIl.InsertBefore(begin, requestIl.Create(OpCodes.Ldarg_1));
             requestIl.InsertBefore(begin, requestIl.Create(OpCodes.Call, track));
             requestIl.InsertBefore(begin, requestIl.Create(OpCodes.Starg, request.Parameters[0]));
-            PatchRedNotes(gameplay.MainModule, export.MainModule.GetType("RedNotes"));
             gameplay.Write(gameplayPath + ".new");
         }
         File.Replace(gameplayPath + ".new", gameplayPath, null);
-    }
-
-    private static void PatchRedNotes(ModuleDefinition module, TypeDefinition red)
-    {
-        Func<string, MethodReference> callback = name => module.ImportReference(red.Methods.Single(m => m.Name == name));
-        Func<string, string, MethodDefinition> method = (type, name) => module.GetType(type).Methods.Single(m => m.Name == name);
-        Action<MethodDefinition, string, bool, bool> guard = (target, hook, loadThis, zero) => {
-            var il = target.Body.GetILProcessor(); var first = target.Body.Instructions.First();
-            if (loadThis) il.InsertBefore(first, il.Create(OpCodes.Ldarg_0));
-            il.InsertBefore(first, il.Create(OpCodes.Call, callback(hook)));
-            il.InsertBefore(first, il.Create(OpCodes.Brfalse, first));
-            if (zero) il.InsertBefore(first, il.Create(OpCodes.Ldc_I4_0));
-            il.InsertBefore(first, il.Create(OpCodes.Ret));
-        };
-        guard(method("ArcCreate.Gameplay.Data.Note", "get_TotalCombo"), "IsRed", true, true);
-        guard(method("ArcCreate.Gameplay.Score.ScoreService", "ProcessJudgement"), "SkipScore", false, false);
-
-        var judge = method("ArcCreate.Gameplay.Data.ArcTap", "ProcessArcTapJudgement");
-        var judgeIl = judge.Body.GetILProcessor(); var begin = judge.Body.Instructions.First();
-        judgeIl.InsertBefore(begin, judgeIl.Create(OpCodes.Ldarg_0));
-        judgeIl.InsertBefore(begin, judgeIl.Create(OpCodes.Call, callback("Begin")));
-        foreach (var ret in judge.Body.Instructions.Where(i => i.OpCode == OpCodes.Ret).ToArray())
-        {
-            ret.OpCode = OpCodes.Ldarg_0;
-            var a = judgeIl.Create(OpCodes.Ldarg_1); judgeIl.InsertAfter(ret, a);
-            var b = judgeIl.Create(OpCodes.Ldarg_2); judgeIl.InsertAfter(a, b);
-            var call = judgeIl.Create(OpCodes.Call, callback("End")); judgeIl.InsertAfter(b, call);
-            judgeIl.InsertAfter(call, judgeIl.Create(OpCodes.Ret));
-        }
-        var combo = method("ArcCreate.Gameplay.Chart.TimingGroup", "ComboAt");
-        var comboIl = combo.Body.GetILProcessor();
-        foreach (var ret in combo.Body.Instructions.Where(i => i.OpCode == OpCodes.Ret).ToArray())
-        {
-            ret.OpCode = OpCodes.Ldarg_0;
-            var a = comboIl.Create(OpCodes.Ldarg_1); comboIl.InsertAfter(ret, a);
-            var call = comboIl.Create(OpCodes.Call, callback("ComboAt")); comboIl.InsertAfter(a, call);
-            comboIl.InsertAfter(call, comboIl.Create(OpCodes.Ret));
-        }
-        foreach (string name in new[] { "ArcTap", "Arc" })
-        {
-            var render = method("ArcCreate.Gameplay.Data." + name, "UpdateRender");
-            var il = render.Body.GetILProcessor();
-            var colors = render.Body.Instructions.Where(i => i.Operand is MethodReference
-                && ((MethodReference)i.Operand).FullName.Contains("GroupProperties::get_Color")).ToArray();
-            if (colors.Length == 0) throw new Exception("Missing native color hook: " + name);
-            foreach (var color in colors)
-            {
-                var load = il.Create(OpCodes.Ldarg_0); il.InsertAfter(color, load);
-                il.InsertAfter(load, il.Create(OpCodes.Call, callback(name == "ArcTap" ? "TintTap" : "TintArc")));
-            }
-        }
-        var skin = method("ArcCreate.Gameplay.Data.ArcTap", "ReloadSkin");
-        var skinIl = skin.Body.GetILProcessor();
-        foreach (var ret in skin.Body.Instructions.Where(i => i.OpCode == OpCodes.Ret).ToArray())
-        {
-            ret.OpCode = OpCodes.Ldarg_0;
-            var call = skinIl.Create(OpCodes.Call, callback("ReloadSkin")); skinIl.InsertAfter(ret, call);
-            skinIl.InsertAfter(call, skinIl.Create(OpCodes.Ret));
-        }
     }
 }

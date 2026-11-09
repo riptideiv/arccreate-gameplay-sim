@@ -1,4 +1,3 @@
-import { setText, setAttributeText } from './i18n.js';
 // Two native, keyboard-accessible sliders share one track and numeric fields.
 const MIN_WINDOW = .5;
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -93,11 +92,11 @@ export class ChartRange {
       handle.value = index ? b : a;
       handle.setAttribute('aria-valuemin', index ? milliseconds(a+MIN_WINDOW) : 0);
       handle.setAttribute('aria-valuemax', index ? duration : milliseconds(b-MIN_WINDOW));
-      setAttributeText(handle, 'aria-valuetext', (index ? b : a).toFixed(3).replace(/\.?0+$/,'') + ' seconds');
+      handle.setAttribute('aria-valuetext', (index ? b : a).toFixed(3).replace(/\.?0+$/,'') + ' seconds');
     }
     this.track.style.setProperty('--range-start', `${100*a/duration}%`);
     this.track.style.setProperty('--range-end', `${100*b/duration}%`);
-    setText(document.getElementById('range-duration'), clock(duration));
-    setText(document.getElementById('range-selection'), `${a.toFixed(2)}–${b.toFixed(2)} s · ${(b-a).toFixed(2)} s selected`);
+    document.getElementById('range-duration').textContent = clock(duration);
+    document.getElementById('range-selection').textContent = `${a.toFixed(2)}–${b.toFixed(2)} s · ${(b-a).toFixed(2)} s selected`;
   }
 }

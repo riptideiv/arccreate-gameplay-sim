@@ -20,80 +20,56 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from typing import Literal
 
-if __package__:
-    from .chart_library import load_catalog, chart_paths
-    from .red_notes import prepare_project
-else:
-    from chart_library import load_catalog, chart_paths
-    from red_notes import prepare_project
-
 
 ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE = ROOT.parents[1]
 RUNS = ROOT / "output/runs"
-BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
-CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261107-crossing-wrist-costs'
-STARTUP_PREFERENCES = ('repeat_comfort_ms', 'jack_gap_ms', 'jack_free', 'jack_weight',
-                       'scroll_speed', 'song_delay_ms', 'prefer_arc_trace', 'full_arc_hold',
-                       'camera_elevation_deg', 'idle_speed_m_s', 'winding_limit_deg', 'acceleration_weight',
-                       'note_center_weight', 'note_center_free_mm','crossing_depth_weight','wrist_twist_weight','wrist_twist_free_deg')
+BLENDER = WORKSPACE / "work/tools/Blender.app/Contents/MacOS/Blender"
+CHARTS = {
+    "ex-otogibanashi": {"title": "Ex-Otogibanashi", "artist": "ryo (supercell)", "duration": 109.894,
+                       "start_s": 0, "end_s": 6.65, "audio_start_ms": 0},
+    "bibideba": {"title": "BIBBIDIBA", "artist": "Hoshimachi Suisei / Tsumiki", "duration": 168,
+                "start_s": 3.5, "end_s": 6.5, "audio_start_ms": 3500},
+}
 
 
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    chart: str = "ex-otogibanashi"
+    chart: Literal["ex-otogibanashi", "bibideba"] = "ex-otogibanashi"
     start_s: float = Field(default=0, ge=0)
     end_s: float = Field(default=6.65, gt=0)
     max_speed_m_s: float = Field(default=1.6, ge=0.1, le=4)
-    idle_speed_m_s: float = Field(default=1, ge=0.05, le=4)
     angular_limit_deg_s: float = Field(default=360, ge=30, le=1440)
-    winding_limit_deg: float = Field(default=260, ge=90, le=355)
     lift_mm: float = Field(default=6, ge=0, le=30)
     clearance_mm: float = Field(default=1, ge=0.5, le=8)
     comfort_speed_m_s: float = Field(default=0.25, ge=0.1, le=2)
     crossing_weight: float = Field(default=1, ge=0, le=30)
-    crossing_depth_weight: float = Field(default=100, ge=0, le=100000)
-    wrist_twist_weight: float = Field(default=10, ge=0, le=10000)
-    wrist_twist_free_deg: float = Field(default=30, ge=0, le=90)
     planner_accel_m_s2: float = Field(default=75, ge=1, le=200)
-    acceleration_weight: float = Field(default=100, ge=0, le=10000)
-    repeat_comfort_ms: float = Field(default=167, ge=1, le=1000)
+    repeat_comfort_ms: float = Field(default=180, ge=1, le=1000)
     repeat_weight: float = Field(default=5, ge=0, le=100)
-    jack_gap_ms: int = Field(default=133, ge=0, le=1000)
-    jack_free: int = Field(default=2, ge=1, le=32)
-    jack_weight: float = Field(default=10, ge=0, le=100)
+    jack_gap_ms: int = Field(default=150, ge=0, le=1000)
+    jack_free: int = Field(default=4, ge=1, le=32)
+    jack_weight: float = Field(default=20, ge=0, le=100)
     point_contact_frames: int = Field(default=2, ge=1, le=12)
     min_air_frames: int = Field(default=1, ge=0, le=30)
     held_release_air_frames: int = Field(default=4, ge=0, le=30)
     arc_path_mode: Literal["score", "trace"] = "score"
-    off_center_contacts: bool = True
-    note_center_weight: float = Field(default=50, ge=0, le=10000)
-    note_center_free_mm: float = Field(default=5, ge=0, le=15)
-    prefer_arc_trace: bool = True
+    prefer_arc_trace: bool = False
     arc_trace_weight: float = Field(default=1000, ge=0, le=10000)
-    full_arc_hold: bool = True
+    full_arc_hold: bool = False
     partial_hold_weight: float = Field(default=1000, ge=0, le=10000)
     full_ground_hold: bool = True
     partial_ground_hold_weight: float = Field(default=500, ge=0, le=10000)
     allow_misses: bool = True
-    enable_red_notes: bool = True
-    target_all_red_notes: bool = False
     search_width: int = Field(default=256, ge=32, le=2048)
     camera_distance_m: float = Field(default=0.29, ge=0.22, le=0.5)
-    camera_elevation_deg: float = Field(default=70, ge=25, le=80)
+    camera_elevation_deg: float = Field(default=52, ge=25, le=80)
     camera_yaw_deg: float = Field(default=0, ge=-35, le=35)
     camera_lens_mm: float = Field(default=30, ge=20, le=55)
     quality: Literal["draft", "final"] = "draft"
-    scroll_speed: float = Field(default=2.5, ge=1, le=10)
-    song_delay_ms: int = Field(default=0, ge=-2000, le=2000)
-    hit_sounds: bool = True
 
     @model_validator(mode="after")
     def time_range(self):
-        if self.chart not in CHARTS:
-            raise ValueError("Choose a chart from the library.")
-        if CHARTS[self.chart].get("available") is False:
-            raise ValueError(CHARTS[self.chart]["unavailable_reason"])
         if self.end_s <= self.start_s or self.end_s > CHARTS[self.chart]["duration"]:
             raise ValueError("Choose a window inside the chart, with its end after its start.")
         if self.end_s-self.start_s < 0.5:
@@ -143,8 +119,7 @@ class RenderQueue:
             self.cancelled.clear()
             run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6]
             run = {"id": run_id, "status": "running", "stage": "Planning contacts",
-                   "progress": 0, "created": time.time(), "settings": settings.model_dump(),
-                   "defaults_revision": DEFAULTS_REVISION}
+                   "progress": 0, "created": time.time(), "settings": settings.model_dump()}
             (RUNS / run_id).mkdir()
             write_json(RUNS / run_id / "run.json", run)
             self.active = run
@@ -171,8 +146,6 @@ class RenderQueue:
             directory = RUNS / run_id
             if not (directory / "run.json").is_file():
                 raise ValueError("Unknown take.")
-            if not (directory / "run.json").is_file():
-                raise ValueError("Unknown take.")
             run = json.loads((directory / "run.json").read_text())
             if run["status"] != "complete" or not run.get("live"):
                 raise ValueError("Choose a completed live preview.")
@@ -197,31 +170,6 @@ class RenderQueue:
             self.update(status="complete", stage="Scene update cancelled · previous scene ready", progress=100, scene_only=False)
         except Exception as error:
             self.update(status="complete", stage="Previous scene ready", progress=100, scene_only=False, scene_error=str(error))
-
-    def add_ending(self, run_id):
-        with self.lock:
-            if self.active and self.active["status"] == "running":
-                raise RuntimeError("A build or export is already running.")
-            if not re.fullmatch(r"\d{8}-\d{6}-[a-f0-9]{6}", run_id):
-                raise ValueError("Unknown take.")
-            directory = RUNS / run_id
-            run = json.loads((directory / "run.json").read_text())
-            if run["status"] != "complete" or not run.get("live"):
-                raise ValueError("Choose a completed live preview.")
-            self.cancelled.clear()
-            self.active = run
-            self.update(status="running", stage="Rendering results ending only", progress=20, ending_only=True, ending_error=None)
-            threading.Thread(target=self.work_ending, args=(directory,), daemon=True).start()
-            return self.active.copy()
-
-    def work_ending(self, directory):
-        try:
-            self.command([ROOT / '.venv/bin/python', ROOT / 'dashboard/ending.py', directory], directory, "Rendering results ending only", 30)
-            lines = (directory / 'render.log').read_text().splitlines()
-            result = json.loads(next(line.removeprefix('ENDING_RESULT ') for line in reversed(lines) if line.startswith('ENDING_RESULT ')))
-            self.update(status="complete", stage="Results ending ready", progress=100, ending_only=False, ending=result, video=result['video'], export_video=None, export_view=None)
-        except Exception as error:
-            self.update(status="complete", stage="Live preview ready", ending_only=False, ending_error=str(error))
 
     def export_video(self, run_id, view=None):
         with self.lock:
@@ -284,8 +232,6 @@ class RenderQueue:
             for line in process.stdout:
                 log.write(line)
                 log.flush()
-                if line.startswith('Reused contact-preserving glove poses from shared cache.'):
-                    self.update(stage='Reusing cached hand pivots', progress=progress)
                 if line.startswith('PLANNER_PROGRESS '):
                     try:
                         self.planner_update(json.loads(line.removeprefix('PLANNER_PROGRESS ')))
@@ -321,7 +267,7 @@ class RenderQueue:
         phase = event['phase']
         ranges = {'loading': (3, 3), 'preparing': (3, 3), 'geometry': (3, 4),
                   'arc_profiles': (4, 6), 'candidates': (6, 9), 'graph': (9, 10),
-                  'search': (10, 19), 'finalizing': (19, 19), 'placement': (19, 19), 'done': (19, 19), 'writing': (19, 19)}
+                  'search': (10, 19), 'finalizing': (19, 19), 'done': (19, 19), 'writing': (19, 19)}
         low, high = ranges[phase]
         completed, total = event.get('completed'), event.get('total')
         fraction = max(0, min(1, completed / total)) if total else 0
@@ -336,13 +282,12 @@ class RenderQueue:
                           height=480 if settings.quality == "draft" else 768)
             write_json(directory / "settings.json", config)
             plan_path = directory / "plan.json"
-            chart, aff, project_path = chart_paths(ROOT, settings.chart, CHARTS[settings.chart])
+            chart = ROOT / "charts/imported" / settings.chart
             excluded = set()
             avoid_contacts = []
-            winding_retries = 0
             while True:
                 (directory / "metrics.json").unlink(missing_ok=True)
-                arguments = [ROOT / ".venv/bin/python", ROOT / "plan_excerpt.py", aff,
+                arguments = [ROOT / ".venv/bin/python", ROOT / "plan_excerpt.py", chart / "2.aff",
                              round(settings.start_s*1000), round(settings.end_s*1000), plan_path,
                              "--settings", directory / "settings.json", "--progress"]
                 for event in sorted(excluded):
@@ -353,7 +298,7 @@ class RenderQueue:
                 self.command(arguments, directory, "Planning contacts and missed notes", 3)
                 plan = json.loads(plan_path.read_text())
                 try:
-                    self.command([BLENDER, "--factory-startup", "-b", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
+                    self.command([BLENDER, "--factory-startup", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
                                   plan_path, directory / "scene.blend", "--motion-only",
                                   "--motion", directory / "motion.json", "--settings", directory / "settings.json",
                                   "--report", directory / "metrics.json"], directory, "Posing gloves around fixed touch points", 15)
@@ -363,11 +308,6 @@ class RenderQueue:
                     if not where or not plan["touches"]:
                         raise
                     details = json.loads((directory / "metrics.json").read_text()).get('failure') or {}
-                    winding_failure=details.get('reason')=='arm winding'
-                    if winding_failure:
-                        winding_retries+=1
-                        if not settings.allow_misses or winding_retries>4:
-                            raise ValueError(f"{error} No safe arm route was found; the winding limit remains enforced.")
                     frame = details.get('frame',float(where[1]) * 60)
                     near = sorted(plan["touches"], key=lambda t: max(t["down_frame"]-frame, frame-t["up_frame"], 0))
                     candidates = [t for t in near if t['down_frame'] <= frame+2 and t['up_frame'] >= frame-2
@@ -380,12 +320,11 @@ class RenderQueue:
                                    key=lambda p:max(p['from_frame']-frame,frame-p['to_frame'],0))
                         parent = part.get('parent_occupation_id') or part['occupation_id']
                         at = round(frame*1000/60) - plan['chart']['audio_offset_ms']
-                        padding=180 if winding_failure else 34
-                        start,end = max(0,at-padding),at+padding
+                        start,end = max(0,at-34),at+34
                         prior = next((x for x in avoid_contacts if x['parent']==parent and x['start_ms'] <= end+100 and x['end_ms'] >= start-100),None)
                         if prior:
-                            prior['start_ms'] = max(0,min(start,prior['start_ms']-padding))
-                            prior['end_ms'] = max(end,prior['end_ms']+padding)
+                            prior['start_ms'] = max(0,min(start,prior['start_ms']-34))
+                            prior['end_ms'] = max(end,prior['end_ms']+34)
                         else:
                             avoid_contacts.append({'parent':parent,'start_ms':start,'end_ms':end,
                                                    'reason':details.get('reason','motion limits')})
@@ -400,48 +339,33 @@ class RenderQueue:
             frames = report["frame_count"]
             audio_start = plan["preview"]["audio_start_ms"]
             replay = {"width_mm": plan["device"]["screen_mm"][0], "height_mm": plan["device"]["screen_mm"][1],
-                      "scroll_speed": settings.scroll_speed,
                       "chart_start_ms": plan["preview"]["chart_start_ms"],
                       "audio_offset_ms": plan["chart"]["audio_offset_ms"],
-                      "source_audio_offset_ms": plan["chart"].get("source_audio_offset_ms", plan["chart"]["audio_offset_ms"]),
                       "touches": [{"id": t["id"],
                                    "down_frame": t["down_frame"], "up_frame": t["up_frame"],
                                    "points": [{"x": x, "y": y} for x, y in t["path_mm"]]} for t in plan["touches"]]}
             write_json(directory / "replay.json", replay)
-            game_chart, game_aff, game_project = prepare_project(chart, aff, project_path, directory, settings.enable_red_notes)
             digest = hashlib.sha256((directory / "replay.json").read_bytes() +
-                                    str((audio_start, frames)).encode() + game_aff.read_bytes())
-            project = re.sub(r"(?m)^\s*lastWorkingTiming:.*\n", "", game_project.read_text())
+                                    str((audio_start, frames)).encode() + (chart / "2.aff").read_bytes())
+            project = re.sub(r"(?m)^\s*(lastWorkingTiming|lastOpenedChartPath):.*\n", "", (chart / "project.arcproj").read_text())
             digest.update(project.encode())
-            for asset in sorted(game_chart.rglob("*")):
+            for asset in sorted(chart.rglob("*")):
                 if ".rendering" not in asset.parts and asset.suffix.lower() in (".ogg", ".mp3", ".wav", ".flac", ".png", ".jpg", ".jpeg", ".lua"):
-                    digest.update(asset.relative_to(game_chart).as_posix().encode())
+                    digest.update(asset.relative_to(chart).as_posix().encode())
                     digest.update(asset.read_bytes())
-            for source in ("Export.cs", "Replay.cs", "RedNotes.cs", "Patch.cs", "export.sh"):
+            for source in ("Export.cs", "Replay.cs", "Patch.cs", "export.sh"):
                 digest.update((ROOT / "arc-create-export" / source).read_bytes())
             cache = ROOT / "output/gameplay/replays"
             cache.mkdir(parents=True, exist_ok=True)
             cached = cache / (digest.hexdigest() + ".mp4")
             clip = directory / "gameplay.mp4"
-            if not all(Path(str(cached) + suffix).exists() for suffix in ('', '.judgements.json', '.base.mp4', '.music.wav', '.hits.wav', '.sounds.json')):
-                self.command([ROOT / "arc-create-export/export.sh", game_project, cached,
+            if not cached.exists() or not Path(str(cached) + ".judgements.json").exists():
+                self.command([ROOT / "arc-create-export/export.sh", chart / "project.arcproj", cached,
                               audio_start, audio_start+math.ceil((frames+2)*1000/30), directory / "replay.json"],
                              directory, "ArcCreate judging the two-hand replay", 35)
-            mix_config = {key: config[key] for key in ('song_delay_ms', 'hit_sounds')}
-            identity = hashlib.sha256(json.dumps([digest.hexdigest(), mix_config], sort_keys=True).encode() +
-                                      (ROOT / 'dashboard/media.py').read_bytes()).hexdigest()
-            mixed = cache / 'mixes' / (identity + '.mp4')
-            if not mixed.exists():
-                self.command([ROOT / '.venv/bin/python', ROOT / 'dashboard/media.py', cached, mixed,
-                              '--settings', directory / 'settings.json'], directory, 'Mixing song and actual hit sounds', 75)
-            clip.symlink_to(os.path.relpath(mixed, directory))
-            stem = directory / 'hit-sounds.wav'
-            stem.symlink_to(os.path.relpath(Path(str(cached) + '.hits.wav'), directory))
-            stems = {'hits': media_url(stem)}
-            sound_events = json.loads(Path(str(cached) + '.sounds.json').read_text())
-            sound_events.pop('events', None)
+            clip.symlink_to(os.path.relpath(cached, directory))
             shutil.copyfile(str(cached) + ".judgements.json", directory / "judgements.json")
-            self.command([BLENDER, "--factory-startup", "-b", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
+            self.command([BLENDER, "--factory-startup", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
                           plan_path, directory / "scene.blend", "--gameplay", clip,
                           "--settings", directory / "settings.json", "--report", directory / "metrics.json",
                           "--motion", directory / "motion.json", "--glb", directory / "scene.glb"],
@@ -460,11 +384,10 @@ class RenderQueue:
             self.update(status="complete", stage="Ready to play", progress=100, metrics=report,
                         live={"scene": media_url(directory / "scene.glb"), "motion": media_url(directory / "motion.json")},
                         presentation=json.loads((directory / "presentation-result.json").read_text()),
-                        judgements={k: v for k, v in judgments.items() if k not in ("judgements", "red_judgements", "arc_ticks")},
+                        judgements={k: v for k, v in judgments.items() if k not in ("judgements", "arc_ticks")},
                         judgement_timeline=media_url(directory / "judgements.json"),
                         planned_misses=plan["misses"], video=media_url(clip),
-                        audio_stems=stems, sound_events=sound_events,
-                        planning=plan["planning"], acceleration=plan.get("acceleration"), note_centering=plan.get("note_centering"), crossing_ergonomics=plan.get("crossing_ergonomics"), arc_tick_validation=tick_validation,
+                        planning=plan["planning"], arc_tick_validation=tick_validation,
                         blend=media_url(directory / "scene.blend"),
                         log=media_url(directory / "render.log"))
         except InterruptedError as error:
@@ -491,7 +414,6 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/bootstrap":
             self.json({"charts": CHARTS, "defaults": Settings().model_dump(),
-                       "defaults_revision": DEFAULTS_REVISION, "startup_preferences": STARTUP_PREFERENCES,
                        "presentation_revision":hashlib.sha256((ROOT / "presentation_scene.py").read_bytes()).hexdigest()[:12], **QUEUE.state()})
         elif path == "/api/state":
             self.json(QUEUE.state())
@@ -507,7 +429,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.file(target)
             else:
                 self.send_error(404)
-        elif path in ("/", "/app.js", "/style.css", "/live-preview.js", "/chart-range.js", "/preview-recorder.js", "/i18n.js", "/i18n-messages.js"):
+        elif path in ("/", "/app.js", "/style.css", "/live-preview.js", "/chart-range.js"):
             self.file(Path(__file__).parent / ("index.html" if path == "/" else path[1:]))
         else:
             self.send_error(404)
@@ -529,8 +451,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({"cancelled": True})
             elif path == "/api/presentation":
                 self.json(QUEUE.refresh_scene(data["id"]), 202)
-            elif path == "/api/ending":
-                self.json(QUEUE.add_ending(data["id"]), 202)
             elif path == "/api/export":
                 self.json(QUEUE.export_video(data["id"], data.get("view")), 202)
             else:

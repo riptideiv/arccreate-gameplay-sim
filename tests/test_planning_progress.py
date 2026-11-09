@@ -23,13 +23,9 @@ def test_reporting_does_not_change_contacts_or_search_cost(tmp_path):
     observed = create_plan(source, 0, 2500, {'arc_path_mode': 'score'}, progress=events.append)
     plain['stats'].pop('elapsed_s')
     observed['stats'].pop('elapsed_s')
-    # Runtime metadata belongs to each invocation, not the chosen contacts.
-    for result in (plain, observed):
-        result.get('contact_placement', {}).pop('elapsed_s', None)
     assert observed == plain
     assert events[0]['phase'] == 'loading'
     assert events[-1]['phase'] == 'writing'
-    assert any(e['phase'] == 'placement' for e in events)
     search = [e for e in events if e['phase'] == 'search']
     assert search[0]['completed'] == 0
     assert search[-1]['completed'] == search[-1]['total'] == 3

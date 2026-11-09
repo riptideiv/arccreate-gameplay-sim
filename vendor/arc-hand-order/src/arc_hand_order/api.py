@@ -130,8 +130,6 @@ def _json(value):
 def _occupation(o) -> dict:
     out = {"kind": o.kind, "occupation_id": o.occupation_id, "events": list(o.source_event_ids),
            "start_ms": o.start_ms, "end_ms": o.end_ms, "colour": o.colour, "lane": o.lane}
-    if o.is_red:
-        out['non_scoring_red'] = True
     if o.parent_occupation_id or o.native_scoring:
         out.update(parent_occupation_id=o.parent_occupation_id,
                    scoring_ticks=[{"id": f"arcTick:{p.source_event_id}:{p.tick_index}", "time_ms": p.time_ms, "weight": p.weight,

@@ -20,7 +20,6 @@ GAME_UNITS_PER_WORLD_UNIT = 100.0
 class GameplayProjection:
     device: DeviceProfile
     camera: CameraPose = field(init=False, repr=False)
-    _view_projection: np.ndarray = field(init=False, repr=False, compare=False)
     width_m: float = field(init=False)
     height_m: float = field(init=False)
 
@@ -29,9 +28,6 @@ class GameplayProjection:
         object.__setattr__(self, "width_m", width)
         object.__setattr__(self, "height_m", height)
         object.__setattr__(self, "camera", reset_pose(width, height))
-        matrix = self.camera.view_projection()
-        matrix.setflags(write=False)
-        object.__setattr__(self, "_view_projection", matrix)
 
     def _world_to_device(self, point: tuple[float, float, float]) -> tuple[float, float]:
         world = np.asarray(point, dtype=float)
@@ -39,9 +35,7 @@ class GameplayProjection:
             raise ValueError("projection coordinates must be finite")
         if float(np.dot(world - self.camera.position, self.camera.forward)) <= 0:
             raise ValueError("point lies behind the gameplay camera")
-        clip = self._view_projection @ np.array([*world, 1.0])
-        px, py = ((clip[0] / clip[3] + 1) * self.width_m / 2,
-                  (1 - clip[1] / clip[3]) * self.height_m / 2)
+        px, py = self.camera.project(world, self.width_m, self.height_m)
         return float(px - self.width_m / 2), float(self.height_m / 2 - py)
 
     def judgement_to_device(self, x: float, y: float) -> tuple[float, float]:

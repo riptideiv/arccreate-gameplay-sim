@@ -431,10 +431,6 @@ class MultiCost:
     crossing_depth: float = 0.0  # metre-seconds crossed beyond the margin (MultiFingerOptions.crossing_depth_weight)
     missed_ticks: int = 0
     arc_trace_deviation_s: float = 0.0
-    missed_red_notes: int = 0
-    acceleration_energy_s: float = 0.0
-    note_center_deviation: float = 0.0
-    wrist_twist_s: float = 0.0
 
     def __add__(self, other):
         return MultiCost(self.base + other.base, self.shares + other.shares,
@@ -449,11 +445,7 @@ class MultiCost:
                          self.collision_s + other.collision_s, self.arc_takeovers + other.arc_takeovers,
                          self.preference + other.preference, self.accel_over + other.accel_over,
                          self.crossing_depth + other.crossing_depth, self.missed_ticks + other.missed_ticks,
-                         self.arc_trace_deviation_s + other.arc_trace_deviation_s,
-                         self.missed_red_notes + other.missed_red_notes,
-                         self.acceleration_energy_s + other.acceleration_energy_s,
-                         self.note_center_deviation + other.note_center_deviation,
-                         self.wrist_twist_s + other.wrist_twist_s)
+                         self.arc_trace_deviation_s + other.arc_trace_deviation_s)
 
     def weighted(self, options: PlannerOptions, multi: MultiFingerOptions):
         extra = (self.shares * multi.share_weight + self.second_touches * multi.second_finger_weight
@@ -470,9 +462,6 @@ class MultiCost:
                       + self.second_held * multi.second_held_weight + self.trades * multi.trade_weight
                       + self.collision * multi.collision_weight + self.collision_s * multi.collision_s_weight
                       + self.arc_takeovers * multi.arc_takeover_weight)
-        extra += (self.acceleration_energy_s * options.acceleration_weight
-                  + self.note_center_deviation * options.note_center_weight
-                  + self.wrist_twist_s * options.wrist_twist_weight)
         if options.scoring_arcs and options.prefer_arc_trace:
             extra += self.arc_trace_deviation_s * options.arc_trace_weight
         return self.base.weighted(options) + extra if extra else self.base.weighted(options)
@@ -630,8 +619,6 @@ class Regions:
         self.sky_half_x = sky_half_x
         w, h = projection.width_m, projection.height_m
         self.screen = [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]
-        self._polygon_cache = {}
-        self._geometry_refs = {}  # Prevent id reuse for temporary/split occupations.
         self.lanes = {}
         for lane, (x0, x1) in LANE_X.items():
             corners = [projection.ground_to_device(x, z) for x, z in
@@ -639,21 +626,6 @@ class Regions:
             self.lanes[lane] = _inner(list(self.screen), corners, 0.0)
 
     def polygon(self, occupation, time_ms):
-        # Scope is one Regions/projection/region-settings instance. Split jobs
-        # may select different source notes even when their parent ID matches.
-        now = min(max(time_ms, occupation.start_ms), occupation.end_ms)
-        key = (id(occupation), now)
-        if key not in self._polygon_cache:
-            if len(self._polygon_cache) >= 65536:
-                self._polygon_cache.clear()
-                self._geometry_refs.clear()
-            self._geometry_refs[id(occupation)] = occupation
-            polygon = self._polygon(occupation, now)
-            self._polygon_cache[key] = None if polygon is None else tuple(polygon)
-        polygon = self._polygon_cache[key]
-        return None if polygon is None else list(polygon)
-
-    def _polygon(self, occupation, time_ms):
         region = occupation.region_at(min(max(time_ms, occupation.start_ms), occupation.end_ms))
         if region.lane is not None:
             return self.lanes[region.lane]
@@ -808,15 +780,6 @@ class _Graph:
         self.touches: list[Touch] = []
         self.interned: dict = {}
         self.targets = {}
-        self.scoring_extensions = {}  # (old touch, candidate) -> ordered physical variants, including failures
-        self.extension_prefix_speed = {}
-        self.transfer_acceleration = {}
-        self.arrival_touches = {}
-        from .note_center import NoteCenterPreference
-        self.center_preference = NoteCenterPreference(projection,options.note_center_free_mm/1000) if options.note_center_weight else None
-        from .wrist import WristEstimate
-        self.wrist_model = WristEstimate(options.wrist_proxy_parts,options.wrist_twist_free_deg) if options.wrist_twist_weight else None
-        self.wrist_pairs = {}
         self.trace_preference = None
         if options.scoring_arcs and options.prefer_arc_trace and options.arc_trace_weight:
             from .arc_scoring import TracePreference
@@ -1059,8 +1022,6 @@ class _Graph:
                      latest.down_frame, latest.item_index, latest.occupation.kind,
                      t.down if t.down >= f0 else None, t.path[max(0, f0 - t.down):] if t.up > f0 else None,
                      tuple(b for b in t.bridges if b[1] > f0))
-            if self.options.acceleration_weight:
-                found += (t.path[-2:], t.__dict__.get("_acceleration_arrival"))
             self.futures[key] = found
         return found
 
@@ -1080,34 +1041,6 @@ class _Graph:
             self.touches.append(touch)
             self.interned[key] = touch
         return touch
-
-    def with_arrival(self, touch, arrival):
-        """Keep the incoming flight boundary when a composed contact changes its head.
-
-        Two otherwise identical paths can have different incoming velocities.
-        Store only that boundary, never an unbounded history of predecessor ids.
-        """
-        if not self.options.acceleration_weight or touch.__dict__.get('_acceleration_arrival') == arrival:
-            return touch
-        key = (touch.id, arrival)
-        if key not in self.arrival_touches:
-            copy = Touch(len(self.touches),touch.parts,touch.bridges,touch.down,touch.up,touch.path,touch.offset)
-            copy.__dict__.update({k:v for k,v in touch.__dict__.items() if k not in ('id','_acceleration_arrival')})
-            copy.__dict__['_acceleration_arrival'] = arrival
-            self.touches.append(copy)
-            self.arrival_touches[key] = copy
-        return self.arrival_touches[key]
-
-    def arrival_energy(self, touch):
-        if touch is None or not touch.__dict__.get('_acceleration_arrival'):
-            return 0.0
-        if touch.id not in self.transfer_acceleration:
-            from types import SimpleNamespace
-            from .trajectory import transfer_energy
-            up,path = touch.__dict__['_acceleration_arrival']
-            previous = SimpleNamespace(up=up,path=path,last_xy=path[-1])
-            self.transfer_acceleration[touch.id] = transfer_energy(previous,touch,self.options.speed_max_m_s)
-        return self.transfer_acceleration[touch.id]
 
     def single(self, c: Candidate) -> Touch:
         return self._intern((Part(c, c.down_frame, c.up_frame),), (), self._target_path(c))
@@ -1388,12 +1321,6 @@ class _Graph:
         margin = self.options.crossing_pass_margin_m
         return sum(max(0.0, a.xy(f)[0] - b.xy(f)[0] - margin) for f in range(max(a.down, b.down), min(a.up, b.up))) / 60
 
-    def wrist_twist(self,left,right):
-        key=(left,right)
-        if key not in self.wrist_pairs:
-            self.wrist_pairs[key]=self.wrist_model.touch_cost(self.touches[left],self.touches[right])
-        return self.wrist_pairs[key]
-
     def crossing_kinds(self, left: int, right: int):
         """``crossing`` seconds split (level, near, clear) by ``kind``, and the hands' overlap times seconds."""
         a, b = self.touches[left], self.touches[right]
@@ -1575,65 +1502,6 @@ class _Graph:
 
     # transitions --------------------------------------------------------
 
-    def _scoring_extensions(self, t, c):
-        """Only state-independent geometry. _finish still checks both hands and all locks/costs."""
-        from .arc_scoring import covers
-        key = (t.id, c.id)
-        if key in self.scoring_extensions:
-            return self.scoring_extensions[key]
-        end=max(t.up,c.up_frame)
-        paths=[t.path+(t.last_xy,)*(end-t.up)]
-        if c.down_frame>=t.up:
-            span=c.down_frame-t.up+1
-            a,b=t.last_xy,c.first_xy
-            slide=tuple((a[0]+(b[0]-a[0])*(j+1)/span,a[1]+(b[1]-a[1])*(j+1)/span) for j in range(span))
-            paths.append(t.path+slide+self._target_path(c)[1:])
-            if self.trace_preference is not None:
-                from .arc_scoring import trace_position
-                centre = tuple(trace_position(c.occupation, f, self.offset, self.projection)
-                               for f in range(t.up, end))
-                straight = paths[-1][len(t.path):]
-                for amount in (.25, .5, .75, 1):
-                    tail = tuple((x+(u-x)*amount, y+(v-y)*amount)
-                                 for (x,y),(u,v) in zip(straight, centre))
-                    paths.append(t.path+tail)
-        if self.trace_preference is not None and self.options.acceleration_weight and end>t.up:
-            from .trajectory import smooth_guides
-            for guide in smooth_guides(c.occupation,t.down,end,self.offset,self.projection):
-                # Continue a matching global guide exactly. Otherwise smoothly
-                # blend its position/velocity from the immutable prefix.
-                start = len(t.path)
-                delta = (t.last_xy[0]-guide[start-1][0],t.last_xy[1]-guide[start-1][1])
-                velocity = tuple(t.path[-1][j]-t.path[-2][j] if len(t.path)>1 else 0 for j in range(2))
-                dv = tuple(velocity[j]-(guide[start-1][j]-guide[max(0,start-2)][j]) for j in range(2))
-                tail=[]
-                duration=12
-                for i,q in enumerate(guide[start:],1):
-                    u=min(1,i/duration)
-                    h=1-3*u*u+2*u*u*u
-                    tangent=u-2*u*u+u*u*u
-                    tail.append(tuple(q[j]+h*delta[j]+tangent*duration*dv[j] for j in range(2)))
-                paths.append(t.path+tuple(tail))
-        limit = self.options.speed_max_m_s*1.00001
-        if t.id not in self.extension_prefix_speed:
-            self.extension_prefix_speed[t.id] = all(math.dist(a,b)*60 <= limit for a,b in zip(t.path,t.path[1:]))
-        variants=[]
-        for path in paths:
-            path = self.native_geometry.guard_path(c.occupation,path,t.down,fixed_prefix=len(t.path))
-            if len(path)!=end-t.down:continue
-            # The prefix is unchanged by the guard. Validate it once at this
-            # branch's exact tolerance, then include the prefix/tail boundary.
-            if not self.extension_prefix_speed[t.id]:continue
-            tail=path[max(0,len(t.path)-1):]
-            if any(math.dist(a,b)*60>limit for a,b in zip(tail,tail[1:])):continue
-            # A newly introduced tick can be caught on an earlier prefix frame.
-            if covers(c.occupation,path,t.down,self.offset,self.projection) is None:continue
-            bridges=t.bridges+(((t.up,c.down_frame),) if c.down_frame>t.up else ())
-            variants.append(self._intern(t.parts+(Part(c,c.down_frame,c.up_frame),),bridges,path))
-        result=tuple(variants)
-        self.scoring_extensions[key]=result
-        return result
-
     def steps(self, state, c: Candidate, hand: str):
         """(new state, cost increment, changes) for each way ``hand`` can take candidate ``c``."""
         h = 0 if hand == "left" else 2
@@ -1662,7 +1530,29 @@ class _Graph:
             for k,t in enumerate(mine):
                 if t is None or c.down_frame<t.down: continue
                 if t.end_part.candidate.occupation.parent_occupation_id != c.occupation.parent_occupation_id:continue
-                for new in self._scoring_extensions(t, c):
+                end=max(t.up,c.up_frame)
+                paths=[t.path+(t.last_xy,)*(end-t.up)]
+                if c.down_frame>=t.up:
+                    span=c.down_frame-t.up+1
+                    a,b=t.last_xy,c.first_xy
+                    slide=tuple((a[0]+(b[0]-a[0])*(j+1)/span,a[1]+(b[1]-a[1])*(j+1)/span) for j in range(span))
+                    paths.append(t.path+slide+self._target_path(c)[1:])
+                    if self.trace_preference is not None:
+                        from .arc_scoring import trace_position
+                        centre = tuple(trace_position(c.occupation, f, self.offset, self.projection)
+                                       for f in range(t.up, end))
+                        straight = paths[-1][len(t.path):]
+                        for amount in (.25, .5, .75, 1):
+                            tail = tuple((x+(u-x)*amount, y+(v-y)*amount)
+                                         for (x,y),(u,v) in zip(straight, centre))
+                            paths.append(t.path+tail)
+                for path in paths:
+                    path = self.native_geometry.guard_path(c.occupation,path,t.down,fixed_prefix=len(t.path))
+                    if len(path)!=end-t.down:continue
+                    if any(math.dist(a,b)*60>self.options.speed_max_m_s*1.00001 for a,b in zip(path,path[1:])):continue
+                    if covers(c.occupation,path,t.down,self.offset,self.projection) is None:continue
+                    bridges=t.bridges+(((t.up,c.down_frame),) if c.down_frame>t.up else ())
+                    new=self._intern(t.parts+(Part(c,c.down_frame,c.up_frame),),bridges,path)
                     step=self._finish(state,h,k,mine,theirs,new,t,hand,self.part_cost(c,hand),bridge=True)
                     if step is not None:yield step
         # Continue following the actual arc between scoring ticks, without a new
@@ -2003,8 +1893,6 @@ class _Graph:
             features["preference"] = self.preference(c, new, mine, theirs, hand)
         if self.multi.accel_max_m_s2:
             features["accel_over"] = self.air_over(previous, new)
-        if self.options.acceleration_weight and previous is not None:
-            new = self.with_arrival(new,(previous.up,previous.path[-2:]))
         moved = None
         if (partner is not None and not partner.bridges and all(p.candidate.occupation.kind in ("hold", "chain") for p in partner.parts)
                 and self.overlap_cost(new.id, partner.id) is None):
@@ -2079,10 +1967,6 @@ class _Graph:
         """State and cost increment for slot k of hand h becoming ``new`` (an extension of ``old`` if given);
         ``partner_new`` replaces the other slot's touch (the same notes, moved within reach); ``second_free``: a
         second-finger press not charged as one (second_finger_again)."""
-        if old is not None:
-            new = self.with_arrival(new,old.__dict__.get('_acceleration_arrival'))
-        if partner_new is not None:
-            partner_new = self.with_arrival(partner_new,mine[1-k].__dict__.get('_acceleration_arrival'))
         partner = mine[1 - k] if partner_new is None else partner_new
         if self.options.contact_exclusions:
             parents = {p.candidate.occupation.parent_occupation_id or p.candidate.occupation.occupation_id
@@ -2114,24 +1998,6 @@ class _Graph:
         if partner_new is not None:
             crossing += self._crossing_delta(hand, theirs, partner_new, mine[1 - k])
         features = dict(features or {})
-        if self.wrist_model is not None:
-            value=self._crossing_delta(hand,theirs,new,old,self.wrist_twist)
-            if partner_new is not None:
-                value+=self._crossing_delta(hand,theirs,partner_new,mine[1-k],self.wrist_twist)
-            features['wrist_twist_s']=value
-        if self.options.acceleration_weight:
-            from .trajectory import touch_energy
-            energy = (touch_energy(new)-touch_energy(old)
-                      + self.arrival_energy(new)-self.arrival_energy(old))
-            if partner_new is not None:
-                energy += (touch_energy(partner_new)-touch_energy(mine[1-k])
-                           + self.arrival_energy(partner_new)-self.arrival_energy(mine[1-k]))
-            features['acceleration_energy_s'] = features.get('acceleration_energy_s',0)+energy
-        if self.center_preference is not None:
-            centre = self.center_preference.measure
-            value = centre(new)-centre(old)
-            if partner_new is not None:value += centre(partner_new)-centre(mine[1-k])
-            features['note_center_deviation'] = value
         trace_distance = 0.0
         if self.trace_preference is not None:
             deviation = self.trace_preference.deviation
@@ -2778,7 +2644,7 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
               (MultiCost(), None)}
     visited, pruned = 1, 0
     def rank(cost):
-        return (cost.missed_ticks, cost.missed_red_notes, cost.weighted(options, multi))
+        return (cost.missed_ticks, cost.weighted(options, multi))
     present = {c.occupation.occupation_id for group in groups for c in group}
     empty_items = iter(o for o in occupations.items if o.occupation_id not in present)
     earliest = [min((c.down_frame for c in group),default=math.inf) for group in groups]
@@ -2792,8 +2658,8 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
             progress('search', k, len(groups), chart_ms=item.first_tick.time_ms,
                      states=len(states), states_completed=state_index,
                      candidates=len(group), visited=visited)
-            if multi.allow_misses or item.is_red:
-                increment = MultiCost(missed_ticks=item.score_weight, missed_red_notes=int(item.is_red))
+            if multi.allow_misses:
+                increment = MultiCost(missed_ticks=item.score_weight)
                 total = cost + increment
                 key = state if options.crossing_pass_s else (tuple(graph.future(i, f0) for i in state[:4]) + graph.tail_key(state, f0))
                 weight = rank(total)

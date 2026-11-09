@@ -100,7 +100,6 @@ class Occupation:
     up_window: TimeWindow
     parent_occupation_id: str | None = None
     native_scoring: bool = False
-    is_red: bool = False
 
     @property
     def requires_new_press(self) -> bool:
@@ -224,7 +223,6 @@ def occupations_from_chart(chart) -> OccupationSet:
     items = []
 
     def add(kind, events, indices, notes):
-        red = kind == "sky" and any(e.event_id in red_taps for e in events)
         points = []
         for event, index, note in zip(events, indices, notes, strict=True):
             if kind in ("chain", "hold"):
@@ -232,7 +230,7 @@ def occupations_from_chart(chart) -> OccupationSet:
                                         time, weight, _tick_window(note, time, kind == "hold"))
                               for k, (time, weight) in enumerate(note.ticks))
             else:
-                points.append(ScorePoint(event.event_id, kind, index, None, note.time, 0 if red else 1,
+                points.append(ScorePoint(event.event_id, kind, index, None, note.time, 1,
                                          TimeWindow(note.time - rules.POINT_WINDOW_MS, note.time + rules.POINT_WINDOW_MS)))
         points.sort(key=lambda p: (p.time_ms, p.note_index, p.tick_index or 0))
         first, last = points[0], points[-1]
@@ -251,10 +249,8 @@ def occupations_from_chart(chart) -> OccupationSet:
         ids = tuple(e.event_id for e in events)
         items.append(Occupation(f"{kind}:{ids[0]}", kind, ids, tuple(indices), tuple(notes), tuple(points), start, end,
                                 notes[0].colour if kind == "chain" else None,
-                                notes[0].lane if kind in ("hold", "tap") else None, down, up, is_red=red))
+                                notes[0].lane if kind in ("hold", "tap") else None, down, up))
 
-    red_arcs = {e.event_id for e in chart.events if e.type == "arc" and e.is_designant}
-    red_taps = {e.event_id for e in chart.events if e.type == "arctap" and e.parent_arc_id in red_arcs}
     for indices in chains.values():
         add("chain", [solid[i] for i in indices], indices, [arcs[i] for i in indices])
     for kind, source_events, notes in (
