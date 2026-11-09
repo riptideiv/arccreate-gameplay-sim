@@ -429,7 +429,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.file(target)
             else:
                 self.send_error(404)
-        elif path in ("/", "/app.js", "/style.css", "/live-preview.js", "/chart-range.js"):
+        elif path in ("/", "/app.js", "/style.css", "/live-preview.js", "/chart-range.js", "/i18n.js", "/i18n-messages.js"):
             self.file(Path(__file__).parent / ("index.html" if path == "/" else path[1:]))
         else:
             self.send_error(404)
