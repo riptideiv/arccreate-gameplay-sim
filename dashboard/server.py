@@ -24,7 +24,10 @@ from typing import Literal
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parents[1]
 RUNS = ROOT / "output/runs"
-BLENDER = WORKSPACE / "work/tools/Blender.app/Contents/MacOS/Blender"
+WORKSPACE_BLENDER = WORKSPACE / "work/tools/Blender.app/Contents/MacOS/Blender"
+BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or (
+    WORKSPACE_BLENDER if WORKSPACE_BLENDER.is_file() else "/Applications/Blender.app/Contents/MacOS/Blender"
+))
 CHARTS = {
     "ex-otogibanashi": {"title": "Ex-Otogibanashi", "artist": "ryo (supercell)", "duration": 109.894,
                        "start_s": 0, "end_s": 6.65, "audio_start_ms": 0},
@@ -205,7 +208,7 @@ class RenderQueue:
                 self.command([BLENDER, "--factory-startup", "-b", source, "--python-exit-code", "1",
                               "-P", ROOT / "export_camera.py", "--", settings_path, scene], directory, "Preparing export camera", 25)
             if not output.exists() or output.stat().st_size <= 1000:
-                self.command([ROOT / "render-preview.sh", scene, directory / "gameplay.mp4",
+                self.command(["env", f"BLENDER_BIN={BLENDER}", ROOT / "render-preview.sh", scene, directory / "gameplay.mp4",
                               output], directory, "Exporting 3D MP4", 40,
                              self.active["metrics"]["frame_count"])
             self.update(status="complete", stage="MP4 ready", progress=100,
@@ -298,7 +301,7 @@ class RenderQueue:
                 self.command(arguments, directory, "Planning contacts and missed notes", 3)
                 plan = json.loads(plan_path.read_text())
                 try:
-                    self.command([BLENDER, "--factory-startup", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
+                    self.command([BLENDER, "--factory-startup", "-b", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
                                   plan_path, directory / "scene.blend", "--motion-only",
                                   "--motion", directory / "motion.json", "--settings", directory / "settings.json",
                                   "--report", directory / "metrics.json"], directory, "Posing gloves around fixed touch points", 15)
@@ -365,7 +368,7 @@ class RenderQueue:
                              directory, "ArcCreate judging the two-hand replay", 35)
             clip.symlink_to(os.path.relpath(cached, directory))
             shutil.copyfile(str(cached) + ".judgements.json", directory / "judgements.json")
-            self.command([BLENDER, "--factory-startup", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
+            self.command([BLENDER, "--factory-startup", "-b", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
                           plan_path, directory / "scene.blend", "--gameplay", clip,
                           "--settings", directory / "settings.json", "--report", directory / "metrics.json",
                           "--motion", directory / "motion.json", "--glb", directory / "scene.glb"],

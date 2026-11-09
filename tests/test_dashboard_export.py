@@ -48,6 +48,7 @@ def test_export_uses_the_current_camera_without_replacing_verified_motion(tmp_pa
     config = server.Settings(camera_distance_m=.31).model_dump()
     queue.work_export(directory, config)
     assert len(calls) == 2
+    assert calls[1][:2] == ['env', f'BLENDER_BIN={calls[0][0]}']
     saved, = directory.glob('export-settings-*.json')
     assert json.loads(saved.read_text())['camera_distance_m'] == .31
     assert queue.active['video'] == 'gameplay.mp4'
