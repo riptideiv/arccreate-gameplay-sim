@@ -78,6 +78,23 @@ def test_angular_surface_speed_is_part_of_the_hard_move_budget():
         route(points, active, max_speed=0.2, surface_speed=np.full((360, 2), 0.2))
 
 
+def test_arm_clearance_can_choose_a_direct_free_path_without_changing_turn_count():
+    points = np.zeros((61, 2, 3))
+    points[:, :, 0] = [-0.07, 0.07]
+    points[:, :, 2] = 0.006
+    points[:, 0, 1] = 0.04 * np.sin(np.linspace(0, np.pi, len(points)))**2
+    active = np.ones(points.shape[:2], dtype=bool)
+    active[1:-1, 0] = False
+
+    def arm_penalty(path, span):
+        return (1000 * path[:, 0, 1])**2
+
+    solved, report = route(points, active, arm_geometry_cost=arm_penalty)
+    np.testing.assert_array_equal(solved[active], points[active])
+    assert np.max(abs(solved[:, 0, 1])) < 1e-9
+    assert all(edge["turns_relative_to_direct"] == 0 for edge in report["unwinds"])
+
+
 def test_actual_cuff_interpolation_is_verified_after_routing():
     from winding_paths import solve, verify_wrists
     from hand_pose import HAND_PARTS, NEUTRAL

@@ -23,8 +23,16 @@ HAND_PARTS = (
 )
 
 
-VERSION = "pivot-beam-1"
+VERSION = "pivot-beam-arms-1"
 NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
+# Seated player in tablet-local meters. The elbow pole points outward and down.
+SHOULDERS = np.array([[-0.18, -0.38, 0.17], [0.18, -0.38, 0.17]])
+ELBOW_POLES = np.array([[-0.7, 0.0, -1.0], [0.7, 0.0, -1.0]])
+UPPER_ARM_LENGTH = 0.29
+FOREARM_LENGTH = 0.26
+UPPER_ARM_RADIUS = 0.035
+FOREARM_RADIUS = 0.025
+ARM_WEIGHT = 0.25
 
 
 def bases(angles):
@@ -52,6 +60,126 @@ def proxies(angles, parts):
     )
 
 
+def arm_elbows(wrists, forward):
+    axis = wrists - SHOULDERS
+    distance = np.linalg.norm(axis, axis=-1)
+    axis /= np.maximum(distance[..., None], 1e-9)
+    reach = np.clip(
+        distance, abs(UPPER_ARM_LENGTH - FOREARM_LENGTH), UPPER_ARM_LENGTH + FOREARM_LENGTH
+    )
+    along = (UPPER_ARM_LENGTH**2 - FOREARM_LENGTH**2 + reach**2) / (2 * reach)
+    away = np.sqrt(np.maximum(0, UPPER_ARM_LENGTH**2 - along**2))
+    pole = ELBOW_POLES - (ELBOW_POLES * axis).sum(axis=-1)[..., None] * axis
+    pole /= np.maximum(np.linalg.norm(pole, axis=-1, keepdims=True), 1e-9)
+    # Swivel the elbow toward the hand's backward bearing. The outward/downward
+    # bias limits the swivel and leaves pitch available for tapping.
+    backward = -forward.copy()
+    backward[..., 2] = 0
+    backward /= np.maximum(np.linalg.norm(backward, axis=-1, keepdims=True), 1e-9)
+    steering = backward - (backward * axis).sum(axis=-1)[..., None] * axis
+    pole += 0.65 * steering
+    pole /= np.maximum(np.linalg.norm(pole, axis=-1, keepdims=True), 1e-9)
+    return SHOULDERS + axis * along[..., None] + pole * away[..., None]
+
+
+def _point_segment(point, start, end):
+    axis = end - start
+    delta = point - start
+    t = np.sum(delta * axis, axis=-1) / np.maximum(np.sum(axis**2, axis=-1), 1e-12)
+    return np.linalg.norm(delta - np.clip(t, 0, 1)[..., None] * axis, axis=-1)
+
+
+def _segment_gap(a, b, c, d):
+    u, v, w = b - a, d - c, a - c
+    uu, vv, uv, uw, vw = (
+        np.sum(x * y, axis=-1) for x, y in ((u, u), (v, v), (u, v), (u, w), (v, w))
+    )
+    determinant = uu * vv - uv**2
+    t = (uv * vw - vv * uw) / np.maximum(determinant, 1e-12)
+    s = (uu * vw - uv * uw) / np.maximum(determinant, 1e-12)
+    interior = (determinant > 1e-12) & (t >= 0) & (t <= 1) & (s >= 0) & (s <= 1)
+    closest = w + t[..., None] * u - s[..., None] * v
+    distance = np.where(interior, np.linalg.norm(closest, axis=-1), np.inf)
+    return np.minimum.reduce([
+        distance, _point_segment(a, c, d), _point_segment(b, c, d),
+        _point_segment(c, a, b), _point_segment(d, a, b),
+    ])
+
+
+def arm_metrics(centres, forward, parts):
+    """Arm clearance and wrist alignment for posed glove centres in tablet space."""
+    cuffs = [next(i for i, part in enumerate(hand) if part[0] == "cuff") for hand in parts]
+    wrists = np.stack(
+        [hand[..., cuff, :] for hand, cuff in zip(centres, cuffs)], axis=-2
+    )
+    elbows = arm_elbows(wrists, forward)
+    forearm = wrists - elbows
+    arm_distance = _segment_gap(
+        elbows[..., 0, :], wrists[..., 0, :], elbows[..., 1, :], wrists[..., 1, :]
+    )
+    margin = arm_distance - 2 * FOREARM_RADIUS
+    margin = np.minimum(margin, _segment_gap(
+        SHOULDERS[0], elbows[..., 0, :], SHOULDERS[1], elbows[..., 1, :]
+    ) - 2 * UPPER_ARM_RADIUS)
+    for h in range(2):
+        shoulder, elbow, wrist = SHOULDERS[h], elbows[..., h, :], wrists[..., h, :]
+        other = 1 - h
+        margin = np.minimum(margin, _segment_gap(
+            shoulder, elbow, elbows[..., other, :], wrists[..., other, :]
+        ) - UPPER_ARM_RADIUS - FOREARM_RADIUS)
+        glove = centres[other]
+        radius = np.array([max(part[2]) for part in parts[other]])
+        margin = np.minimum(margin, (_point_segment(
+            glove, elbow[..., None, :], wrist[..., None, :]
+        ) - radius - FOREARM_RADIUS).min(axis=-1))
+    forearm_xy = forearm[..., :2]
+    forward_xy = forward[..., :2]
+    yaw_cos = (forearm_xy * forward_xy).sum(axis=-1) / np.maximum(
+        np.linalg.norm(forearm_xy, axis=-1) * np.linalg.norm(forward_xy, axis=-1), 1e-9
+    )
+    forearm_pitch = np.arctan2(forearm[..., 2], np.linalg.norm(forearm_xy, axis=-1))
+    hand_pitch = np.arctan2(forward[..., 2], np.linalg.norm(forward_xy, axis=-1))
+    flexion = forearm_pitch - hand_pitch
+    reach = np.linalg.norm(wrists - SHOULDERS, axis=-1)
+    return margin, np.clip(yaw_cos, -1, 1), flexion, reach
+
+
+def arm_cost(centres, forward, parts, gap):
+    margin, yaw_cos, flexion, reach = arm_metrics(centres, forward, parts)
+    sideways_bend = 320 * (1 - yaw_cos) + 1400 * np.maximum(0, 0.86 - yaw_cos) ** 2
+    # Allow downward flex for taps. Backward or excessive flex is less useful.
+    pitch_bend = (
+        400 * np.maximum(0, -flexion - math.radians(10)) ** 2
+        + 400 * np.maximum(0, flexion - math.radians(35)) ** 2
+    )
+    return (
+        np.clip((gap - margin) * 1000, 0, 18) ** 2
+        + np.sum(sideways_bend + pitch_bend, axis=-1)
+        + np.sum(np.maximum(0, reach - UPPER_ARM_LENGTH - FOREARM_LENGTH) ** 2, axis=-1) * 1e6
+    )
+
+
+def arm_diagnostics(points, poses, parts):
+    """Sample the simplified arm rig at the same subframes as glove clearance."""
+    overlaps = np.zeros(len(points) - 1, dtype=bool)
+    min_margin, min_yaw, max_reach = math.inf, 1.0, 0.0
+    for fraction in (0, 0.25, 0.5, 0.75):
+        p = points[:-1] * (1 - fraction) + points[1:] * fraction
+        q = poses[:-1] * (1 - fraction) + poses[1:] * fraction
+        centres = [proxies(q[:, h], parts[h])[0] + p[:, h, None, :] for h in range(2)]
+        margin, yaw, _, reach = arm_metrics(centres, bases(q)[..., 1], parts)
+        overlaps |= margin < -1e-5
+        min_margin = min(min_margin, margin.min(initial=math.inf))
+        min_yaw = min(min_yaw, yaw.min(initial=1))
+        max_reach = max(max_reach, reach.max(initial=0))
+    return {
+        "minimum_clearance_mm": float(min_margin * 1000),
+        "overlap_intervals": int(overlaps.sum()),
+        "maximum_wrist_yaw_deg": math.degrees(math.acos(np.clip(min_yaw, -1, 1))),
+        "maximum_reach_mm": float(max_reach * 1000),
+    }
+
+
 def margins(points, angles, parts):
     a, za = proxies(angles[..., 0, :], parts[0])
     b, zb = proxies(angles[..., 1, :], parts[1])
@@ -65,6 +193,20 @@ def margins(points, angles, parts):
     )
     floor = np.minimum((a[..., 2] - za).min(axis=-1), (b[..., 2] - zb).min(axis=-1))
     return gap, floor
+
+
+def _pose_penalty(margin, floor, gap, arm_weight, both_pinned):
+    penalty = np.maximum(0, (gap - margin) * 1000) ** 2
+    penalty += 4 * np.maximum(0, -floor * 1000 - 0.05) ** 2
+    if arm_weight:
+        # The arm placement is approximate. Visible glove and tablet
+        # penetration should outweigh a small improvement to the arm fit.
+        # Free hands can route around a collision later. With both fingers
+        # pinned, rotation is the only way to clear a glove crossing.
+        overlap_weight = 48 if both_pinned else 4
+        penalty += overlap_weight * np.maximum(0, -margin * 1000 - 0.05) ** 2
+        penalty += 12 * np.maximum(0, -floor * 1000 - 0.05) ** 2
+    return penalty
 
 
 def air_paths(
@@ -207,9 +349,13 @@ def solve(
     beam=96,
     stride=6,
     idle_speed=math.inf,
+    arm_weight=ARM_WEIGHT,
 ):
     points = np.asarray(points, dtype=float)
     active = np.asarray(active, dtype=bool)
+    both_pinned = active.all(axis=1)
+    # Keep glove clearance dominant when the wrist turn budget is very tight.
+    arm_weight *= min(1, angular_limit / 180)**2
     # Slow wrists need wider key intervals to traverse the angular catalogue;
     # the final 60 Hz interpolation still respects each frame's turn budget.
     stride = max(stride, math.ceil(30 * 60 / max(angular_limit, 1)))
@@ -245,6 +391,7 @@ def solve(
     # Cache pose-dependent proxies; each endpoint query only translates them.
     ca, za = proxies(states[:, 0], parts[0])
     cb, zb = proxies(states[:, 1], parts[1])
+    forward = bases(states)[..., 1]
     ra = np.array([max(p[2]) for p in parts[0]])
     rb = np.array([max(p[2]) for p in parts[1]])
 
@@ -261,17 +408,17 @@ def solve(
             (ca[..., 2] + points[f, 0, 2] - za).min(axis=1),
             (cb[..., 2] + points[f, 1, 2] - zb).min(axis=1),
         )
-        return margin, floor
+        penalty = _pose_penalty(margin, floor, gap, arm_weight, both_pinned[f])
+        if arm_weight:
+            centres = (ca + points[f, 0], cb + points[f, 1])
+            penalty += arm_weight * arm_cost(centres, forward, parts, gap)
+        return penalty
 
     cache = {}
 
     def cost(f):
         if f not in cache:
-            m, floor = spatial(f)
-            cache[f] = (
-                np.maximum(0, (gap - m) * 1000) ** 2
-                + 4 * np.maximum(0, -floor * 1000 - 0.05) ** 2
-            )
+            cache[f] = spatial(f)
         return cache[f]
 
     def ahead(f):
@@ -315,10 +462,10 @@ def solve(
             )
             angles = start + (end - start) * alpha[None, :, None]
             m, floor = margins(points[f], angles, parts)
-            penalty = (
-                np.maximum(0, (gap - m) * 1000) ** 2
-                + 4 * np.maximum(0, -floor * 1000 - 0.05) ** 2
-            )
+            penalty = _pose_penalty(m, floor, gap, arm_weight, both_pinned[f])
+            if arm_weight:
+                centres = [proxies(angles[:, h], parts[h])[0] + points[f, h] for h in range(2)]
+                penalty += arm_weight * arm_cost(centres, bases(angles)[..., 1], parts, gap)
             max_penalty = np.maximum(max_penalty, penalty)
         adjusted = best[shortlist] + max_penalty
         order = np.argsort(adjusted + ahead(b)[shortlist], kind="stable")[:beam]

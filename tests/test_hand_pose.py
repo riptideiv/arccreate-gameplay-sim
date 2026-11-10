@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from hand_pose import HAND_PARTS, NEUTRAL, diagnostics, solve
+from hand_pose import HAND_PARTS, NEUTRAL, arm_cost, bases, diagnostics, proxies, solve
 
 PARTS = [
     [(name, (sign * x, y, z), r) for name, (x, y, z), r in HAND_PARTS]
@@ -70,3 +70,19 @@ def test_impossible_coincident_pads_are_reported_without_failing_or_moving_touch
     assert report["residual_pad_overlap_samples"] > 0
     assert report["collision_verification"] is False
     assert report["maximum_contact_drift_m"] == 0
+
+
+def test_arm_model_prefers_downward_tap_flex_to_sideways_bend():
+    points = np.array([[-0.09, 0.02, 0.006], [0.09, 0.02, 0.006]])
+    tap = NEUTRAL.copy()
+    tap[0, 0] += 10
+    sideways = NEUTRAL.copy()
+    sideways[0, 1] += 10
+    reversed_wrist = NEUTRAL.copy()
+    reversed_wrist[0, 1] += 150
+
+    def cost(angles):
+        centres = [proxies(angles[h], PARTS[h])[0] + points[h] for h in range(2)]
+        return arm_cost(centres, bases(angles)[..., 1], PARTS, 0.001)
+
+    assert cost(NEUTRAL) <= cost(tap) < cost(sideways) < cost(reversed_wrist)

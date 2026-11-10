@@ -162,6 +162,42 @@ def _free_spans(active):
             yield start, end - 2 * quarter
 
 
+def _candidate_paths(own, theirs, offsets, short, lift, arm_clearance):
+    t = np.linspace(0, 1, len(own))
+    eased = t**3 * (10 - 15 * t + 6 * t * t)
+    ramp = np.sin(np.pi * t)**2
+    moving_guide = theirs[:, :2] - offsets[:, :2]
+    v0, v1 = own[[0, -1], :2] - moving_guide[[0, -1]]
+    guides = [moving_guide]
+    if arm_clearance:
+        # A path can pass the other hand without following all of its motion.
+        guides.append((1 - t[:, None]) * theirs[0, :2]
+                      + t[:, None] * theirs[-1, :2] - offsets[:, :2])
+        chord = (1 - eased[:, None]) * own[0] + eased[:, None] * own[-1]
+        chord[:, 2] = own[:, 2]
+        yield chord
+        for x, y, z in ((0, 0, 1), (1, 0, .4), (-1, 0, .4),
+                        (0, 1, .4), (0, -1, .4)):
+            for size in (.015, .035):
+                path = chord + ramp[:, None] * size * np.array([x, y, z])
+                path[[0, -1]] = own[[0, -1]]
+                yield path
+    for turns in (-1, 0, 1):
+        delta = short + turns * 2 * math.pi
+        for radius in (UNWIND_RADIUS, 0.024, 0.032, 0.045):
+            for linear in (0, 0.5, 1):
+                xy = _orbit(v0, v1, delta, radius, (1 - linear) * eased + linear * t)
+                if xy is None:
+                    continue
+                for guide in guides:
+                    for height in sorted(set((lift, max(lift, 0.03), max(lift, 0.055)))):
+                        path = own.copy()
+                        path[:, :2] = guide + xy
+                        path[:, 2] = np.maximum(own[:, 2], 0.006 + height * ramp)
+                        path[[0, -1]] = own[[0, -1]]
+                        yield path
+
+
 def route(
     points,
     active,
@@ -174,6 +210,7 @@ def route(
     anchor_offsets=None,
     surface_speed=None,
     geometry_cost=None,
+    arm_geometry_cost=None,
     idle_speed=1,
 ):
     """Find a low-cost winding correction that preserves the original path.
@@ -207,6 +244,7 @@ def route(
     baseline_movement_cost = float(frame_cost.sum())
     if geometry_cost is not None:
         frame_cost += geometry_cost(points, None)[:-1] / RATE
+    arm_penalty = None if arm_geometry_cost is None else arm_geometry_cost(points, None)
     candidates = {}
     generated = 0
     for h in range(2):
@@ -221,106 +259,58 @@ def route(
             if min(np.linalg.norm(v0), np.linalg.norm(v1)) < POLE_RADIUS:
                 continue
             short = math.atan2(v0[0] * v1[1] - v0[1] * v1[0], float(np.dot(v0, v1)))
-            t = np.linspace(0, 1, b - a + 1)
-            eased = t**3 * (10 - 15 * t + 6 * t * t)
             baseline_distance = np.linalg.norm(np.diff(own, axis=0), axis=1).sum()
             baseline_cost = float(frame_cost[a:b].sum())
+            arm_clearance = arm_penalty is not None and arm_penalty[a:b].max(initial=0) > 1
+            before = points[max(0, a - 1):a, h]
+            after = points[b + 1:b + 2, h]
+            baseline_curvature = np.sum(np.diff(np.concatenate((before, own, after)), n=2, axis=0)**2)
             # Keep the cheapest physical route for each homotopy and angular
             # envelope; a narrower envelope can remain useful at another branch.
             local = {}
-            for turns in (-1, 0, 1):
-                delta = short + turns * 2 * math.pi
-                for radius in (UNWIND_RADIUS, 0.024, 0.032, 0.045):
-                    for linear in (0, 0.5, 1):
-                        u = (1 - linear) * eased + linear * t
-                        xy = _orbit(v0, v1, delta, radius, u)
-                        if xy is None:
-                            continue
-                        for height in sorted(
-                            set((lift, max(lift, 0.03), max(lift, 0.055)))
-                        ):
-                            path = own.copy()
-                            path[:, :2] = theirs[:, :2] + xy - offsets[a : b + 1, h, :2]
-                            path[:, 2] = np.maximum(
-                                path[:, 2], 0.006 + height * np.sin(np.pi * t) ** 2
-                            )
-                            path[[0, -1]] = own[[0, -1]]
-                            velocities = (
-                                np.linalg.norm(np.diff(path, axis=0), axis=1) * RATE
-                            )
-                            if (velocities + extra_speed[a:b, h]).max(
-                                initial=0
-                            ) > max_speed + 1e-6:
-                                continue
-                            own_line = path[:, :2] + offsets[a : b + 1, h, :2]
-                            v = (
-                                (theirs[:, :2] - own_line)
-                                if h == 0
-                                else (own_line - theirs[:, :2])
-                            )
-                            if not _edge_clear(v).all():
-                                continue
-                            phi = _angles(v)
-                            phi += angles[a] - phi[0]
-                            branch = int(round((phi[-1] - angles[b]) / (2 * math.pi)))
-                            if abs(phi[-1] - angles[b] - branch * 2 * math.pi) > 1e-6:
-                                continue
-                            if (
-                                branch == 0
-                                and velocities.max(initial=0)
-                                > min(
-                                    max_speed,
-                                    max(idle_speed, speed[a:b, h].max(initial=0)),
-                                )
-                                + 1e-6
-                            ):
-                                continue
-                            extra = (
-                                np.linalg.norm(np.diff(path, axis=0), axis=1).sum()
-                                - baseline_distance
-                            )
-                            cost = (
-                                distance_weight * np.sum(velocities) / RATE
-                                + np.sum(np.maximum(0, velocities - comfort_speed) ** 2)
-                                / RATE
-                            )
-                            other_speed = speed[a:b, 1 - h]
-                            cost += (
-                                distance_weight * np.sum(other_speed) / RATE
-                                + np.sum(
-                                    np.maximum(0, other_speed - comfort_speed) ** 2
-                                )
-                                / RATE
-                            )
-                            if geometry_cost is not None:
-                                pair = points[a : b + 1].copy()
-                                pair[:, h] = path
-                                cost += (
-                                    float(np.sum(geometry_cost(pair, (a, b)))) / RATE
-                                )
-                            edited_samples = int(np.count_nonzero(np.any(path != own, axis=1)))
-                            # A cheaper alternate path cannot offset the cost
-                            # of replacing otherwise usable original motion.
-                            cost = (
-                                max(0.0, cost - baseline_cost)
-                                + EDIT_COST_PER_SECOND * edited_samples / RATE
-                                + 1e-8
-                            )
-                            edge = Route(
-                                a,
-                                b,
-                                h,
-                                path,
-                                branch,
-                                float(phi.min()),
-                                float(phi.max()),
-                                float(cost),
-                                float(extra),
-                                edited_samples,
-                            )
-                            key = (branch, round(edge.low, 5), round(edge.high, 5))
-                            if key not in local or cost < local[key].cost:
-                                local[key] = edge
+            for path in _candidate_paths(own, theirs, offsets[a:b + 1, h], short, lift, arm_clearance):
+                velocities = np.linalg.norm(np.diff(path, axis=0), axis=1) * RATE
+                if (velocities + extra_speed[a:b, h]).max(initial=0) > max_speed + 1e-6:
+                    continue
+                own_line = path[:, :2] + offsets[a:b + 1, h, :2]
+                v = (theirs[:, :2] - own_line) if h == 0 else (own_line - theirs[:, :2])
+                if not _edge_clear(v).all():
+                    continue
+                phi = _angles(v)
+                phi += angles[a] - phi[0]
+                branch = int(round((phi[-1] - angles[b]) / (2 * math.pi)))
+                if abs(phi[-1] - angles[b] - branch * 2 * math.pi) > 1e-6:
+                    continue
+                if branch == 0 and velocities.max(initial=0) > min(
+                    max_speed, max(idle_speed, speed[a:b, h].max(initial=0))
+                ) + 1e-6:
+                    continue
+                extra = np.sum(velocities) / RATE - baseline_distance
+                both_speeds = np.stack((velocities, speed[a:b, 1 - h]))
+                cost = (
+                    distance_weight * both_speeds.sum() / RATE
+                    + np.sum(np.maximum(0, both_speeds - comfort_speed) ** 2) / RATE
+                )
+                pair = points[a:b + 1].copy()
+                pair[:, h] = path
+                if geometry_cost is not None:
+                    cost += float(np.sum(geometry_cost(pair, (a, b)))) / RATE
+                edited_samples = int(np.count_nonzero(np.any(path != own, axis=1)))
+                # The edit charge keeps cheap but unnecessary detours out.
+                cost = (max(0.0, cost - baseline_cost)
+                        + EDIT_COST_PER_SECOND * edited_samples / RATE + 1e-8)
+                if arm_penalty is not None:
+                    arm_delta = arm_geometry_cost(pair, (a, b))[:-1] - arm_penalty[a:b]
+                    curvature = np.sum(np.diff(np.concatenate((before, path, after)), n=2, axis=0)**2)
+                    cost += float(arm_delta.sum()) / RATE
+                    cost += 0.05 * RATE**2 * max(0, curvature - baseline_curvature)
+                edge = Route(
+                    a, b, h, path, branch, float(phi.min()), float(phi.max()),
+                    float(cost), float(extra), edited_samples,
+                )
+                key = (branch, round(edge.low, 5), round(edge.high, 5))
+                if key not in local or cost < local[key].cost:
+                    local[key] = edge
             if local:
                 candidates.setdefault(a, []).extend(local.values())
                 generated += len(local)
@@ -408,7 +398,7 @@ def wrist_offsets(poses, parts):
     return np.stack(result, axis=1)
 
 
-def clearance_cost(poses, parts, gap):
+def clearance_cost(poses, parts, gap, *, protect_gloves=False):
     """Cache posed geometry, including renderer-matching between-frame samples."""
     from hand_pose import proxies
 
@@ -429,10 +419,32 @@ def clearance_cost(poses, parts, gap):
             margin = (
                 np.linalg.norm(delta, axis=-1) - radii[0][:, None] - radii[1][None]
             ).min(axis=(1, 2))
-            penalties = np.maximum(
-                penalties, np.maximum(0, (gap - margin) * 1000) ** 2 * 4
-            )
+            frame_cost = np.maximum(0, (gap - margin) * 1000) ** 2 * 4
+            if protect_gloves:
+                frame_cost += 16 * np.maximum(0, -margin * 1000 - 0.05) ** 2
+            penalties = np.maximum(penalties, frame_cost)
         return np.r_[penalties, 0.0]
+
+    return cost
+
+
+def arm_clearance_cost(poses, parts, gap):
+    from hand_pose import arm_cost, bases, proxies
+
+    catalogue = []
+    for fraction in (0, 0.25, 0.5, 0.75):
+        q = poses[:-1] * (1 - fraction) + poses[1:] * fraction
+        centres = [proxies(q[:, h], parts[h])[0] for h in range(2)]
+        catalogue.append((fraction, centres, bases(q)[..., 1]))
+
+    def cost(points, span):
+        a, b = (0, len(points) - 1) if span is None else span
+        penalty = np.zeros(len(points) - 1)
+        for fraction, offsets, forward in catalogue:
+            p = points[:-1] * (1 - fraction) + points[1:] * fraction
+            centres = [offsets[h][a:b] + p[:, h, None, :] for h in range(2)]
+            penalty = np.maximum(penalty, arm_cost(centres, forward[a:b], parts, gap))
+        return np.r_[penalty, 0.0]
 
     return cost
 
@@ -449,13 +461,23 @@ def solve(
     comfort_speed=0.25,
     gap=0.001,
     idle_speed=1,
+    arm_aware=True,
 ):
     """Apply winding to actual arm-attachment positions after glove posing."""
+    from hand_pose import ARM_WEIGHT
+
     offsets = wrist_offsets(poses, parts)
     radius = max(np.linalg.norm(p[1]) + max(p[2]) for p in parts[0]) + 0.002
     angular = np.linalg.norm(np.diff(poses, axis=0), axis=-1) * RATE
     last = None
-    geometry = clearance_cost(poses, parts, gap)
+    geometry = clearance_cost(poses, parts, gap, protect_gloves=arm_aware)
+    arm_geometry = None
+    if arm_aware:
+        arm_penalty = arm_clearance_cost(poses, parts, gap)
+
+        def arm_geometry(points, span):
+            return ARM_WEIGHT * arm_penalty(points, span)
+
     for reserve in (0, 2, 5):
         try:
             result, report = route(
@@ -468,6 +490,7 @@ def solve(
                 anchor_offsets=offsets,
                 surface_speed=radius * np.radians(angular),
                 geometry_cost=geometry,
+                arm_geometry_cost=arm_geometry,
                 idle_speed=idle_speed,
             )
             report.update(verify_wrists(result, poses, parts, limit_deg))

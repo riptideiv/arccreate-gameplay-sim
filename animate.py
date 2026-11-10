@@ -18,7 +18,10 @@ SAMPLE_RATE = 60
 FPS = 30
 # Shared geometry and pose model; the index-pad centre is the root pivot.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hand_pose import HAND_PARTS, VERSION as POSE_VERSION, solve as solve_hand_poses, diagnostics
+from hand_pose import (
+    ARM_WEIGHT, HAND_PARTS, VERSION as POSE_VERSION, arm_diagnostics, diagnostics,
+    solve as solve_hand_poses,
+)
 from motion_paths import positions as finger_positions, home_position
 import numpy as np
 
@@ -175,34 +178,54 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
         active[list(samples), h] = True
     # Verify the supplied point paths before adding optional pose adjustments.
     neutral = [((10, -18), (10, 18)) for _ in paths[0]]
-    base_report = motion_report(paths, neutral, max_speed, angular_limit, gap)
+    motion_report(paths, neutral, max_speed, angular_limit, gap)
     parts = [hand_parts(s) for s in SIDES]
-    try:
-        solved, angles, posing = solve_hand_poses(points, active, parts, max_speed, angular_limit, gap, idle_speed=idle_speed)
-        output = [[Vector(p) for p in solved[:, h]] for h in range(2)]
-        poses = [tuple(tuple(q) for q in pair) for pair in angles]
-        report = motion_report(output, poses, max_speed, angular_limit, gap)
-    except (RuntimeError, ValueError) as error:
-        # Pose fitting must never change score or restart contact planning.
-        output, poses, report = paths, neutral, base_report
-        posing = diagnostics(points, np.array(neutral), parts, gap)
-        posing['pose_solver_fallback_reason'] = str(error)
-        posing['solver'] = POSE_VERSION
     # Cuffs are the arm attachment points. Route after posing so rotating a
     # glove cannot hide a complete turn around the other wrist. Contacts stay
     # pinned; no later cosmetic detour may alter the certified route.
-    from winding_paths import solve as unwind
+    from winding_paths import WindingError, solve as unwind
+
     physical = active if winding_active is None else winding_active
-    root_points=np.stack([np.array([tuple(p) for p in path]) for path in output],axis=1)
-    root_points,winding=unwind(root_points,physical,np.asarray(poses),parts,limit_deg=winding_limit,
-                               max_speed=max_speed,lift=lift,comfort_speed=comfort_speed,gap=gap,idle_speed=idle_speed)
-    output=[[Vector(p) for p in root_points[:,h]] for h in range(2)]
+
+    def fit(arm_aware):
+        try:
+            solved, angles, posing = solve_hand_poses(
+                points, active, parts, max_speed, angular_limit, gap,
+                idle_speed=idle_speed, arm_weight=ARM_WEIGHT if arm_aware else 0,
+            )
+            motion_report([[Vector(p) for p in solved[:, h]] for h in range(2)],
+                          angles, max_speed, angular_limit, gap)
+        except (RuntimeError, ValueError) as error:
+            # Pose fitting must never change score or restart contact planning.
+            solved, angles = points, np.array(neutral)
+            posing = diagnostics(solved, angles, parts, gap)
+            posing['pose_solver_fallback_reason'] = str(error)
+            posing['solver'] = POSE_VERSION
+        routed, winding = unwind(
+            solved, physical, angles, parts, limit_deg=winding_limit,
+            max_speed=max_speed, lift=lift, comfort_speed=comfort_speed, gap=gap,
+            idle_speed=idle_speed, arm_aware=arm_aware,
+        )
+        return routed, angles, posing, winding
+
+    fallback = None
+    try:
+        root_points, angles, posing, winding = fit(True)
+    except WindingError as error:
+        fallback = str(error)
+        root_points, angles, posing, winding = fit(False)
+
+    output = [[Vector(p) for p in root_points[:, h]] for h in range(2)]
+    poses = [tuple(tuple(q) for q in pair) for pair in angles]
     report=motion_report(output,poses,max_speed,angular_limit,gap)
     posing.update(diagnostics(root_points,np.asarray(poses),parts,gap))
     report.update(posing)
     posing['maximum_contact_drift_m']=float(np.linalg.norm((root_points-points)[physical],axis=-1).max(initial=0))
     report['maximum_contact_drift_m']=posing['maximum_contact_drift_m']
     report['arm_winding']=winding
+    report['arm_model'] = arm_diagnostics(root_points, angles, parts)
+    if fallback:
+        report['arm_model']['fallback_reason'] = fallback
     report['idle_speed_m_s'] = min(idle_speed, max_speed)
     return output, poses, report
 
