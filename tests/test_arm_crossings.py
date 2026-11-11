@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 from arc_hand_order.planning.arm_crossings import ArmState, HandPath, extend, order
-from crossing_motion import CrossingMotionError, layer_margin, validate
-from hand_pose import HAND_PARTS, proxies
+from crossing_motion import CrossingMotionError, layer_clearances, layer_margin, validate
+from hand_pose import ARM_RADIUS, FOREARM_LENGTH, HAND_PARTS, SHOULDERS, UPPER_ARM_LENGTH, arm_elbows, proxies
 from motion_paths import positions
 
 
@@ -31,6 +31,17 @@ def test_approach_above_requires_over_and_below_keeps_both_beam_keys():
     states = [ArmState((HandPath(below, 0), HandPath(right, 0)), r) for r in histories]
     assert {order(r) for r in histories} == {"left", "right"}
     assert len({s.key for s in states}) == 2
+
+
+def test_locked_upper_finger_prunes_route_that_requires_lift_after_entry():
+    left = path([-1, 1, .4, 1], [-.020, -.020, -.004, -.020])
+    right = path([0]*len(left), 0)
+    lock = np.ones(len(left), dtype=bool)
+    free = np.zeros_like(lock)
+    branches = extend((), left, right, 0, (lock, free))
+    assert [order(route) for route in branches] == ["right"]
+    assert {order(route) for route in extend((), left, right, 0, (free, free))} == {"left", "right"}
+    assert not extend((), left, right, 0, (lock, lock))
 
 
 def test_a_coincident_x_sample_does_not_allow_changing_top():
@@ -81,6 +92,32 @@ def test_3d_check_resolves_layer_for_collinear_projected_arms(monkeypatch):
     assert layer_margin(centres, poses, None, -1) < 0
 
 
+def test_raising_elbow_does_not_clear_a_hand_below_the_other_arm(monkeypatch):
+    import hand_pose
+
+    monkeypatch.setattr(hand_pose, "SHOULDERS", np.array([[-.15, -.15, .20], [0, -.15, .06]]))
+    elbows = np.array([[-.06, -.06, .20], [0, -.06, .06]])
+    wrists = np.array([[-.02, -.03, .16], [0, .05, .06]])
+    monkeypatch.setattr(hand_pose, "arm_geometry", lambda *args: (wrists, elbows))
+    parts = ((HAND_PARTS[0],),)*2
+    low = (np.array([[-.020, 0, .006]]), np.array([[0, .09, .06]]))
+    raised = (np.array([[-.020, 0, .100]]), low[1])
+    angles = np.zeros((2, 2))
+    links, hand = layer_clearances(low, angles, parts, 1)
+    assert links > .001 and hand < 0
+    assert layer_margin(raised, angles, parts, 1) > .001
+
+
+def test_elbow_swivel_keeps_both_lengths_and_the_shoulder_pivots():
+    wrists = np.array([[-.10, -.05, .10], [.10, -.05, .10]])
+    forward = np.array([[0., 1., 0.]] * 2)
+    elbows = arm_elbows(wrists, forward, np.array([45., -45.]))
+    np.testing.assert_allclose(np.linalg.norm(elbows - SHOULDERS, axis=1), UPPER_ARM_LENGTH)
+    np.testing.assert_allclose(np.linalg.norm(elbows - wrists, axis=1), FOREARM_LENGTH)
+    assert not np.allclose(elbows, arm_elbows(wrists, forward))
+    assert ARM_RADIUS == .020
+
+
 @pytest.mark.skipif(not os.getenv("ARCCREATE_ARGHENA_TAKE"), reason="requires the saved local Arghena take")
 def test_arghena_118_119_cannot_flip_mid_crossing_and_can_swap(monkeypatch):
     import plan_excerpt
@@ -96,7 +133,8 @@ def test_arghena_118_119_cannot_flip_mid_crossing_and_can_swap(monkeypatch):
              for sign in (1, -1)]
     pose = data[[430, 451], :, -2:]
     centres = [proxies(pose[:, h], parts[h])[0] + points[[430, 451], h, None] for h in range(2)]
-    assert (layer_margin(centres, pose, parts, np.array([-1, 1])) > 0).all()
+    historical_layer, _ = layer_clearances(centres, pose, parts, np.array([-1, 1]))
+    assert (historical_layer > 0).all()
 
     chart = Path(saved["chart"]["path"])
     start, end = [saved["preview"][f"chart_{k}_ms"] for k in ("start", "end")]
@@ -129,7 +167,10 @@ def test_arghena_118_119_cannot_flip_mid_crossing_and_can_swap(monkeypatch):
     swapped = plan_excerpt.create_plan(chart, start, end, settings)
     assert swapped["planning"]["skipped_ticks"] == 0
     assert [n["hands"] for n in swapped["notes"] if n["start_ms"] in (7593, 7594)] == [["right"], ["left"]]
-    assert not any(c["start_frame"] <= 457 and c["end_frame"] >= 430
+    pair_ids = {touch for n in swapped["notes"] if n["start_ms"] in (7593, 7594) for touch in n["touches"]}
+    pair_start = min(t["down_frame"] for t in swapped["touches"] if t["id"] in pair_ids)
+    pair_end = max(t["up_frame"]-1 for t in swapped["touches"] if t["id"] in pair_ids)
+    assert not any(c["start_frame"] <= pair_end and c["end_frame"] >= pair_start
                    for c in swapped["arm_crossings"]["routes"])
 
 

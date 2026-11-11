@@ -185,7 +185,7 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
     parts = [hand_parts(s) for s in SIDES]
     routes = None
     if instructions is not None:
-        validate(points, instructions)
+        validate(points, instructions, locked=physical)
         routes = instructions["routes"]
     try:
         solved, angles, posing = solve_hand_poses(
@@ -199,13 +199,15 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
         report = motion_report(output, angles, max_speed, angular_limit, gap)
         posing = diagnostics(solved, angles, parts, gap)
         posing.update(solver=POSE_VERSION, pose_solver_fallback_reason=str(error))
+    swivel_samples = posing.get("elbow_swivel_deg")
+    swivels = np.asarray(swivel_samples) if swivel_samples is not None else None
     if routes is not None:
-        report["arm_crossings"] = verify(solved, angles, parts, routes, gap)
+        report["arm_crossings"] = verify(solved, angles, parts, routes, gap, swivels=swivels)
     poses = [tuple(tuple(q) for q in pair) for pair in angles]
     report.update(posing)
     report["maximum_contact_drift_m"] = float(
         np.linalg.norm((solved - points)[physical], axis=-1).max(initial=0))
-    report["arm_model"] = arm_diagnostics(solved, angles, parts, routes)
+    report["arm_model"] = arm_diagnostics(solved, angles, parts, swivels)
     report["idle_speed_m_s"] = min(idle_speed, max_speed)
     return output, poses, report
 
@@ -214,7 +216,7 @@ def timeline_frame(sample, audio_offset_ms=0):
     return 1 + (sample / SAMPLE_RATE - audio_offset_ms / 1000) * FPS
 
 
-def webgl_motion(paths, poses, plan, settings):
+def webgl_motion(paths, poses, plan, settings, report):
     """Exact Blender world transforms converted from Z-up to glTF Y-up."""
     hands = {}
     for index, side in enumerate(SIDES):
@@ -228,7 +230,8 @@ def webgl_motion(paths, poses, plan, settings):
             "duration_s": (len(poses)-1)/SAMPLE_RATE - plan["chart"]["audio_offset_ms"]/1000,
             "hands": hands, "screen_mm": plan["device"]["screen_mm"],
             "settings": settings, "misses": plan.get("misses", []),
-            **({"arm_crossings": plan["arm_crossings"]} if "arm_crossings" in plan else {})}
+            **({"arm_crossings": plan["arm_crossings"]} if "arm_crossings" in plan else {}),
+            **({"elbow_swivel_deg": report["elbow_swivel_deg"]} if "elbow_swivel_deg" in report else {})}
 
 
 def linear(obj):
@@ -359,7 +362,7 @@ def main():
     if args.report:
         args.report.write_text(json.dumps(report, indent=2))
     if args.motion:
-        args.motion.write_text(json.dumps(webgl_motion(paths, poses, plan, settings), separators=(",", ":")))
+        args.motion.write_text(json.dumps(webgl_motion(paths, poses, plan, settings, report), separators=(",", ":")))
     if args.motion_only:
         print("Verified motion for WebGL preview.")
         return

@@ -23,15 +23,14 @@ HAND_PARTS = (
 )
 
 
-VERSION = "pivot-beam-arms-1"
+VERSION = "pivot-beam-arms-2"
 NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
 # Seated player in tablet-local meters. The elbow pole points outward and down.
 SHOULDERS = np.array([[-0.18, -0.38, 0.17], [0.18, -0.38, 0.17]])
 ELBOW_POLES = np.array([[-0.7, 0.0, -1.0], [0.7, 0.0, -1.0]])
 UPPER_ARM_LENGTH = 0.29
 FOREARM_LENGTH = 0.26
-UPPER_ARM_RADIUS = 0.035
-FOREARM_RADIUS = 0.025
+ARM_RADIUS = 0.020
 ARM_WEIGHT = 0.25
 
 
@@ -60,7 +59,7 @@ def proxies(angles, parts):
     )
 
 
-def arm_elbows(wrists, forward, elbow_bias=None):
+def arm_elbows(wrists, forward, swivels=None):
     axis = wrists - SHOULDERS
     distance = np.linalg.norm(axis, axis=-1)
     axis /= np.maximum(distance[..., None], 1e-9)
@@ -78,10 +77,10 @@ def arm_elbows(wrists, forward, elbow_bias=None):
     backward /= np.maximum(np.linalg.norm(backward, axis=-1, keepdims=True), 1e-9)
     steering = backward - (backward * axis).sum(axis=-1)[..., None] * axis
     pole += 0.65 * steering
-    if elbow_bias is not None:
-        up = np.array([0., 0., 1.]) - axis[..., 2, None] * axis
-        pole += 1.35 * np.asarray(elbow_bias)[..., None] * up
     pole /= np.maximum(np.linalg.norm(pole, axis=-1, keepdims=True), 1e-9)
+    if swivels is not None:
+        angle = np.radians(swivels)[..., None]
+        pole = pole * np.cos(angle) + np.cross(axis, pole) * np.sin(angle)
     return SHOULDERS + axis * along[..., None] + pole * away[..., None]
 
 
@@ -109,36 +108,36 @@ def _segment_gap(a, b, c, d):
     ])
 
 
-def arm_geometry(centres, forward, parts, elbow_bias=None):
+def arm_geometry(centres, forward, parts, swivels=None):
     cuffs = [next(i for i, part in enumerate(hand) if part[0] == "cuff") for hand in parts]
     wrists = np.stack(
         [hand[..., cuff, :] for hand, cuff in zip(centres, cuffs)], axis=-2
     )
-    return wrists, arm_elbows(wrists, forward, elbow_bias)
+    return wrists, arm_elbows(wrists, forward, swivels)
 
 
-def arm_metrics(centres, forward, parts, elbow_bias=None):
+def arm_metrics(centres, forward, parts, swivels=None):
     """Arm clearance and wrist alignment for posed glove centres in tablet space."""
-    wrists, elbows = arm_geometry(centres, forward, parts, elbow_bias)
+    wrists, elbows = arm_geometry(centres, forward, parts, swivels)
     forearm = wrists - elbows
     arm_distance = _segment_gap(
         elbows[..., 0, :], wrists[..., 0, :], elbows[..., 1, :], wrists[..., 1, :]
     )
-    margin = arm_distance - 2 * FOREARM_RADIUS
+    margin = arm_distance - 2 * ARM_RADIUS
     margin = np.minimum(margin, _segment_gap(
         SHOULDERS[0], elbows[..., 0, :], SHOULDERS[1], elbows[..., 1, :]
-    ) - 2 * UPPER_ARM_RADIUS)
+    ) - 2 * ARM_RADIUS)
     for h in range(2):
         shoulder, elbow, wrist = SHOULDERS[h], elbows[..., h, :], wrists[..., h, :]
         other = 1 - h
         margin = np.minimum(margin, _segment_gap(
             shoulder, elbow, elbows[..., other, :], wrists[..., other, :]
-        ) - UPPER_ARM_RADIUS - FOREARM_RADIUS)
+        ) - 2 * ARM_RADIUS)
         glove = centres[other]
         radius = np.array([max(part[2]) for part in parts[other]])
         margin = np.minimum(margin, (_point_segment(
             glove, elbow[..., None, :], wrist[..., None, :]
-        ) - radius - FOREARM_RADIUS).min(axis=-1))
+        ) - radius - ARM_RADIUS).min(axis=-1))
     forearm_xy = forearm[..., :2]
     forward_xy = forward[..., :2]
     yaw_cos = (forearm_xy * forward_xy).sum(axis=-1) / np.maximum(
@@ -151,8 +150,8 @@ def arm_metrics(centres, forward, parts, elbow_bias=None):
     return margin, np.clip(yaw_cos, -1, 1), flexion, reach
 
 
-def arm_cost(centres, forward, parts, gap, elbow_bias=None):
-    margin, yaw_cos, flexion, reach = arm_metrics(centres, forward, parts, elbow_bias)
+def arm_cost(centres, forward, parts, gap, swivels=None):
+    margin, yaw_cos, flexion, reach = arm_metrics(centres, forward, parts, swivels)
     sideways_bend = 320 * (1 - yaw_cos) + 1400 * np.maximum(0, 0.86 - yaw_cos) ** 2
     # Allow downward flex for taps. Backward or excessive flex is less useful.
     pitch_bend = (
@@ -166,7 +165,7 @@ def arm_cost(centres, forward, parts, gap, elbow_bias=None):
     )
 
 
-def arm_diagnostics(points, poses, parts, routes=None):
+def arm_diagnostics(points, poses, parts, swivels=None):
     """Sample the simplified arm rig at the same subframes as glove clearance."""
     overlaps = np.zeros(len(points) - 1, dtype=bool)
     min_margin, min_yaw, max_reach = math.inf, 1.0, 0.0
@@ -174,11 +173,8 @@ def arm_diagnostics(points, poses, parts, routes=None):
         p = points[:-1] * (1 - fraction) + points[1:] * fraction
         q = poses[:-1] * (1 - fraction) + poses[1:] * fraction
         centres = [proxies(q[:, h], parts[h])[0] + p[:, h, None, :] for h in range(2)]
-        bias = None
-        if routes is not None:
-            from crossing_motion import elbow_bias_at
-            bias = elbow_bias_at(np.arange(len(p)) + fraction, routes)
-        margin, yaw, _, reach = arm_metrics(centres, bases(q)[..., 1], parts, bias)
+        swivel = None if swivels is None else swivels[:-1]*(1-fraction) + swivels[1:]*fraction
+        margin, yaw, _, reach = arm_metrics(centres, bases(q)[..., 1], parts, swivel)
         overlaps |= margin < -1e-5
         min_margin = min(min_margin, margin.min(initial=math.inf))
         min_yaw = min(min_yaw, yaw.min(initial=1))
@@ -222,7 +218,7 @@ def _pose_penalty(margin, floor, gap, arm_weight, both_pinned):
 
 def air_paths(
     points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None, idle_speed=math.inf,
-    routes=None,
+    routes=None, swivels=None,
 ):
     """Lift only free portions of a hand path; preserve every contact sample."""
     result = points.copy()
@@ -234,7 +230,7 @@ def air_paths(
         for first, last in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
             a = max(0, first - 1)
             b = min(len(points) - 1, last)
-            if b - a < 3:
+            if b - a < (2 if routes else 3):
                 continue
             runs.append((a, b, h))
     directions = np.array(
@@ -255,13 +251,15 @@ def air_paths(
         float,
     )
     if routes is not None:
-        from crossing_motion import elbow_bias_at, layer_margin, layers_at
+        from crossing_motion import layer_margin, layers_at, sample_swivels
         directions = directions[:1]
     directions /= np.linalg.norm(directions, axis=1)[:, None]
+    heights = ((.005, .01, .015, .022, .03, .038, .045, .047, .049, .06, .08)
+               if routes else (.015, .03, .045, .06, .08))
     offsets = np.vstack(
         (
             np.zeros((1, 3)),
-            *[directions * height for height in (0.015, 0.03, 0.045, 0.06, 0.08)],
+            *[directions * height for height in heights],
         )
     )
     radius = (
@@ -270,9 +268,11 @@ def air_paths(
         else 0
     )
 
-    def penalty_for(candidates, other, a, b, h):
+    def penalty_for(candidates, other, a, b, h, mandatory_layer):
         penalty = np.zeros(len(candidates))
-        for fraction in (0, 0.25, 0.5, 0.75):
+        peak_layer_shortfall = np.zeros(len(candidates))
+        fractions = np.arange(8)/8 if mandatory_layer else (0, 0.25, 0.5, 0.75)
+        for fraction in fractions:
             here = candidates[:, :-1] * (1 - fraction) + candidates[:, 1:] * fraction
             there = other[:-1] * (1 - fraction) + other[1:] * fraction
             if poses is None:
@@ -305,9 +305,12 @@ def air_paths(
                     own = ca[None] + here[..., None, :]
                     peer = np.broadcast_to(cb[None] + there[None, :, None, :], own.shape)
                     centres = (own, peer) if h == 0 else (peer, own)
-                    layer_gap = layer_margin(centres, q, parts, layers, elbow_bias_at(frames, routes))
-                    penalty += 8e9 * np.sum(np.maximum(0, gap-layer_gap)**2, axis=1)
+                    layer_gap = layer_margin(centres, q, parts, layers, sample_swivels(swivels, frames))
+                    shortfall = np.maximum(0, gap-layer_gap)**2
+                    penalty += 8e9 * np.sum(shortfall, axis=1)
+                    peak_layer_shortfall = np.maximum(peak_layer_shortfall, shortfall.max(axis=1))
             penalty += np.sum(np.maximum(0, -margin) ** 2, axis=1) * 1e8
+        penalty += 8e10 * peak_layer_shortfall
         penalty += np.sum((candidates - points[a : b + 1, h]) ** 2, axis=(1, 2)) * 0.01
         return penalty
 
@@ -316,20 +319,27 @@ def air_paths(
         for a, b, h in runs:
             base = points[a : b + 1, h]
             other = result[a : b + 1, 1 - h]
+            mandatory_layer = bool(routes and layers_at(np.arange(a, b+1), routes).any())
             if poses is None:
                 if (
                     np.linalg.norm(result[a : b + 1, h] - other, axis=-1).min()
                     >= 2 * pad_radius + gap + 0.008
                 ):
                     continue
-            elif penalty_for(result[a : b + 1, h][None], other, a, b, h)[0] < 1e-7:
+            elif penalty_for(result[a : b + 1, h][None], other, a, b, h, mandatory_layer)[0] < 1e-7:
                 continue
             t = np.linspace(0, 1, b - a + 1)
-            ramp = np.minimum(
-                1, np.minimum(np.arange(b - a + 1), np.arange(b - a, -1, -1)) / 4
-            )
+            from_start = np.arange(b - a + 1)
+            to_end = from_start[::-1]
+            ramp = np.minimum(1, np.minimum(from_start, to_end) / 4)
             ramp = ramp**3 * (10 - 15 * ramp + 6 * ramp**2)
-            shapes = np.stack((np.sin(t * np.pi) ** 2, ramp))
+            shapes = [np.sin(t * np.pi) ** 2, ramp]
+            if mandatory_layer:
+                # A release can sit immediately before a pass. Consider a
+                # quick rise or descent, still bounded by the real speed cap.
+                shapes.extend(np.minimum(1, np.minimum(from_start/a_rate, to_end/b_rate))
+                              for a_rate, b_rate in ((1, 4), (4, 1), (2, 2)))
+            shapes = np.stack(shapes)
             candidates = (
                 base[None, None, :, :]
                 + offsets[None, :, None, :] * shapes[:, None, :, None]
@@ -340,7 +350,6 @@ def air_paths(
             # If the fixed contacts already demand faster travel, preserve that
             # baseline allowance rather than dropping a note to slow a detour.
             required = np.linalg.norm(np.diff(base, axis=0), axis=-1).max(initial=0) * 60
-            mandatory_layer = bool(routes and layers_at(np.arange(a, b+1), routes).any())
             free_cap = max_speed if mandatory_layer else min(max_speed, max(idle_speed, required))
             valid_translation = speed.max(axis=1) <= free_cap + 1e-5
             if poses is not None:
@@ -352,7 +361,7 @@ def air_paths(
                     )[None, :]
                 )
             valid = valid_translation & (speed.max(axis=1) <= max_speed + 1e-5)
-            penalty = penalty_for(candidates, other, a, b, h)
+            penalty = penalty_for(candidates, other, a, b, h, mandatory_layer)
             penalty[~valid] = np.inf
             choice = int(np.argmin(penalty))
             if choice and penalty[choice] < penalty[0] - 1e-8:
@@ -387,8 +396,36 @@ def solve(
     # the final 60 Hz interpolation still respects each frame's turn budget.
     stride = max(stride, math.ceil(30 * 60 / max(angular_limit, 1)))
     original = points.copy()
-    points, lifts = air_paths(points, active, max_speed, gap=gap, idle_speed=idle_speed, routes=routes)
     count = len(points)
+    swivels = None
+    if routes:
+        from crossing_motion import (
+            CrossingMotionError, boundary_subframes, layer_margin, layers_at, sample_swivels,
+            solve_swivels, verify,
+        )
+        neutral_poses = np.broadcast_to(NEUTRAL, (count, 2, 2))
+        swivels = solve_swivels(points, neutral_poses, parts, routes, gap)
+        points, lifts = air_paths(
+            points, active, max_speed, gap=gap, poses=neutral_poses, parts=parts,
+            idle_speed=idle_speed, routes=routes, swivels=swivels,
+        )
+        swivels = solve_swivels(points, neutral_poses, parts, routes, gap)
+        neutral_report = diagnostics(points, neutral_poses, parts, gap)
+        if not neutral_report["residual_proxy_overlap_samples"]:
+            try:
+                verify(points, neutral_poses, parts, routes, gap, swivels=swivels)
+            except CrossingMotionError:
+                pass  # The elbow and free-hand search could not avoid wrist compensation.
+            else:
+                return points, neutral_poses, {
+                    **neutral_report, "solver": VERSION, "air_overpasses": lifts,
+                    "elbow_swivel_deg": swivels.tolist(), "wrist_compensation_search": False,
+                    "maximum_contact_drift_m": 0.,
+                }
+    else:
+        points, lifts = air_paths(
+            points, active, max_speed, gap=gap, idle_speed=idle_speed, routes=routes,
+        )
     # Each state is a pair of pitch/yaw choices. The pad centre is the pivot.
     pitches = (10, 25, 40, 55, 70, 85) if angular_limit < 200 else (10, 30, 50, 70, 85)
     yaws = (
@@ -422,17 +459,19 @@ def solve(
     ra = np.array([max(p[2]) for p in parts[0]])
     rb = np.array([max(p[2]) for p in parts[1]])
 
-    layers, elbow_bias = None, None
+    layers = layers_at(np.arange(count), routes) if routes else np.zeros(count, dtype=np.int8)
     if routes:
-        from crossing_motion import elbow_bias_at, layer_margin, layers_at
-        layers = layers_at(np.arange(count), routes)
-        elbow_bias = elbow_bias_at(np.arange(count), routes)
+        boundaries = boundary_subframes(routes)
+        boundary_layers = layers_at(boundaries, routes)
+        boundaries = boundaries[boundary_layers != 0]
+        boundary_layers = boundary_layers[boundary_layers != 0]
 
     def crossing_penalty(centres, angles, f):
-        if layers is None or not layers[f]:
+        if not layers[f]:
             return 0
-        margin = layer_margin(centres, angles, parts, layers[f], elbow_bias[f])
-        return 80 * np.maximum(0, (gap - margin) * 1000)**2
+        margin = layer_margin(centres, angles, parts, layers[f], swivels[f])
+        wrist_departure = np.sum((angles - NEUTRAL)**2, axis=(-2, -1))
+        return 80 * np.maximum(0, (gap - margin) * 1000)**2 + .08 * wrist_departure
 
     def spatial(f):
         delta = (
@@ -450,7 +489,7 @@ def solve(
         penalty = _pose_penalty(margin, floor, gap, arm_weight, both_pinned[f])
         centres = (ca + points[f, 0], cb + points[f, 1])
         if arm_weight:
-            penalty += arm_weight * arm_cost(centres, forward, parts, gap, None if elbow_bias is None else elbow_bias[f])
+            penalty += arm_weight * arm_cost(centres, forward, parts, gap, None if swivels is None else swivels[f])
         penalty += crossing_penalty(centres, states, f)
         return penalty
 
@@ -503,13 +542,26 @@ def solve(
             angles = start + (end - start) * alpha[None, :, None]
             m, floor = margins(points[f], angles, parts)
             penalty = _pose_penalty(m, floor, gap, arm_weight, both_pinned[f])
-            if arm_weight or (layers is not None and layers[f]):
+            if arm_weight or layers[f]:
                 centres = [proxies(angles[:, h], parts[h])[0] + points[f, h] for h in range(2)]
                 if arm_weight:
                     penalty += arm_weight * arm_cost(centres, bases(angles)[..., 1], parts, gap,
-                                                 None if elbow_bias is None else elbow_bias[f])
+                                                 None if swivels is None else swivels[f])
                 penalty += crossing_penalty(centres, angles, f)
             max_penalty = np.maximum(max_penalty, penalty)
+        if routes:
+            first, last = np.searchsorted(boundaries, (a, b))
+            for frame, layer in zip(boundaries[first:last], boundary_layers[first:last]):
+                f = int(frame)
+                u = frame - f
+                used = cumulative[f]*(1-u) + cumulative[f+1]*u - cumulative[a]
+                alpha = np.divide(used, cap, out=np.zeros(2), where=cap > 1e-9)
+                angles = start + (end - start) * alpha[None, :, None]
+                point = points[f]*(1-u) + points[f+1]*u
+                centres = [proxies(angles[:, h], parts[h])[0] + point[h] for h in range(2)]
+                margin = layer_margin(centres, angles, parts, layer,
+                                      sample_swivels(swivels, np.asarray(frame)))
+                max_penalty = np.maximum(max_penalty, 80*np.maximum(0, (gap-margin)*1000)**2)
         adjusted = best[shortlist] + max_penalty
         order = np.argsort(adjusted + ahead(b)[shortlist], kind="stable")[:beam]
         chosen = shortlist[order]
@@ -532,10 +584,15 @@ def solve(
             where=cap > 1e-9,
         )
         poses[a : b + 1] = route[k] + (route[k + 1] - route[k]) * alpha[:, :, None]
+    if routes:
+        swivels = solve_swivels(points, poses, parts, routes, gap)
     points, body_lifts = air_paths(
-        points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed, routes=routes
+        points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed,
+        routes=routes, swivels=swivels,
     )
     lifts += body_lifts
+    if routes and body_lifts:
+        swivels = solve_swivels(points, poses, parts, routes, gap)
     report = diagnostics(points, poses, parts, gap)
     report.update(
         solver=VERSION,
@@ -544,6 +601,8 @@ def solve(
             np.linalg.norm((points - original)[active], axis=-1).max(initial=0)
         ),
     )
+    if swivels is not None:
+        report.update(elbow_swivel_deg=swivels.tolist(), wrist_compensation_search=True)
     return points, poses, report
 
 

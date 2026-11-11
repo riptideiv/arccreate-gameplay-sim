@@ -66,9 +66,39 @@ def passes(left, right, start, crossed):
         yield i, i - 1 + u, entering, tops
 
 
-def extend(routes, left, right, start):
+def locked_overpass(left, right, lock, start, end):
+    """Detect overlap of the pad footprints while the upper pad is pinned."""
+    first, last = int(np.ceil(start)), int(np.floor(end))
+    # Restrict the distance check to the uncommitted part of this crossing.
+    origin, stop = int(np.floor(start)), int(np.ceil(end)) + 1
+    relative = left[origin:stop, :2] - right[origin:stop, :2]
+    lock = lock[origin:stop]
+    start, end = start-origin, end-origin
+    first, last = first-origin, last-origin
+    limit2 = (2*TIP - EPSILON)**2
+    if np.any(lock[first:last+1] & (np.sum(relative[first:last+1]**2, axis=1) < limit2)):
+        return True
+    edges = np.arange(int(np.floor(start)), int(np.ceil(end)))
+    edges = edges[lock[edges] & lock[edges+1]]
+    if not len(edges):
+        return False
+    before = relative[edges]
+    delta = relative[edges+1] - before
+    u = -np.sum(before*delta, axis=1) / np.maximum(np.sum(delta**2, axis=1), 1e-16)
+    u = np.clip(u, np.maximum(0, start-edges), np.minimum(1, end-edges))
+    return bool(np.any(np.sum((before + u[:, None]*delta)**2, axis=1) < limit2))
+
+
+def extend(routes, left, right, start, locks=None):
     """Process every crossing between two beam checkpoints."""
     options = (routes,)
+    cursor = start
+
+    def clear(history, end):
+        top = order(history)
+        return (locks is None or top == "uncrossed"
+                or not locked_overpass(left, right, locks[SIDES.index(top)], cursor, end))
+
     for sample, frame, entering, tops in passes(left, right, start, order(routes) != "uncrossed"):
         if entering:
             options = tuple(history + (Crossing(frame, None, top, sample),)
@@ -76,7 +106,7 @@ def extend(routes, left, right, start):
         else:
             # The arms must stay in their selected order through the exit.
             options = tuple(history[:-1] + (replace(history[-1], end_frame=frame, exited_at=sample),)
-                            for history in options if order(history) in tops)
+                            for history in options if order(history) in tops and clear(history, frame))
             if not options:
                 break
             # Keep both orders for the just-completed crossing. Earlier
@@ -85,13 +115,15 @@ def extend(routes, left, right, start):
             for history in options:
                 by_top.setdefault(history[-1].top, history)
             options = tuple(by_top.values())
-    return options
+        cursor = frame
+    return tuple(history for history in options if clear(history, len(left)-1))
 
 
 @dataclass(frozen=True, eq=False)
 class HandPath:
     points: np.ndarray
     anchor: int  # contact immediately before the current touch, or the home frame
+    locked: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -108,7 +140,9 @@ class ArmState:
         # Keep the order at the common frontier and the geometry which later
         # contacts can extend or revise. Earlier finished crossings can merge.
         anchor = min(path.anchor for path in self.paths)
-        pending = tuple((path.anchor, path.points[anchor:].tobytes()) for path in self.paths)
+        pending = tuple((path.anchor, path.points[anchor:].tobytes(),
+                         path.locked[anchor:].tobytes() if path.locked is not None else b"")
+                        for path in self.paths)
         editable = tuple(c for c in self.routes if c.exited_at is None or c.exited_at > anchor)
         return order(self.routes), editable, pending
 
@@ -120,7 +154,7 @@ class CrossingGraph:
         self.idle_speed = min(speed, idle_speed)
         self.requested = requested
         self.homes = tuple(home_position(side, lift) for side in SIDES)
-        self.initial = ArmState(tuple(HandPath(home[None], 0) for home in self.homes))
+        self.initial = ArmState(tuple(HandPath(home[None], 0, np.zeros(1, dtype=bool)) for home in self.homes))
         self.project = lru_cache(maxsize=512)(self.project)
 
     def project(self, previous, touch, new, hand):
@@ -135,7 +169,11 @@ class CrossingGraph:
         points[:, 2] = TIP
         gap = span(previous.points[anchor], points[0], down-anchor, self.homes[hand],
                    self.lift, self.speed, self.idle_speed)
-        return HandPath(np.concatenate((previous.points[:anchor], gap[:-1], points)), anchor)
+        locked = np.r_[previous.locked[:anchor], np.zeros(len(gap)-1, dtype=bool),
+                       np.ones(len(points), dtype=bool)]
+        if down > anchor:
+            locked[anchor] = previous.locked[anchor]
+        return HandPath(np.concatenate((previous.points[:anchor], gap[:-1], points)), anchor, locked)
 
     def _advance(self, previous, paths):
         through = min(len(path.points) for path in paths) - 1
@@ -143,11 +181,13 @@ class CrossingGraph:
         changed = []
         for old, new in zip(previous.paths, paths):
             if old is not new:
-                diff = np.flatnonzero(np.any(old.points[:shared+1, :2] != new.points[:shared+1, :2], axis=1))
+                delta = np.any(old.points[:shared+1, :2] != new.points[:shared+1, :2], axis=1)
+                diff = np.flatnonzero(delta | (old.locked[:shared+1] != new.locked[:shared+1]))
                 if len(diff):
                     changed.append(int(diff[0]))
         last_fixed = min(changed) - 1 if changed else shared
         left, right = (path.points[:through+1] for path in paths)
+        locks = tuple(path.locked[:through+1] for path in paths)
         if last_fixed < 0:
             # A touch can start on frame 0. Approach it from the neutral order.
             previous_point = tuple(home[None] for home in self.homes)
@@ -158,9 +198,9 @@ class CrossingGraph:
                                          entered_at=c.entered_at-1,
                                          exited_at=None if c.exited_at is None else c.exited_at-1)
                                  for c in history)
-                           for history in extend((), left, right, 0))
+                           for history in extend((), left, right, 0, tuple(np.r_[False, mask] for mask in locks)))
         else:
-            routes = extend(prefix(previous.routes, last_fixed), left, right, last_fixed)
+            routes = extend(prefix(previous.routes, last_fixed), left, right, last_fixed, locks)
         return tuple(ArmState(paths, history) for history in routes)
 
     def step(self, previous, changes):
@@ -183,5 +223,6 @@ class CrossingGraph:
         paths = tuple(HandPath(np.concatenate((
             path.points[:-1], span(path.points[-1], home, frame-len(path.points)+1,
                                    home, self.lift, self.speed, self.idle_speed)
-        )), path.anchor) for path, home in zip(state.paths, self.homes))
+        )), path.anchor, np.r_[path.locked, np.zeros(frame+1-len(path.points), dtype=bool)])
+            for path, home in zip(state.paths, self.homes))
         return self._advance(state, paths)
