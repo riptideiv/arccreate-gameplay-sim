@@ -1,11 +1,9 @@
 // 简体中文消息表；英文原文作为稳定消息键。
 export const zhCN = {
+  "Verified arm crossing routes: {count}.": "已验证 {count} 段双臂交叉轨迹。",
+  "Generate a new preview to apply planned arm crossings to this take.": "重新生成预览即可应用双臂交叉规划。",
+  "The touchpoint planner chooses which arm goes over. Released hands can lift to follow that order, and the preview reports crossings that cannot be posed.": "触点规划决定哪只手臂从上方通过。松开的手可抬起以保持交叉顺序；若无法摆出相应姿态，预览会报告具体位置。",
   "±": "±",
-  "Verified arm winding: {minimum}° to {maximum}°; limit ±{limit}°.": "已验证袖口累计转角：{minimum}° 至 {maximum}°；上限 ±{limit}°。",
-  "Arm winding limit": "双臂缠绕角上限",
-  "Arm winding limit slider": "双臂缠绕角上限滑块",
-  "Limits accumulated rotation between the cuffs from idle. Released hands take longer routes to unwind; lifting or returning home never resets the angle. Required unwinds may use the main move-speed limit.": "限制双侧袖口连线相对待机位置的累计转角。松开的手可绕远路解缠；抬手或回位不会清零。必要的解缠动作可使用主移动速度上限。",
-  "This saved take predates the winding constraint. Generate a new preview to apply it.": "此历史演奏尚未应用缠绕角限制，重新生成预览后生效。",
 
   "Rhythm workbench": "iPad 音游模拟工作台",
   "Give the hands a rhythm that feels right.": "调出自然的双手演奏动作。",
@@ -53,7 +51,6 @@ export const zhCN = {
   "Finger lift slider": "抬指高度滑块",
   "Preferred hand clearance": "期望双手间距",
   "Hand clearance slider": "双手间距滑块",
-  "Hands pivot around their touch points to avoid overlap. Released hands can lift or move around the other hand. Contacts stay fixed; unresolved overlap is reported without blocking playback.": "双手围绕触点转腕避碰，松开的手可以抬高或绕行。触点保持不变；未解决的重叠会显示在诊断中，但不会阻止播放。",
   "Planner preferences": "规划偏好",
   "Comfort speed": "舒适移动速度",
   "Crossing cost": "交叉动作代价",

@@ -8,26 +8,32 @@ from zipfile import BadZipFile
 
 import numpy as np
 
-SCHEMA = 'rhythm-hand-poses/1'
+SCHEMA = 'rhythm-hand-poses/2'
+POSE_SOURCE_FILES = (
+    'animate.py', 'hand_pose.py', 'motion_paths.py', 'pose_cache.py', 'crossing_motion.py',
+    'vendor/arc-hand-order/src/arc_hand_order/planning/hand_travel.py',
+    'vendor/arc-hand-order/src/arc_hand_order/planning/arm_crossings.py',
+)
 POSE_DEFAULTS = {'max_speed_m_s': 1.6, 'angular_limit_deg_s': 360,
-                 'lift_mm': 8, 'clearance_mm': 1, 'idle_speed_m_s': 1, 'winding_limit_deg':260, 'comfort_speed_m_s':.25}
+                 'lift_mm': 8, 'clearance_mm': 1, 'idle_speed_m_s': 1}
 
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
-def request_key(points, active, settings, root=None):
+def request_key(points, active, settings, root=None, *, crossings=None):
     root = Path(root or Path(__file__).resolve().parent)
     digest = hashlib.sha256(SCHEMA.encode())
     options = {k: float(settings.get(k, v)) for k, v in POSE_DEFAULTS.items()}
     digest.update(canonical(options).encode())
+    digest.update(canonical(crossings).encode())
     for value, dtype in ((points, '<f8'), (active, '?')):
         array = np.asarray(value, dtype=dtype)
         digest.update(str(array.shape).encode()); digest.update(array.tobytes())
     # Conservative code invalidation includes all pose/path/geometry code. New
     # animation code can never silently load arrays from a different solver.
-    for name in ('animate.py', 'hand_pose.py', 'motion_paths.py', 'pose_cache.py', 'winding_paths.py'):
+    for name in POSE_SOURCE_FILES:
         digest.update(name.encode()); digest.update((root / name).read_bytes())
     return digest.hexdigest()
 

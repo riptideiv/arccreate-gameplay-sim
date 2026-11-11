@@ -9,9 +9,9 @@ from uuid import uuid4
 # These affect the downstream display/hand pose only. Unknown future settings
 # remain in the key, so new planner inputs cannot silently reuse an old plan.
 PRESENTATION_SETTINGS = frozenset(('chart','start_s','end_s','camera_distance_m','camera_elevation_deg',
-    'camera_yaw_deg','camera_lens_mm','quality','width','height','lift_mm','clearance_mm','angular_limit_deg_s',
-    'scroll_speed','song_delay_ms','hit_sounds','idle_speed_m_s','winding_limit_deg'))
-SCHEMA = 'rhythm-completed-plan/1'
+    'camera_yaw_deg','camera_lens_mm','quality','width','height','clearance_mm','angular_limit_deg_s',
+    'scroll_speed','song_delay_ms','hit_sounds','winding_limit_deg'))
+SCHEMA = 'rhythm-completed-plan/2'
 
 def canonical(value):
     return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
@@ -43,7 +43,7 @@ def valid_plan(plan,request):
             if touch['finger']!=1 or touch['hand'] not in ('left','right'):return False
             if not 0<=touch['down_frame']<touch['up_frame'] or len(touch['path_mm'])!=touch['up_frame']-touch['down_frame']:return False
             if not all(len(xy)==2 and all(math.isfinite(v) for v in xy) for xy in touch['path_mm']):return False
-        return all(key in plan for key in ('misses','cost','planning','device','stats'))
+        return all(key in plan for key in ('misses','cost','planning','device','stats','arm_crossings'))
     except (KeyError,TypeError,ValueError):return False
 
 def read(directory,key,request):

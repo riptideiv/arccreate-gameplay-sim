@@ -3,6 +3,7 @@
 import argparse
 from dataclasses import replace
 import json
+import math
 import re
 import time
 from pathlib import Path
@@ -115,12 +116,19 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                              if item.continuous_contact else item.up_window))
     occupations = replace(occupations, items=tuple(items))
     native_items = occupations.items
-    multi = {"second_finger": False, "second_finger_again": False}
+    multi = {
+        "second_finger": False, "second_finger_again": False,
+        "max_states": settings.get("search_width", 256),
+        "arm_crossing_travel": (settings.get("lift_mm", 8) / 1000,
+                                settings.get("idle_speed_m_s", 1),
+                                math.ceil((duration + chart.audio_offset_ms) * 60 / 1000)),
+    }
     if scoring:
         multi.update(tick_contacts=True, max_states=settings.get('search_width',256), meeting_swaps=False,
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
     planner = {
         'scoring_arcs': scoring,
+        'speed_max_m_s': settings.get('max_speed_m_s', 3.0),
         'prefer_arc_trace': settings.get('prefer_arc_trace', False),
         'arc_trace_weight': settings.get('arc_trace_weight', 1000),
         "contact_exclusions": tuple((x['parent'],x['start_ms'],x['end_ms']) for x in avoid_contacts),
@@ -130,7 +138,6 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         "partial_ground_hold_weight": settings.get("partial_ground_hold_weight", 500),
     }
     if settings:
-        planner["speed_max_m_s"] = settings.get("max_speed_m_s",3.0)
         planner["speed_comfort_m_s"] = min(settings.get("comfort_speed_m_s", 0.25),
                                           planner["speed_max_m_s"])
         planner["crossing_weight"] = settings.get("crossing_weight", 1)

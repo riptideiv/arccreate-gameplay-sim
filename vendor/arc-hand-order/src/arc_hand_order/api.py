@@ -205,6 +205,11 @@ def plan_to_dict(result: PlanResult) -> dict:
         "multi_finger_options": asdict(plan.multi),
         "frame_rate_hz": 60,
         "touches": touches,
+        **({"arm_crossings": {
+            "last_frame": plan.crossing_last_frame,
+            "routes": [{"start_frame": c.start_frame, "end_frame": c.end_frame, "top": c.top}
+                       for c in plan.arm_crossings],
+        }} if plan.crossing_last_frame is not None else {}),
         "covered": covered,
         "notes": [{**note, "hands": sorted(note["hands"])}
                   for note in sorted(notes.values(), key=lambda n: (n["start_ms"], n["end_ms"], n["event_id"]))],

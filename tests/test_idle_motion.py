@@ -88,7 +88,7 @@ def test_required_contact_transfer_can_exceed_idle_speed_without_added_detour():
     assert np.linalg.norm(np.diff(solved[:,0],axis=0),axis=1).max()*60 <= 2.0001
 
 
-def test_requested_dashboard_defaults_and_idle_cache_separation(tmp_path):
+def test_requested_dashboard_defaults_and_idle_speed_affects_crossing_plan(tmp_path):
     from dashboard.server import Settings
     from plan_cache import request_key
     settings=Settings()
@@ -99,4 +99,4 @@ def test_requested_dashboard_defaults_and_idle_cache_separation(tmp_path):
     p=tmp_path/'chart.aff';p.write_text('AudioOffset:0\n-\n(1000,1);\n')
     a=request_key(p,0,2000,{'idle_speed_m_s':1},False,(),())[0]
     b=request_key(p,0,2000,{'idle_speed_m_s':.2},False,(),())[0]
-    assert a==b
+    assert a!=b

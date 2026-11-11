@@ -60,7 +60,7 @@ def proxies(angles, parts):
     )
 
 
-def arm_elbows(wrists, forward):
+def arm_elbows(wrists, forward, elbow_bias=None):
     axis = wrists - SHOULDERS
     distance = np.linalg.norm(axis, axis=-1)
     axis /= np.maximum(distance[..., None], 1e-9)
@@ -78,6 +78,9 @@ def arm_elbows(wrists, forward):
     backward /= np.maximum(np.linalg.norm(backward, axis=-1, keepdims=True), 1e-9)
     steering = backward - (backward * axis).sum(axis=-1)[..., None] * axis
     pole += 0.65 * steering
+    if elbow_bias is not None:
+        up = np.array([0., 0., 1.]) - axis[..., 2, None] * axis
+        pole += 1.35 * np.asarray(elbow_bias)[..., None] * up
     pole /= np.maximum(np.linalg.norm(pole, axis=-1, keepdims=True), 1e-9)
     return SHOULDERS + axis * along[..., None] + pole * away[..., None]
 
@@ -106,13 +109,17 @@ def _segment_gap(a, b, c, d):
     ])
 
 
-def arm_metrics(centres, forward, parts):
-    """Arm clearance and wrist alignment for posed glove centres in tablet space."""
+def arm_geometry(centres, forward, parts, elbow_bias=None):
     cuffs = [next(i for i, part in enumerate(hand) if part[0] == "cuff") for hand in parts]
     wrists = np.stack(
         [hand[..., cuff, :] for hand, cuff in zip(centres, cuffs)], axis=-2
     )
-    elbows = arm_elbows(wrists, forward)
+    return wrists, arm_elbows(wrists, forward, elbow_bias)
+
+
+def arm_metrics(centres, forward, parts, elbow_bias=None):
+    """Arm clearance and wrist alignment for posed glove centres in tablet space."""
+    wrists, elbows = arm_geometry(centres, forward, parts, elbow_bias)
     forearm = wrists - elbows
     arm_distance = _segment_gap(
         elbows[..., 0, :], wrists[..., 0, :], elbows[..., 1, :], wrists[..., 1, :]
@@ -144,8 +151,8 @@ def arm_metrics(centres, forward, parts):
     return margin, np.clip(yaw_cos, -1, 1), flexion, reach
 
 
-def arm_cost(centres, forward, parts, gap):
-    margin, yaw_cos, flexion, reach = arm_metrics(centres, forward, parts)
+def arm_cost(centres, forward, parts, gap, elbow_bias=None):
+    margin, yaw_cos, flexion, reach = arm_metrics(centres, forward, parts, elbow_bias)
     sideways_bend = 320 * (1 - yaw_cos) + 1400 * np.maximum(0, 0.86 - yaw_cos) ** 2
     # Allow downward flex for taps. Backward or excessive flex is less useful.
     pitch_bend = (
@@ -159,7 +166,7 @@ def arm_cost(centres, forward, parts, gap):
     )
 
 
-def arm_diagnostics(points, poses, parts):
+def arm_diagnostics(points, poses, parts, routes=None):
     """Sample the simplified arm rig at the same subframes as glove clearance."""
     overlaps = np.zeros(len(points) - 1, dtype=bool)
     min_margin, min_yaw, max_reach = math.inf, 1.0, 0.0
@@ -167,7 +174,11 @@ def arm_diagnostics(points, poses, parts):
         p = points[:-1] * (1 - fraction) + points[1:] * fraction
         q = poses[:-1] * (1 - fraction) + poses[1:] * fraction
         centres = [proxies(q[:, h], parts[h])[0] + p[:, h, None, :] for h in range(2)]
-        margin, yaw, _, reach = arm_metrics(centres, bases(q)[..., 1], parts)
+        bias = None
+        if routes is not None:
+            from crossing_motion import elbow_bias_at
+            bias = elbow_bias_at(np.arange(len(p)) + fraction, routes)
+        margin, yaw, _, reach = arm_metrics(centres, bases(q)[..., 1], parts, bias)
         overlaps |= margin < -1e-5
         min_margin = min(min_margin, margin.min(initial=math.inf))
         min_yaw = min(min_yaw, yaw.min(initial=1))
@@ -210,7 +221,8 @@ def _pose_penalty(margin, floor, gap, arm_weight, both_pinned):
 
 
 def air_paths(
-    points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None, idle_speed=math.inf
+    points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None, idle_speed=math.inf,
+    routes=None,
 ):
     """Lift only free portions of a hand path; preserve every contact sample."""
     result = points.copy()
@@ -242,6 +254,9 @@ def air_paths(
         ],
         float,
     )
+    if routes is not None:
+        from crossing_motion import elbow_bias_at, layer_margin, layers_at
+        directions = directions[:1]
     directions /= np.linalg.norm(directions, axis=1)[:, None]
     offsets = np.vstack(
         (
@@ -282,6 +297,16 @@ def air_paths(
                         - gap
                     )
                 margin = np.concatenate(margins)
+                if routes:
+                    frames = np.arange(a, b) + fraction
+                    layers = layers_at(frames, routes)
+                if routes and layers.any():
+                    # The candidate axis broadcasts over the fixed other hand.
+                    own = ca[None] + here[..., None, :]
+                    peer = np.broadcast_to(cb[None] + there[None, :, None, :], own.shape)
+                    centres = (own, peer) if h == 0 else (peer, own)
+                    layer_gap = layer_margin(centres, q, parts, layers, elbow_bias_at(frames, routes))
+                    penalty += 8e9 * np.sum(np.maximum(0, gap-layer_gap)**2, axis=1)
             penalty += np.sum(np.maximum(0, -margin) ** 2, axis=1) * 1e8
         penalty += np.sum((candidates - points[a : b + 1, h]) ** 2, axis=(1, 2)) * 0.01
         return penalty
@@ -315,7 +340,8 @@ def air_paths(
             # If the fixed contacts already demand faster travel, preserve that
             # baseline allowance rather than dropping a note to slow a detour.
             required = np.linalg.norm(np.diff(base, axis=0), axis=-1).max(initial=0) * 60
-            free_cap = min(max_speed, max(idle_speed, required))
+            mandatory_layer = bool(routes and layers_at(np.arange(a, b+1), routes).any())
+            free_cap = max_speed if mandatory_layer else min(max_speed, max(idle_speed, required))
             valid_translation = speed.max(axis=1) <= free_cap + 1e-5
             if poses is not None:
                 speed += (
@@ -350,6 +376,7 @@ def solve(
     stride=6,
     idle_speed=math.inf,
     arm_weight=ARM_WEIGHT,
+    routes=None,
 ):
     points = np.asarray(points, dtype=float)
     active = np.asarray(active, dtype=bool)
@@ -360,7 +387,7 @@ def solve(
     # the final 60 Hz interpolation still respects each frame's turn budget.
     stride = max(stride, math.ceil(30 * 60 / max(angular_limit, 1)))
     original = points.copy()
-    points, lifts = air_paths(points, active, max_speed, gap=gap, idle_speed=idle_speed)
+    points, lifts = air_paths(points, active, max_speed, gap=gap, idle_speed=idle_speed, routes=routes)
     count = len(points)
     # Each state is a pair of pitch/yaw choices. The pad centre is the pivot.
     pitches = (10, 25, 40, 55, 70, 85) if angular_limit < 200 else (10, 30, 50, 70, 85)
@@ -395,6 +422,18 @@ def solve(
     ra = np.array([max(p[2]) for p in parts[0]])
     rb = np.array([max(p[2]) for p in parts[1]])
 
+    layers, elbow_bias = None, None
+    if routes:
+        from crossing_motion import elbow_bias_at, layer_margin, layers_at
+        layers = layers_at(np.arange(count), routes)
+        elbow_bias = elbow_bias_at(np.arange(count), routes)
+
+    def crossing_penalty(centres, angles, f):
+        if layers is None or not layers[f]:
+            return 0
+        margin = layer_margin(centres, angles, parts, layers[f], elbow_bias[f])
+        return 80 * np.maximum(0, (gap - margin) * 1000)**2
+
     def spatial(f):
         delta = (
             ca[:, :, None, :]
@@ -409,9 +448,10 @@ def solve(
             (cb[..., 2] + points[f, 1, 2] - zb).min(axis=1),
         )
         penalty = _pose_penalty(margin, floor, gap, arm_weight, both_pinned[f])
+        centres = (ca + points[f, 0], cb + points[f, 1])
         if arm_weight:
-            centres = (ca + points[f, 0], cb + points[f, 1])
-            penalty += arm_weight * arm_cost(centres, forward, parts, gap)
+            penalty += arm_weight * arm_cost(centres, forward, parts, gap, None if elbow_bias is None else elbow_bias[f])
+        penalty += crossing_penalty(centres, states, f)
         return penalty
 
     cache = {}
@@ -463,9 +503,12 @@ def solve(
             angles = start + (end - start) * alpha[None, :, None]
             m, floor = margins(points[f], angles, parts)
             penalty = _pose_penalty(m, floor, gap, arm_weight, both_pinned[f])
-            if arm_weight:
+            if arm_weight or (layers is not None and layers[f]):
                 centres = [proxies(angles[:, h], parts[h])[0] + points[f, h] for h in range(2)]
-                penalty += arm_weight * arm_cost(centres, bases(angles)[..., 1], parts, gap)
+                if arm_weight:
+                    penalty += arm_weight * arm_cost(centres, bases(angles)[..., 1], parts, gap,
+                                                 None if elbow_bias is None else elbow_bias[f])
+                penalty += crossing_penalty(centres, angles, f)
             max_penalty = np.maximum(max_penalty, penalty)
         adjusted = best[shortlist] + max_penalty
         order = np.argsort(adjusted + ahead(b)[shortlist], kind="stable")[:beam]
@@ -490,7 +533,7 @@ def solve(
         )
         poses[a : b + 1] = route[k] + (route[k + 1] - route[k]) * alpha[:, :, None]
     points, body_lifts = air_paths(
-        points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed
+        points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed, routes=routes
     )
     lifts += body_lifts
     report = diagnostics(points, poses, parts, gap)

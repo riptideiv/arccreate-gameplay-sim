@@ -22,7 +22,7 @@ from hand_pose import (
     ARM_WEIGHT, HAND_PARTS, VERSION as POSE_VERSION, arm_diagnostics, diagnostics,
     solve as solve_hand_poses,
 )
-from motion_paths import positions as finger_positions, home_position
+from motion_paths import positions as finger_positions, home_position, settle_frame
 import numpy as np
 
 
@@ -170,63 +170,43 @@ def motion_report(paths, poses, max_speed, angular_limit, gap):
     return report
 
 
-def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001, idle_speed=1.0, winding_active=None, winding_limit=260, lift=.008, comfort_speed=.25):
-    """Pose around pinned contacts; overlaps are diagnostics, never plan failures."""
+def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001,
+                  idle_speed=1.0, physical=None, instructions=None):
+    """Pose around pinned contacts and check the touch planner's arm layers."""
+    from crossing_motion import validate, verify
+
     points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
     active = np.zeros(points.shape[:2], dtype=bool)
     for h, samples in enumerate(active_samples):
         active[list(samples), h] = True
-    # Verify the supplied point paths before adding optional pose adjustments.
-    neutral = [((10, -18), (10, 18)) for _ in paths[0]]
+    physical = active if physical is None else physical
+    neutral = np.broadcast_to([[10., -18.], [10., 18.]], (*points.shape[:2], 2))
     motion_report(paths, neutral, max_speed, angular_limit, gap)
     parts = [hand_parts(s) for s in SIDES]
-    # Cuffs are the arm attachment points. Route after posing so rotating a
-    # glove cannot hide a complete turn around the other wrist. Contacts stay
-    # pinned; no later cosmetic detour may alter the certified route.
-    from winding_paths import WindingError, solve as unwind
-
-    physical = active if winding_active is None else winding_active
-
-    def fit(arm_aware):
-        try:
-            solved, angles, posing = solve_hand_poses(
-                points, active, parts, max_speed, angular_limit, gap,
-                idle_speed=idle_speed, arm_weight=ARM_WEIGHT if arm_aware else 0,
-            )
-            motion_report([[Vector(p) for p in solved[:, h]] for h in range(2)],
-                          angles, max_speed, angular_limit, gap)
-        except (RuntimeError, ValueError) as error:
-            # Pose fitting must never change score or restart contact planning.
-            solved, angles = points, np.array(neutral)
-            posing = diagnostics(solved, angles, parts, gap)
-            posing['pose_solver_fallback_reason'] = str(error)
-            posing['solver'] = POSE_VERSION
-        routed, winding = unwind(
-            solved, physical, angles, parts, limit_deg=winding_limit,
-            max_speed=max_speed, lift=lift, comfort_speed=comfort_speed, gap=gap,
-            idle_speed=idle_speed, arm_aware=arm_aware,
-        )
-        return routed, angles, posing, winding
-
-    fallback = None
+    routes = None
+    if instructions is not None:
+        validate(points, instructions)
+        routes = instructions["routes"]
     try:
-        root_points, angles, posing, winding = fit(True)
-    except WindingError as error:
-        fallback = str(error)
-        root_points, angles, posing, winding = fit(False)
-
-    output = [[Vector(p) for p in root_points[:, h]] for h in range(2)]
+        solved, angles, posing = solve_hand_poses(
+            points, active, parts, max_speed, angular_limit, gap,
+            idle_speed=idle_speed, arm_weight=ARM_WEIGHT, routes=routes,
+        )
+        output = [[Vector(p) for p in solved[:, h]] for h in range(2)]
+        report = motion_report(output, angles, max_speed, angular_limit, gap)
+    except (RuntimeError, ValueError) as error:
+        solved, angles, output = points, neutral, paths
+        report = motion_report(output, angles, max_speed, angular_limit, gap)
+        posing = diagnostics(solved, angles, parts, gap)
+        posing.update(solver=POSE_VERSION, pose_solver_fallback_reason=str(error))
+    if routes is not None:
+        report["arm_crossings"] = verify(solved, angles, parts, routes, gap)
     poses = [tuple(tuple(q) for q in pair) for pair in angles]
-    report=motion_report(output,poses,max_speed,angular_limit,gap)
-    posing.update(diagnostics(root_points,np.asarray(poses),parts,gap))
     report.update(posing)
-    posing['maximum_contact_drift_m']=float(np.linalg.norm((root_points-points)[physical],axis=-1).max(initial=0))
-    report['maximum_contact_drift_m']=posing['maximum_contact_drift_m']
-    report['arm_winding']=winding
-    report['arm_model'] = arm_diagnostics(root_points, angles, parts)
-    if fallback:
-        report['arm_model']['fallback_reason'] = fallback
-    report['idle_speed_m_s'] = min(idle_speed, max_speed)
+    report["maximum_contact_drift_m"] = float(
+        np.linalg.norm((solved - points)[physical], axis=-1).max(initial=0))
+    report["arm_model"] = arm_diagnostics(solved, angles, parts, routes)
+    report["idle_speed_m_s"] = min(idle_speed, max_speed)
     return output, poses, report
 
 
@@ -247,7 +227,8 @@ def webgl_motion(paths, poses, plan, settings):
     return {"sample_rate_hz": SAMPLE_RATE, "audio_offset_ms": plan["chart"]["audio_offset_ms"],
             "duration_s": (len(poses)-1)/SAMPLE_RATE - plan["chart"]["audio_offset_ms"]/1000,
             "hands": hands, "screen_mm": plan["device"]["screen_mm"],
-            "settings": settings, "misses": plan.get("misses", [])}
+            "settings": settings, "misses": plan.get("misses", []),
+            **({"arm_crossings": plan["arm_crossings"]} if "arm_crossings" in plan else {})}
 
 
 def linear(obj):
@@ -327,15 +308,17 @@ def main():
     plan = json.loads(args.plan.read_text())
     contacts = validate_plan(plan)
     settings = json.loads(args.settings.read_text()) if args.settings else {}
-    max_speed = settings.get("max_speed_m_s", 1.6)
+    instructions = plan.get("arm_crossings")
+    planned_speed = plan["planner_options"]["speed_max_m_s"] if instructions is not None else 1.6
+    max_speed = settings.get("max_speed_m_s", planned_speed)
     idle_speed = min(max_speed, settings.get('idle_speed_m_s', 1.0))
     angular_limit = settings.get("angular_limit_deg_s", 360)
     last_contact = max((t["up_frame"] for t in plan["touches"]), default=0)
     requested = math.ceil((plan.get("preview", {}).get("duration_ms", 0) + plan["chart"]["audio_offset_ms"]) * SAMPLE_RATE / 1000)
     lift = settings.get("lift_mm", 8)/1000
-    retreat = max((np.linalg.norm(np.array((*contacts[side][-1]['path_mm'][-1], TIP*1000))/1000
-                                 - home_position(side, lift)) for side in SIDES if contacts[side]), default=0)
-    last_frame = max(last_contact, requested) + max(34, math.ceil(1.875*retreat/idle_speed*SAMPLE_RATE))
+    endpoints = ((side, np.array((*contacts[side][-1]['path_mm'][-1], TIP*1000)) / 1000)
+                 for side in SIDES if contacts[side])
+    last_frame = settle_frame(last_contact, requested, endpoints, lift, idle_speed)
     paths = [positions(contacts[side], side, last_frame, settings.get("lift_mm", 8)/1000, max_speed, idle_speed) for side in SIDES]
     active_samples = [{frame for t in contacts[side] for frame in range(t["down_frame"], t["up_frame"])}
                       for side in SIDES]
@@ -351,7 +334,7 @@ def main():
         active = np.zeros(base.shape[:2], dtype=bool)
         for h, samples in enumerate(physical_samples):
             active[list(samples), h] = True
-        signature = pose_cache.request_key(base, active, settings)
+        signature = pose_cache.request_key(base, active, settings, crossings=instructions)
         cached = pose_cache.read(args.pose_cache_dir, signature, base, active)
         if cached:
             points, poses, report = cached
@@ -360,8 +343,7 @@ def main():
         else:
             paths, poses, report = pose_sequence(paths, active_samples, max_speed, angular_limit,
                                                 settings.get("clearance_mm", 1)/1000, idle_speed,
-                                                winding_active=active,winding_limit=settings.get("winding_limit_deg",260),
-                                                lift=lift,comfort_speed=settings.get("comfort_speed_m_s",.25))
+                                                physical=active, instructions=instructions)
             points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
             pose_cache.write(args.pose_cache_dir, signature, points, np.array(poses), report, base, active)
         report['pose_cache'] = {'hit': cached is not None, 'key': signature}

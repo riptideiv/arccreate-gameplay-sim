@@ -79,6 +79,8 @@ class MultiFingerOptions:
     allow_misses: bool = False
     forced_misses: tuple[str, ...] = ()
     tick_contacts: bool = False
+    # (lift metres, idle speed m/s, requested final frame) for one-index plans.
+    arm_crossing_travel: tuple[float, float, int] | None = None
     bridge_max_gap_ms: int = 0  # 0: off
     bridge_max_distance_m: float = 0.015
     # With bridges: a finger sliding on from an arc catches the next same-colour chain where it can, also where the arc
@@ -206,6 +208,13 @@ class MultiFingerOptions:
     max_states: int = 20000
 
     def __post_init__(self):
+        if self.arm_crossing_travel is not None:
+            lift, idle, requested = self.arm_crossing_travel
+            if self.second_finger:
+                raise ValueError("Arm crossings require one finger per hand")
+            if (not math.isfinite(lift) or lift < 0 or not math.isfinite(idle) or idle <= 0
+                    or type(requested) is not int or requested < 0):
+                raise ValueError("Invalid arm crossing travel settings")
         if type(self.bridge_max_gap_ms) is not int or self.bridge_max_gap_ms < 0:
             raise ValueError("bridge_max_gap_ms must be a nonnegative integer")
         if type(self.max_states) is not int or self.max_states < 0:
@@ -543,6 +552,8 @@ class MultiPlan:
     steady: tuple[Occupation, ...] = ()  # runs of short arc pieces planned as one, on a smoothed path
     step_costs: tuple = ()  # (chart ms of the item, MultiCost increment) of each DP step on the chosen path
     skipped: tuple[Occupation, ...] = ()
+    arm_crossings: tuple = ()
+    crossing_last_frame: int | None = None
 
     @property
     def choices(self) -> tuple[tuple[Candidate, str], ...]:
@@ -2681,8 +2692,14 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     progress('graph')
     graph = _Graph(groups, projection, options, multi, meetings, occupations)
     # Four slots (left 1, 2, right 1, 2: touch ids), then with jack_weight each hand's fast-run length.
-    states = {(-1, -1, -1, -1) + ((0, 0) if multi.jack_weight else ()) + ((-1, -1) if multi.arc_takeover_weight else ()) + ((-1,)*4 if multi.tick_contacts else ()):
-              (MultiCost(), None)}
+    initial = ((-1,) * 4 + ((0, 0) if multi.jack_weight else ())
+               + ((-1, -1) if multi.arc_takeover_weight else ()) + ((-1,) * 4 if multi.tick_contacts else ()))
+    crossing = None
+    if multi.arm_crossing_travel is not None:
+        from .arm_crossings import CrossingGraph
+        lift, idle_speed, requested = multi.arm_crossing_travel
+        crossing = CrossingGraph(lift, options.speed_max_m_s, idle_speed, requested)
+    states = [(initial, MultiCost(), None, crossing.initial if crossing else None)]
     visited, pruned = 1, 0
     def rank(cost):
         return (cost.missed_ticks, cost.missed_red_notes, cost.weighted(options, multi))
@@ -2695,28 +2712,31 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
         following = {}
         f0 = int(earliest[k]) if math.isfinite(earliest[k]) else 0
         item = group[0].occupation if group else next(empty_items)
-        for state_index, (state, (cost, node)) in enumerate(states.items()):
+        def retain(state, cost, node, arms):
+            key = (state if options.crossing_pass_s else
+                   tuple(graph.future(i, f0) for i in state[:4]) + graph.tail_key(state, f0))
+            if crossing:
+                key += (arms.key,)
+            weight = rank(cost)
+            if key not in following or weight < following[key][1]:
+                following[key] = (cost, weight, node, state, arms)
+
+        for state_index, (state, cost, node, arms) in enumerate(states):
             progress('search', k, len(groups), chart_ms=item.first_tick.time_ms,
                      states=len(states), states_completed=state_index,
                      candidates=len(group), visited=visited)
             if multi.allow_misses or item.is_red:
                 increment = MultiCost(missed_ticks=item.score_weight, missed_red_notes=int(item.is_red))
-                total = cost + increment
-                key = state if options.crossing_pass_s else (tuple(graph.future(i, f0) for i in state[:4]) + graph.tail_key(state, f0))
-                weight = rank(total)
-                if key not in following or weight < following[key][1]:
-                    following[key] = (total, weight, (node, (), increment, item.start_ms,
-                                                     state, None, item), state)
+                retain(state, cost + increment, (node, (), increment, item.start_ms, state, None, item), arms)
             for candidate in (() if item.occupation_id in multi.forced_misses or set(item.source_event_ids) & set(multi.forced_misses) else group):
                 for hand in HANDS:
                     for new, increment, changes in graph.steps(state, candidate, hand):
-                        total = cost + increment
-                        weight = rank(total)
-                        key = new if options.crossing_pass_s else (tuple(graph.future(i, f0) for i in new[:4])
-                                                                   + graph.tail_key(new, f0))
-                        if key not in following or weight < following[key][1]:
-                            following[key] = (total, weight, (node, changes, increment, candidate.occupation.start_ms,
-                                                              state, candidate, hand), new)
+                        routes = crossing.step(arms, changes) if crossing else (None,)
+                        if routes:
+                            total = cost + increment
+                            step = (node, changes, increment, candidate.occupation.start_ms, state, candidate, hand)
+                            for route in routes:
+                                retain(new, total, step, route)
         if not following:
             item = group[0].occupation if group else occupations.items[k]
             raise ValueError(f"no candidate path at item {k}: {item.occupation_id} ({item.kind} at {item.start_ms} ms)")
@@ -2724,12 +2744,21 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
         if multi.max_states and len(kept) > multi.max_states:
             kept = sorted(kept, key=lambda v: v[1])[:multi.max_states]
             pruned += 1
-        states = {new: (total, node) for total, _, node, new in kept}
+        states = [(new, total, node, arms) for total, _, node, new, arms in kept]
         visited += len(states)
         progress('search', k + 1, len(groups), chart_ms=item.last_tick.time_ms,
                  states=len(states), states_completed=len(states), candidates=len(group), visited=visited)
     progress('finalizing')
-    final_state, (cost, node) = min(states.items(), key=lambda kv: rank(kv[1][0]))
+    if crossing:
+        for _, cost, node, arms in sorted(states, key=lambda entry: rank(entry[1])):
+            routes = crossing.finish(arms)
+            if routes:
+                arms = routes[0]
+                break
+        else:
+            raise ValueError("no candidate path to an uncrossed resting pose")
+    else:
+        _, cost, node, arms = min(states, key=lambda entry: rank(entry[1]))
     steps, step_costs, path, skipped = [], [], [], []
     while node is not None:
         node, changes, increment, start_ms, before, candidate, hand = node
@@ -2751,7 +2780,8 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     touches = tuple(sorted((FingerTouch(t, HANDS[slot // 2], slot % 2) for slot, t in done),
                            key=press_order))
     result = MultiPlan(touches, cost, options, multi, visited, pruned, step_costs=tuple(reversed(step_costs)),
-                       skipped=tuple(reversed(skipped)))
+                       skipped=tuple(reversed(skipped)), arm_crossings=arms.routes if arms else (),
+                       crossing_last_frame=arms.through if arms else None)
     progress('done', len(groups), len(groups), visited=visited)
     return result
 
