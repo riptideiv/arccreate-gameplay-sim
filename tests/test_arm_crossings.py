@@ -166,7 +166,8 @@ def test_arghena_118_119_cannot_flip_mid_crossing_and_can_swap(monkeypatch):
     checked_path = np.stack([
         positions([t for t in normal["touches"] if t["hand"] == side], side,
                   instructions_["last_frame"], settings["lift_mm"]/1000,
-                  settings["max_speed_m_s"], settings["idle_speed_m_s"])
+                  settings["max_speed_m_s"], settings["idle_speed_m_s"],
+                  hold_end=instructions_["hold_end"], planned_travel=instructions_["travel"])
         for side in ("left", "right")
     ], axis=1)
     validate(checked_path, instructions_)

@@ -128,9 +128,10 @@ def validate_plan(plan):
     return hands
 
 
-def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0, *, hold_end=False):
+def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0, *, hold_end=False, planned_travel=()):
     return [Vector(p) for p in finger_positions(
         touches, side, last_frame, lift, max_speed, idle_speed, hold_end=hold_end,
+        planned_travel=planned_travel,
     )]
 
 
@@ -331,8 +332,11 @@ def main():
         endpoints = ((side, np.array((*contacts[side][-1]['path_mm'][-1], TIP*1000)) / 1000)
                      for side in SIDES if contacts[side])
         last_frame = settle_frame(last_contact, requested, endpoints, lift, idle_speed)
-    paths = [positions(contacts[side], side, last_frame, lift, max_speed, idle_speed, hold_end=hold_end)
-             for side in SIDES]
+    planned_travel = instructions.get("travel", ()) if instructions is not None else ()
+    if any(detour["hand"] not in SIDES for detour in planned_travel):
+        raise ValueError("Invalid hand in planned travel")
+    paths = [positions(contacts[side], side, last_frame, lift, max_speed, idle_speed,
+                       hold_end=hold_end, planned_travel=planned_travel) for side in SIDES]
     active_samples = [{frame for t in contacts[side] for frame in range(t["down_frame"], t["up_frame"])}
                       for side in SIDES]
     physical_samples=[set(samples) for samples in active_samples]

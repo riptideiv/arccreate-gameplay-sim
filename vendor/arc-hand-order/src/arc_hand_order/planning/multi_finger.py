@@ -554,6 +554,7 @@ class MultiPlan:
     skipped: tuple[Occupation, ...] = ()
     arm_crossings: tuple = ()
     crossing_last_frame: int | None = None
+    crossing_travel: tuple = ()
 
     @property
     def choices(self) -> tuple[tuple[Candidate, str], ...]:
@@ -2703,8 +2704,9 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     visited, pruned = 1, 0
     def rank(cost):
         return (cost.missed_ticks, cost.missed_red_notes, cost.weighted(options, multi))
-    def crossing_cost(cost, seconds):
-        return replace(cost, base=replace(cost.base, crossing_seconds=seconds))
+    def crossing_cost(cost, seconds, extra_distance=0.):
+        return replace(cost, base=replace(cost.base, crossing_seconds=seconds,
+                                          distance_m=cost.base.distance_m + extra_distance))
 
     present = {c.occupation.occupation_id for group in groups for c in group}
     empty_items = iter(o for o in occupations.items if o.occupation_id not in present)
@@ -2739,8 +2741,9 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                             total = cost + increment
                             step_cost = increment
                             if route is not None:
-                                total = crossing_cost(total, route.crossed_seconds)
-                                step_cost = crossing_cost(increment, route.crossed_seconds - arms.crossed_seconds)
+                                extra = route.extra_distance_m - arms.extra_distance_m
+                                total = crossing_cost(total, route.crossed_seconds, extra)
+                                step_cost = crossing_cost(increment, route.crossed_seconds - arms.crossed_seconds, extra)
                             step = (node, changes, step_cost, candidate.occupation.start_ms, state, candidate, hand)
                             retain(new, total, step, route)
         if not following:
@@ -2757,11 +2760,11 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     progress('finalizing')
     if crossing:
         best = None
+        # Padding the shorter path can reveal a detour that shortens a
+        # crossing. The unfinished crossing cost is not a lower bound.
         for _, cost, node, arms in sorted(states, key=lambda entry: rank(entry[1])):
-            if best is not None and rank(cost) >= best[0]:
-                break
             for route in crossing.finish(arms):
-                finished_cost = crossing_cost(cost, route.crossed_seconds)
+                finished_cost = crossing_cost(cost, route.crossed_seconds, route.extra_distance_m - arms.extra_distance_m)
                 score = rank(finished_cost)
                 if best is None or score < best[0]:
                     best = (score, finished_cost, node, route)
@@ -2792,7 +2795,8 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                            key=press_order))
     result = MultiPlan(touches, cost, options, multi, visited, pruned, step_costs=tuple(reversed(step_costs)),
                        skipped=tuple(reversed(skipped)), arm_crossings=arms.routes if arms else (),
-                       crossing_last_frame=arms.through if arms else None)
+                       crossing_last_frame=arms.through if arms else None,
+                       crossing_travel=crossing.travel_segments(arms) if crossing else ())
     progress('done', len(groups), len(groups), visited=visited)
     return result
 

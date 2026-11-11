@@ -51,7 +51,7 @@ def span(a, b, frames, home, lift, max_speed, idle_speed):
     return travel(a, b, frames, 0 if resting else lift, cap)
 
 
-def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0, *, hold_end=False):
+def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0, *, hold_end=False, planned_travel=()):
     home = home_position(side, lift)
     knots = {0: home} if hold_end else {0: home, last_frame: home}
     for touch in touches:
@@ -65,6 +65,28 @@ def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_sp
                                       home, lift, max_speed, idle_speed)
     if hold_end:
         result[keys[-1] + 1:] = knots[keys[-1]]
+    occupied = set()
+    for detour in planned_travel:
+        if detour["hand"] != side:
+            continue
+        first = detour["start_frame"]
+        points = np.asarray(detour["path_mm"], dtype=float) / 1000
+        if (type(first) is not int or points.ndim != 2 or points.shape[1] != 3
+                or len(points) < 3 or not np.isfinite(points).all()
+                or np.any(points[:, 2] < TIP - 1e-9)):
+            raise ValueError(f"Invalid planned travel for the {side} hand")
+        last = first + len(points) - 1
+        if first < 0 or last > last_frame or first not in knots or last not in knots:
+            raise ValueError(f"Planned travel must join contact anchors for the {side} hand")
+        interior = range(first+1, last)
+        if any(f in knots or f in occupied for f in interior):
+            raise ValueError(f"Planned travel overlaps a locked or already planned frame for the {side} hand")
+        if not np.allclose(points[[0, -1]], result[[first, last]], atol=1e-9, rtol=0):
+            raise ValueError(f"Planned travel moves a contact for the {side} hand")
+        if np.linalg.norm(np.diff(points, axis=0), axis=1).max()*RATE > max_speed + .0001:
+            raise ValueError(f"Planned travel exceeds the move limit for the {side} hand")
+        result[first+1:last] = points[1:-1]
+        occupied.update(interior)
     return result
 
 

@@ -120,11 +120,83 @@ def extend(routes, left, right, start, locks=None):
     return tuple(history for history in options if clear(history, len(left)-1))
 
 
+def near_side_travel(direct, other, lock, swap, speed, hand, entering):
+    """Find compact and wide curves past the near side of a moving peer."""
+    samples = np.arange(len(direct), dtype=float)
+    t = samples / samples[-1]
+    line = direct[0] + (direct[-1] - direct[0]) * t[:, None]
+    bases = [direct + blend*(line - direct) for blend in (0., .5, 1.)]
+    # Slowing the lateral component can let a hand get around a pinned
+    # fingertip before swapping sides. Y and Z remain independent.
+    for progress in (t**1.5, t**2, 1-(1-t)**1.5):
+        base = line.copy()
+        base[:, 0] = direct[0, 0] + (direct[-1, 0]-direct[0, 0])*progress
+        bases.append(base)
+
+    best = [None, None]
+    for base in bases:
+        delta = (base[:len(other), 0] - other[:, 0]) * (-1 if hand == 0 else 1)
+        edges = np.flatnonzero((delta[1:] < 0) != (delta[:-1] < 0))
+        matching = [i for i in edges if (delta[i+1] < 0) == entering]
+        if not matching:
+            continue
+        edge = min(matching, key=lambda i: abs(i + .5 - swap))
+
+        def crossing_at(i):
+            return i - delta[i] / (delta[i+1] - delta[i])
+
+        crossing = crossing_at(edge)
+        if not 0 < crossing < samples[-1]:
+            continue
+        fraction = crossing-edge
+        if entering:
+            adjacent = next((i for i in edges if i > edge), None)
+            start, end = crossing, crossing_at(adjacent) if adjacent is not None else len(other)-1
+        else:
+            adjacent = next((i for i in reversed(edges) if i < edge), None)
+            start, end = crossing_at(adjacent) if adjacent is not None else 0, crossing
+        separation = ((base[edge, 1] - other[edge, 1]) * (1-fraction)
+                      + (base[edge+1, 1] - other[edge+1, 1]) * fraction)
+        ramp = np.clip(np.minimum(samples/crossing, (samples[-1]-samples)/(samples[-1]-crossing)), 0, 1)
+        for power in (1.35, 1.08):
+            bump = 1 - (1 - ramp)**power
+            height_at_swap = bump[edge]*(1-fraction) + bump[edge+1]*fraction
+            if height_at_swap <= EPSILON:
+                continue
+            for width, clearances in enumerate(((.010, .006, .002), (.020, .014))):
+                for clearance in clearances:
+                    depth = (separation + clearance) / height_at_swap
+                    if depth <= 0:
+                        continue
+                    path = base.copy()
+                    path[:, 1] -= depth*bump
+                    path[[0, -1]] = direct[[0, -1]]
+                    lengths = np.linalg.norm(np.diff(path, axis=0), axis=1)
+                    if lengths.max()*RATE > speed + .0001:
+                        continue
+                    if locked_overpass(path[:len(other)], other, lock, start, end):
+                        continue
+                    rank = (-clearance, lengths.sum())
+                    if best[width] is None or rank < best[width][0]:
+                        best[width] = (rank, path)
+                    break
+    return tuple(choice[1] for choice in best if choice is not None)
+
+
+@dataclass(frozen=True)
+class FreeTravel:
+    start: int
+    end: int
+    extra_distance_m: float = 0.
+    curved: bool = False
+
+
 @dataclass(frozen=True, eq=False)
 class HandPath:
     points: np.ndarray
     anchor: int  # contact immediately before the current touch, or the home frame
     locked: np.ndarray | None = None
+    travel: tuple[FreeTravel, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -150,6 +222,10 @@ class ArmState:
                 # Each interior sample contributes half of both adjoining intervals.
                 frames += stop - first - 0.5 * ((first == 0) + (stop == through + 1))
         return frames / RATE
+
+    @cached_property
+    def extra_distance_m(self):
+        return sum(gap.extra_distance_m for path in self.paths for gap in path.travel)
 
     @cached_property
     def key(self):
@@ -183,15 +259,24 @@ class CrossingGraph:
         points = np.zeros((touch.up-down, 3))
         points[:, :2] = np.round(np.asarray(touch.path[down-touch.down:]) * 1000, 2) / 1000
         points[:, 2] = TIP
-        gap = span(previous.points[anchor], points[0], down-anchor, self.homes[hand],
-                   self.lift, self.speed, self.idle_speed)
+        travel = tuple(gap for gap in previous.travel if gap.end <= anchor)
+        retained = next((gap for gap in previous.travel if gap.start == anchor
+                         and gap.end == down and gap.curved
+                         and np.array_equal(previous.points[down], points[0])), None)
+        if retained is not None:
+            gap = previous.points[anchor:down+1]
+        else:
+            gap = span(previous.points[anchor], points[0], down-anchor, self.homes[hand],
+                       self.lift, self.speed, self.idle_speed)
+        if down - anchor >= 2 and previous.locked[anchor]:
+            travel += (retained if retained is not None else FreeTravel(anchor, down),)
         locked = np.r_[previous.locked[:anchor], np.zeros(len(gap)-1, dtype=bool),
                        np.ones(len(points), dtype=bool)]
         if down > anchor:
             locked[anchor] = previous.locked[anchor]
-        return HandPath(np.concatenate((previous.points[:anchor], gap[:-1], points)), anchor, locked)
+        return HandPath(np.concatenate((previous.points[:anchor], gap[:-1], points)), anchor, locked, travel)
 
-    def _advance(self, previous, paths):
+    def _checkpoint(self, previous, paths):
         through = min(len(path.points) for path in paths) - 1
         shared = min(previous.through, through)
         changed = []
@@ -201,7 +286,10 @@ class CrossingGraph:
                 diff = np.flatnonzero(delta | (old.locked[:shared+1] != new.locked[:shared+1]))
                 if len(diff):
                     changed.append(int(diff[0]))
-        last_fixed = min(changed) - 1 if changed else shared
+        return (min(changed) - 1 if changed else shared), through
+
+    def _advance(self, previous, paths):
+        last_fixed, through = self._checkpoint(previous, paths)
         left, right = (path.points[:through+1] for path in paths)
         locks = tuple(path.locked[:through+1] for path in paths)
         if last_fixed < 0:
@@ -219,6 +307,73 @@ class CrossingGraph:
             routes = extend(prefix(previous.routes, last_fixed), left, right, last_fixed, locks)
         return tuple(ArmState(paths, history) for history in routes)
 
+    def _near_side_paths(self, previous, paths):
+        last_fixed, through = self._checkpoint(previous, paths)
+        start = max(0, last_fixed)
+        left, right = (path.points[:through+1] for path in paths)
+        crossed = (left[0, 0] > right[0, 0] if last_fixed < 0
+                   else order(prefix(previous.routes, last_fixed)) != "uncrossed")
+        tried = set()
+        for _, frame, entering, tops in passes(left, right, start, crossed):
+            if len(tops) != 1:
+                continue
+            h = SIDES.index(tops[0])
+            path, other = paths[h], paths[1-h]
+            for gap in reversed(path.travel):
+                a, b = gap.start, gap.end
+                if a >= frame:
+                    continue
+                if b <= frame:
+                    break
+                key = (h, a, b)
+                if key in tried or gap.curved or path.locked[a+1:b].any():
+                    break
+                tried.add(key)
+                direct = path.points[a:b+1]
+                if np.any(np.all(direct == self.homes[h], axis=1)):
+                    break
+                stop = min(b, through)+1
+                direct_distance = np.linalg.norm(np.diff(direct, axis=0), axis=1).sum()
+                for curved in near_side_travel(direct, other.points[a:stop], other.locked[a:stop],
+                                               frame-a, self.speed, h, entering):
+                    points = path.points.copy()
+                    points[a:b+1] = curved
+                    extra = np.linalg.norm(np.diff(curved, axis=0), axis=1).sum() - direct_distance
+                    selected = replace(gap, extra_distance_m=max(float(extra), 0.), curved=True)
+                    travel = tuple(selected if item == gap else item for item in path.travel)
+                    result = list(paths)
+                    result[h] = replace(path, points=points, travel=travel)
+                    yield tuple(result)
+                break
+
+    def _routes(self, previous, paths):
+        # A newly fixed gap can reveal a pass in either hand's pending travel.
+        # Keep a bounded set of combinations when several passes appear at once.
+        pending = [paths]
+        seen = {()}
+        result = []
+        for candidate in pending:
+            result.extend(self._advance(previous, candidate))
+            if len(pending) >= 8:
+                continue
+            for alternative in self._near_side_paths(previous, candidate):
+                key = tuple((h, gap.start, path.points[gap.start:gap.end+1].tobytes())
+                            for h, path in enumerate(alternative) for gap in path.travel
+                            if gap.curved)
+                if key not in seen:
+                    seen.add(key)
+                    pending.append(alternative)
+                    if len(pending) == 8:
+                        break
+        return tuple(result)
+
+    @staticmethod
+    def travel_segments(state):
+        return tuple({"hand": side, "start_frame": gap.start,
+                      "path_mm": (path.points[gap.start:gap.end+1] * 1000).tolist()}
+                     for side, path in zip(SIDES, state.paths)
+                     for gap in path.travel if gap.curved)
+
     def step(self, previous, changes):
         paths = list(previous.paths)
         for slot, touch, kind in changes:
@@ -229,7 +384,7 @@ class CrossingGraph:
             if projected is None:
                 return ()
             paths[hand] = projected
-        return self._advance(previous, tuple(paths))
+        return self._routes(previous, tuple(paths))
 
     def finish(self, state):
         """Extend each hand in place through the end of the excerpt."""
@@ -239,5 +394,5 @@ class CrossingGraph:
             padding = frame + 1 - len(path.points)
             points = np.concatenate((path.points, np.repeat(path.points[-1:], padding, axis=0)))
             locked = np.pad(path.locked, (0, padding))
-            paths.append(HandPath(points, path.anchor, locked))
-        return self._advance(state, tuple(paths))
+            paths.append(replace(path, points=points, locked=locked))
+        return self._routes(state, tuple(paths))
