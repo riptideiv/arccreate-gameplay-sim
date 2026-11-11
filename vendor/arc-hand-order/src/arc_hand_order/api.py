@@ -207,6 +207,7 @@ def plan_to_dict(result: PlanResult) -> dict:
         "touches": touches,
         **({"arm_crossings": {
             "last_frame": plan.crossing_last_frame,
+            "hold_end": True,
             "routes": [{"start_frame": c.start_frame, "end_frame": c.end_frame, "top": c.top}
                        for c in plan.arm_crossings],
         }} if plan.crossing_last_frame is not None else {}),

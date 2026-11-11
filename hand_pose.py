@@ -462,6 +462,7 @@ def solve(
     layers = layers_at(np.arange(count), routes) if routes else np.zeros(count, dtype=np.int8)
     if routes:
         boundaries = boundary_subframes(routes)
+        boundaries = boundaries[boundaries < count - 1]
         boundary_layers = layers_at(boundaries, routes)
         boundaries = boundaries[boundary_layers != 0]
         boundary_layers = boundary_layers[boundary_layers != 0]

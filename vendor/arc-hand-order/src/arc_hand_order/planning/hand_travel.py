@@ -51,9 +51,9 @@ def span(a, b, frames, home, lift, max_speed, idle_speed):
     return travel(a, b, frames, 0 if resting else lift, cap)
 
 
-def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0):
+def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0, *, hold_end=False):
     home = home_position(side, lift)
-    knots = {0: home, last_frame: home}
+    knots = {0: home} if hold_end else {0: home, last_frame: home}
     for touch in touches:
         for frame, (x, y) in enumerate(touch["path_mm"], touch["down_frame"]):
             knots[frame] = np.array((x / 1000, y / 1000, TIP))
@@ -63,6 +63,8 @@ def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_sp
     for start, end in zip(keys, keys[1:]):
         result[start : end + 1] = span(knots[start], knots[end], end - start,
                                       home, lift, max_speed, idle_speed)
+    if hold_end:
+        result[keys[-1] + 1:] = knots[keys[-1]]
     return result
 
 

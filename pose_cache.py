@@ -26,6 +26,7 @@ def request_key(points, active, settings, root=None, *, crossings=None):
     root = Path(root or Path(__file__).resolve().parent)
     digest = hashlib.sha256(SCHEMA.encode())
     options = {k: float(settings.get(k, v)) for k, v in POSE_DEFAULTS.items()}
+    options['allow_clipping'] = bool(settings.get('allow_clipping', False))
     digest.update(canonical(options).encode())
     digest.update(canonical(crossings).encode())
     for value, dtype in ((points, '<f8'), (active, '?')):

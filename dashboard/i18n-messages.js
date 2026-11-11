@@ -2,7 +2,9 @@
 export const zhCN = {
   "Verified arm crossing routes: {count}.": "已验证 {count} 段双臂交叉轨迹。",
   "Generate a new preview to apply planned arm crossings to this take.": "重新生成预览即可应用双臂交叉规划。",
-  "The touchpoint planner chooses which arm goes over. Released hands can lift to follow that order, and the preview reports crossings that cannot be posed.": "触点规划决定哪只手臂从上方通过。松开的手可抬起以保持交叉顺序；若无法摆出相应姿态，预览会报告具体位置。",
+  "Allow 3D clipping": "允许三维穿模",
+  "The preview can play through arm clearance shortfalls while keeping the planned touches.": "当手臂间距不足时仍可播放预览，并保留已规划的触点。",
+  "Clipping allowed · {count} samples below arm clearance.": "已允许穿模 · 有 {count} 个采样点的手臂间距不足。",
   "±": "±",
 
   "Rhythm workbench": "iPad 音游模拟工作台",
@@ -53,7 +55,8 @@ export const zhCN = {
   "Hand clearance slider": "双手间距滑块",
   "Planner preferences": "规划偏好",
   "Comfort speed": "舒适移动速度",
-  "Crossing cost": "交叉动作代价",
+  "Crossing cost per second": "每秒交叉代价",
+  "An interval counts in full if both endpoints are crossed, or by half if one endpoint is crossed.": "一段时间的两端均为交叉状态时计入全段，只有一端为交叉状态时计入一半。",
   "Acceleration preference": "加速度偏好",
   "Acceleration is an upstream planner preference. Move and turn speeds above are enforced on the animation.": "加速度是规划器的软偏好；上方的移动、转腕速度才是动画的硬上限。",
   "Click timing": "点按时序",

@@ -40,6 +40,15 @@ def test_long_initial_wait_and_unused_hand_stay_home():
     np.testing.assert_allclose(unused, np.broadcast_to(home, unused.shape))
 
 
+def test_hold_end_keeps_last_fingertip_without_a_return():
+    touches = [{"down_frame": 30, "path_mm": [[50, 20], [51, 21]]}]
+    path = positions(touches, "left", 50, hold_end=True)
+    np.testing.assert_array_equal(path[31:], np.repeat(path[31:32], 20, axis=0))
+    np.testing.assert_allclose(path[-1], [.051, .021, .006])
+    unused = positions([], "right", 50, hold_end=True)
+    np.testing.assert_array_equal(unused, np.repeat(unused[:1], 51, axis=0))
+
+
 def test_short_gap_keeps_a_direct_feasible_transfer():
     touches = [
         {"down_frame": 30, "path_mm": [[-50, -20], [-50, -20]]},

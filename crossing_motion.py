@@ -17,11 +17,14 @@ def validate(points, instructions, locked=None):
     routes = instructions["routes"]
     if instructions["last_frame"] != len(points) - 1:
         raise ValueError("Arm crossing instructions have the wrong frame range")
+    last_frame = len(points) - 1
     previous_end = 0.
-    for route in routes:
+    for index, route in enumerate(routes):
         start, end = route["start_frame"], route["end_frame"]
+        valid_end = (index == len(routes) - 1 and start <= last_frame if end is None
+                     else math.isfinite(end) and start < end <= last_frame)
         if (route["top"] not in ("left", "right") or not math.isfinite(start)
-                or not math.isfinite(end) or not previous_end <= start < end <= len(points)-1):
+                or start < previous_end or not valid_end):
             raise ValueError("Invalid arm crossing instruction")
         previous_end = end
     # Replay the same event boundaries with the recorded choices. This also
@@ -33,6 +36,8 @@ def validate(points, instructions, locked=None):
     if locked is not None:
         for route in routes:
             start, end = route["start_frame"], route["end_frame"]
+            if end is None:
+                end = last_frame
             if locked_overpass(left, right, locked[:, SIDES.index(route["top"])], start, end):
                 raise CrossingMotionError(start, f"the {route['top']} fingertip is locked down during an overpass")
     trace = (left, right)
@@ -51,21 +56,25 @@ def validate(points, instructions, locked=None):
             if active["top"] not in tops or abs(active["start_frame"] - frame) > .015:
                 raise CrossingMotionError(frame, "the crossing entry disagrees with the touch path")
         else:
-            if (active is None or active["top"] not in tops
+            if (active is None or active["top"] not in tops or active["end_frame"] is None
                     or abs(active["end_frame"] - frame) > .015):
                 raise CrossingMotionError(frame, "the arms cannot change top hand before uncrossing")
             active = None
             index += 1
-    if active is not None or index != len(routes):
-        raise CrossingMotionError(len(points)-1, "the arm instructions contain an unmatched crossing")
+    if active is not None and active["end_frame"] is None:
+        index += 1
+    if index != len(routes):
+        raise CrossingMotionError(last_frame, "the arm instructions contain an unmatched crossing")
 
 
 def layers_at(frames, routes):
     layers = np.zeros_like(frames, dtype=np.int8)
     for route in routes:
-        layers[(frames >= route["start_frame"]) & (frames < route["end_frame"])] = (
-            1 if route["top"] == "left" else -1
-        )
+        end = route["end_frame"]
+        within = frames >= route["start_frame"]
+        if end is not None:
+            within &= frames < end
+        layers[within] = 1 if route["top"] == "left" else -1
     return layers
 
 
@@ -179,7 +188,7 @@ def sample_swivels(swivels, frames):
 def boundary_subframes(routes):
     """Sample the entire frame containing each fractional crossing boundary."""
     bounds = {math.floor(route[key]) for route in routes
-              for key in ("start_frame", "end_frame")}
+              for key in ("start_frame", "end_frame") if route[key] is not None}
     return np.array(sorted(frame + k/8 for frame in bounds for k in range(1, 8)))
 
 
@@ -190,7 +199,9 @@ def solve_swivels(points, poses, parts, routes, gap):
     frames = np.arange(len(points))
     weights = []
     for route in routes:
-        distance = np.maximum(route["start_frame"] - frames, frames - route["end_frame"])
+        distance = route["start_frame"] - frames
+        if route["end_frame"] is not None:
+            distance = np.maximum(distance, frames - route["end_frame"])
         u = np.clip(1 - distance/10, 0, 1)
         weights.append(u*u*(3 - 2*u))
     weights = np.array(weights)
@@ -229,7 +240,7 @@ def solve_swivels(points, poses, parts, routes, gap):
     return swivels
 
 
-def verify(points, angles, parts, routes, gap, subdivisions=8, *, swivels=None):
+def verify(points, angles, parts, routes, gap, subdivisions=8, *, swivels=None, allow_clipping=False):
     from hand_pose import proxies
 
     frames = np.arange((len(points)-1) * subdivisions + 1) / subdivisions
@@ -243,12 +254,16 @@ def verify(points, angles, parts, routes, gap, subdivisions=8, *, swivels=None):
     arm, hand = layer_clearances(centres, q, parts, layers, sample_swivels(swivels, frames))
     margin = np.minimum(arm, hand)
     bad = np.flatnonzero(margin < gap - 1e-5)
+    failure = None
     if len(bad):
         k = bad[0]
         top = "left" if layers[k] == 1 else "right"
         detail = (f"the {top} hand cannot clear the other arm from above"
                   if hand[k] < gap - 1e-5 else f"cannot keep the {top} arm over with 3D clearance")
-        raise CrossingMotionError(frames[k], detail)
+        error = CrossingMotionError(frames[k], detail)
+        if not allow_clipping:
+            raise error
+        failure = error.failure
     minimum = arm.min(initial=np.inf)
     return {
         "routes": len(routes),
@@ -257,5 +272,7 @@ def verify(points, angles, parts, routes, gap, subdivisions=8, *, swivels=None):
         "checked_intersection_samples": int(np.isfinite(arm).sum()),
         "checked_hand_over_samples": int(np.isfinite(hand).sum()),
         "minimum_hand_over_clearance_mm": float(hand.min()*1000) if np.isfinite(hand).any() else None,
-        "verified": True,
+        "verified": not len(bad),
+        "clearance_shortfall_samples": int(len(bad)),
+        "first_clearance_shortfall": failure,
     }

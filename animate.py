@@ -128,8 +128,10 @@ def validate_plan(plan):
     return hands
 
 
-def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0):
-    return [Vector(p) for p in finger_positions(touches, side, last_frame, lift, max_speed, idle_speed)]
+def positions(touches, side, last_frame, lift=0.008, max_speed=math.inf, idle_speed=1.0, *, hold_end=False):
+    return [Vector(p) for p in finger_positions(
+        touches, side, last_frame, lift, max_speed, idle_speed, hold_end=hold_end,
+    )]
 
 
 def rotation(pitch, yaw):
@@ -171,7 +173,7 @@ def motion_report(paths, poses, max_speed, angular_limit, gap):
 
 
 def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001,
-                  idle_speed=1.0, physical=None, instructions=None):
+                  idle_speed=1.0, physical=None, instructions=None, *, allow_clipping=False):
     """Pose around pinned contacts and check the touch planner's arm layers."""
     from crossing_motion import validate, verify
 
@@ -202,7 +204,8 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
     swivel_samples = posing.get("elbow_swivel_deg")
     swivels = np.asarray(swivel_samples) if swivel_samples is not None else None
     if routes is not None:
-        report["arm_crossings"] = verify(solved, angles, parts, routes, gap, swivels=swivels)
+        report["arm_crossings"] = verify(solved, angles, parts, routes, gap, swivels=swivels,
+                                          allow_clipping=allow_clipping)
     poses = [tuple(tuple(q) for q in pair) for pair in angles]
     report.update(posing)
     report["maximum_contact_drift_m"] = float(
@@ -319,10 +322,17 @@ def main():
     last_contact = max((t["up_frame"] for t in plan["touches"]), default=0)
     requested = math.ceil((plan.get("preview", {}).get("duration_ms", 0) + plan["chart"]["audio_offset_ms"]) * SAMPLE_RATE / 1000)
     lift = settings.get("lift_mm", 8)/1000
-    endpoints = ((side, np.array((*contacts[side][-1]['path_mm'][-1], TIP*1000)) / 1000)
-                 for side in SIDES if contacts[side])
-    last_frame = settle_frame(last_contact, requested, endpoints, lift, idle_speed)
-    paths = [positions(contacts[side], side, last_frame, settings.get("lift_mm", 8)/1000, max_speed, idle_speed) for side in SIDES]
+    hold_end = bool(instructions and instructions.get("hold_end"))
+    if hold_end:
+        last_frame = instructions["last_frame"]
+        if last_frame < max(last_contact, requested):
+            raise ValueError("Arm crossing instructions end before the excerpt")
+    else:
+        endpoints = ((side, np.array((*contacts[side][-1]['path_mm'][-1], TIP*1000)) / 1000)
+                     for side in SIDES if contacts[side])
+        last_frame = settle_frame(last_contact, requested, endpoints, lift, idle_speed)
+    paths = [positions(contacts[side], side, last_frame, lift, max_speed, idle_speed, hold_end=hold_end)
+             for side in SIDES]
     active_samples = [{frame for t in contacts[side] for frame in range(t["down_frame"], t["up_frame"])}
                       for side in SIDES]
     physical_samples=[set(samples) for samples in active_samples]
@@ -331,6 +341,9 @@ def main():
     for h, side in enumerate(SIDES):
         home = home_position(side, lift)
         active_samples[h].update(f for f,p in enumerate(paths[h]) if np.linalg.norm(np.array(p)-home) < 1e-9)
+        if hold_end:
+            release_frame = max((touch["up_frame"] for touch in contacts[side]), default=0)
+            active_samples[h].update(range(release_frame, last_frame + 1))
     try:
         import pose_cache
         base = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
@@ -346,7 +359,8 @@ def main():
         else:
             paths, poses, report = pose_sequence(paths, active_samples, max_speed, angular_limit,
                                                 settings.get("clearance_mm", 1)/1000, idle_speed,
-                                                physical=active, instructions=instructions)
+                                                physical=active, instructions=instructions,
+                                                allow_clipping=settings.get("allow_clipping", False))
             points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
             pose_cache.write(args.pose_cache_dir, signature, points, np.array(poses), report, base, active)
         report['pose_cache'] = {'hit': cached is not None, 'key': signature}

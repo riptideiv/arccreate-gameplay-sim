@@ -10,7 +10,7 @@ from uuid import uuid4
 # remain in the key, so new planner inputs cannot silently reuse an old plan.
 PRESENTATION_SETTINGS = frozenset(('chart','start_s','end_s','camera_distance_m','camera_elevation_deg',
     'camera_yaw_deg','camera_lens_mm','quality','width','height','clearance_mm','angular_limit_deg_s',
-    'scroll_speed','song_delay_ms','hit_sounds','winding_limit_deg'))
+    'scroll_speed','song_delay_ms','hit_sounds','winding_limit_deg','allow_clipping'))
 SCHEMA = 'rhythm-completed-plan/2'
 
 def canonical(value):

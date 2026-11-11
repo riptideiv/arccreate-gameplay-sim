@@ -2703,6 +2703,9 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     visited, pruned = 1, 0
     def rank(cost):
         return (cost.missed_ticks, cost.missed_red_notes, cost.weighted(options, multi))
+    def crossing_cost(cost, seconds):
+        return replace(cost, base=replace(cost.base, crossing_seconds=seconds))
+
     present = {c.occupation.occupation_id for group in groups for c in group}
     empty_items = iter(o for o in occupations.items if o.occupation_id not in present)
     earliest = [min((c.down_frame for c in group),default=math.inf) for group in groups]
@@ -2732,11 +2735,14 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                 for hand in HANDS:
                     for new, increment, changes in graph.steps(state, candidate, hand):
                         routes = crossing.step(arms, changes) if crossing else (None,)
-                        if routes:
+                        for route in routes:
                             total = cost + increment
-                            step = (node, changes, increment, candidate.occupation.start_ms, state, candidate, hand)
-                            for route in routes:
-                                retain(new, total, step, route)
+                            step_cost = increment
+                            if route is not None:
+                                total = crossing_cost(total, route.crossed_seconds)
+                                step_cost = crossing_cost(increment, route.crossed_seconds - arms.crossed_seconds)
+                            step = (node, changes, step_cost, candidate.occupation.start_ms, state, candidate, hand)
+                            retain(new, total, step, route)
         if not following:
             item = group[0].occupation if group else occupations.items[k]
             raise ValueError(f"no candidate path at item {k}: {item.occupation_id} ({item.kind} at {item.start_ms} ms)")
@@ -2750,13 +2756,18 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                  states=len(states), states_completed=len(states), candidates=len(group), visited=visited)
     progress('finalizing')
     if crossing:
+        best = None
         for _, cost, node, arms in sorted(states, key=lambda entry: rank(entry[1])):
-            routes = crossing.finish(arms)
-            if routes:
-                arms = routes[0]
+            if best is not None and rank(cost) >= best[0]:
                 break
-        else:
-            raise ValueError("no candidate path to an uncrossed resting pose")
+            for route in crossing.finish(arms):
+                finished_cost = crossing_cost(cost, route.crossed_seconds)
+                score = rank(finished_cost)
+                if best is None or score < best[0]:
+                    best = (score, finished_cost, node, route)
+        if best is None:
+            raise ValueError("no candidate path through the final contacts")
+        _, cost, node, arms = best
     else:
         _, cost, node, arms = min(states, key=lambda entry: rank(entry[1]))
     steps, step_costs, path, skipped = [], [], [], []

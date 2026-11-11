@@ -102,6 +102,7 @@ function normalizeRun(run) {
     prefer_arc_trace: saved.prefer_arc_trace ?? false,
     full_arc_hold: saved.full_arc_hold ?? true,
     full_ground_hold: saved.full_ground_hold ?? true,
+    allow_clipping: saved.allow_clipping ?? false,
     repeat_weight: saved.repeat_weight ?? oldRepeat,
     jack_weight: saved.jack_weight ?? oldJack } };
 }
@@ -214,9 +215,10 @@ function updateExportControls() {
   const current = settings();
   const running = currentJob?.status === 'running' || exportSubmitting || sceneSubmitting || recorder?.active;
   const crossings = selected.metrics?.arm_crossings;
-  setText($('crossing-status'), crossings?.verified
-    ? `Verified arm crossing routes: ${crossings.routes}.`
-    : 'Generate a new preview to apply planned arm crossings to this take.');
+  const crossingStatus = !crossings ? 'Generate a new preview to apply planned arm crossings to this take.'
+    : crossings.verified ? `Verified arm crossing routes: ${crossings.routes}.`
+    : `Clipping allowed · ${crossings.clearance_shortfall_samples} samples below arm clearance.`;
+  setText($('crossing-status'), crossingStatus);
   const currentSet = selected.presentation?.revision === bootstrap.presentation_revision;
   $('presentation-set').hidden = !selected.live;
   $('refresh-scene').disabled = running || currentSet;

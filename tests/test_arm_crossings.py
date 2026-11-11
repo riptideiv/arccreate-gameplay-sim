@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from arc_hand_order.planning.arm_crossings import ArmState, HandPath, extend, order
-from crossing_motion import CrossingMotionError, layer_clearances, layer_margin, validate
+from arc_hand_order.planning.arm_crossings import ArmState, CrossingGraph, HandPath, extend, order
+from crossing_motion import CrossingMotionError, layer_clearances, layer_margin, layers_at, validate
 from hand_pose import ARM_RADIUS, FOREARM_LENGTH, HAND_PARTS, SHOULDERS, UPPER_ARM_LENGTH, arm_elbows, proxies
 from motion_paths import positions
 
@@ -57,6 +57,27 @@ def test_a_coincident_x_sample_does_not_allow_changing_top():
                             replace(crossing, start_frame=2., top="right")), 4)
     with pytest.raises(CrossingMotionError):
         validate(points, invalid)
+
+
+def test_excerpt_can_end_with_an_open_crossing():
+    graph = CrossingGraph(lift=.008, speed=3.0, idle_speed=1.0, requested=6)
+    left = path([-1, 1], .03)
+    right = path([0, 0, 0], 0)
+    paths = (HandPath(left, 0, np.zeros(len(left), dtype=bool)),
+             HandPath(right, 0, np.zeros(len(right), dtype=bool)))
+    state, = graph._advance(graph.initial, paths)
+    finished, = graph.finish(state)
+    assert finished.through == 6
+    assert order(finished.routes) == "left"
+    assert finished.crossed_seconds == pytest.approx(5.5 / 60)
+    points = np.stack([p.points for p in finished.paths], axis=1)
+    np.testing.assert_array_equal(points[-1], [left[-1], right[-1]])
+    data = instructions(finished.routes, finished.through)
+    assert data["routes"][0]["end_frame"] is None
+    validate(points, data)
+    assert list(layers_at(np.array([0, 1, 6]), data["routes"])) == [0, 1, 1]
+    with pytest.raises(CrossingMotionError):
+        validate(points, {**data, "routes": [{**data["routes"][0], "end_frame": 6}]})
 
 
 def test_uncross_and_recross_are_seen_between_scoring_ticks():

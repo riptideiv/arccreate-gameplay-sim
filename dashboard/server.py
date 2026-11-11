@@ -32,10 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261110-arm-crossings'
-STARTUP_PREFERENCES = ('repeat_comfort_ms', 'jack_gap_ms', 'jack_free', 'jack_weight',
-                       'scroll_speed', 'song_delay_ms', 'prefer_arc_trace', 'full_arc_hold',
-                       'camera_elevation_deg', 'idle_speed_m_s')
+DEFAULTS_REVISION = '20261110-hold-excerpt-end'
+STARTUP_PREFERENCES = ('allow_clipping',)
 
 
 class Settings(BaseModel):
@@ -49,8 +47,9 @@ class Settings(BaseModel):
     winding_limit_deg: float | None = Field(default=None, exclude=True)  # Saved form data
     lift_mm: float = Field(default=6, ge=0, le=30)
     clearance_mm: float = Field(default=1, ge=0.5, le=8)
+    allow_clipping: bool = True
     comfort_speed_m_s: float = Field(default=0.25, ge=0.1, le=2)
-    crossing_weight: float = Field(default=1, ge=0, le=30)
+    crossing_weight: float = Field(default=1, ge=0, le=128)
     planner_accel_m_s2: float = Field(default=75, ge=1, le=200)
     repeat_comfort_ms: float = Field(default=167, ge=1, le=1000)
     repeat_weight: float = Field(default=5, ge=0, le=100)
@@ -230,7 +229,8 @@ class RenderQueue:
             view = view or {}
             if set(view) - {"camera_distance_m", "camera_elevation_deg", "camera_yaw_deg", "camera_lens_mm", "quality"}:
                 raise ValueError("Only camera and display detail can change during MP4 export.")
-            config = Settings.model_validate({**run["settings"], **view}).model_dump()
+            saved_settings = {name: value for name, value in run["settings"].items() if name in Settings.model_fields}
+            config = Settings.model_validate({**saved_settings, **view}).model_dump()
             self.cancelled.clear()
             self.active = run
             self.update(status="running", stage="Exporting 3D MP4", progress=40, export_only=True, export_error=None)

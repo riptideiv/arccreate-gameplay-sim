@@ -2,10 +2,11 @@
 
 from dataclasses import dataclass, replace
 from functools import cached_property, lru_cache
+from math import ceil
 
 import numpy as np
 
-from .hand_travel import TIP, home_position, settle_frame, span
+from .hand_travel import RATE, TIP, home_position, span
 
 SIDES = ("left", "right")
 EPSILON = 1e-5  # a touch with the same x does not reset the order
@@ -136,6 +137,21 @@ class ArmState:
         return min(len(p.points) for p in self.paths) - 1
 
     @cached_property
+    def crossed_seconds(self):
+        """Integrate sampled crossing state through the common path frontier."""
+        through = self.through
+        if through == 0:
+            return 0.0
+        frames = 0.0
+        for route in self.routes:
+            first = ceil(route.start_frame)
+            stop = through + 1 if route.end_frame is None else min(through + 1, ceil(route.end_frame))
+            if first < stop:
+                # Each interior sample contributes half of both adjoining intervals.
+                frames += stop - first - 0.5 * ((first == 0) + (stop == through + 1))
+        return frames / RATE
+
+    @cached_property
     def key(self):
         # Keep the order at the common frontier and the geometry which later
         # contacts can extend or revise. Earlier finished crossings can merge.
@@ -216,13 +232,12 @@ class CrossingGraph:
         return self._advance(previous, tuple(paths))
 
     def finish(self, state):
-        last_contact = max(len(path.points) for path in state.paths)
-        frame = settle_frame(last_contact, self.requested,
-                             ((side, path.points[-1]) for side, path in zip(SIDES, state.paths)),
-                             self.lift, self.idle_speed)
-        paths = tuple(HandPath(np.concatenate((
-            path.points[:-1], span(path.points[-1], home, frame-len(path.points)+1,
-                                   home, self.lift, self.speed, self.idle_speed)
-        )), path.anchor, np.r_[path.locked, np.zeros(frame+1-len(path.points), dtype=bool)])
-            for path, home in zip(state.paths, self.homes))
-        return self._advance(state, paths)
+        """Extend each hand in place through the end of the excerpt."""
+        frame = max(self.requested, *(len(path.points) for path in state.paths))
+        paths = []
+        for path in state.paths:
+            padding = frame + 1 - len(path.points)
+            points = np.concatenate((path.points, np.repeat(path.points[-1:], padding, axis=0)))
+            locked = np.pad(path.locked, (0, padding))
+            paths.append(HandPath(points, path.anchor, locked))
+        return self._advance(state, tuple(paths))
