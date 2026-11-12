@@ -117,11 +117,14 @@ class PlannerOptions:
     scoring_arcs: bool = False
     prefer_arc_trace: bool = False
     arc_trace_weight: float = 1000.0
-    contact_offset_fraction: float | None = None
+    contact_offset_fractions: tuple[float, float] | None = None
 
     def __post_init__(self):
-        if self.contact_offset_fraction is not None and not 0 < self.contact_offset_fraction <= 1:
-            raise ValueError("contact_offset_fraction must be in (0, 1]")
+        if self.contact_offset_fractions is not None and (
+            len(self.contact_offset_fractions) != 2
+            or not all(0 <= value <= 1 for value in self.contact_offset_fractions)
+        ):
+            raise ValueError("contact_offset_fractions must contain X and Y fractions in [0, 1]")
         if not math.isfinite(self.arc_trace_weight) or self.arc_trace_weight < 0:
             raise ValueError("arc_trace_weight must be finite and nonnegative")
         if not math.isfinite(self.distance_weight) or self.distance_weight < 0:
@@ -384,7 +387,7 @@ def target_xy(occupation: Occupation, time_ms: int, projection: GameplayProjecti
     return projection.judgement_to_device(region.x, region.y)
 
 
-def contact_variants(item, down, up, offset, projection, fraction, *, edges=True, corners=False):
+def contact_variants(item, down, up, offset, projection, fractions, *, edges=True, corners=False):
     """Sample the centre and inner rectangle edges at a consistent offset through a contact."""
     from .native_input import camera_for
 
@@ -399,7 +402,7 @@ def contact_variants(item, down, up, offset, projection, fraction, *, edges=True
     for frame in frames:
         centre = target_xy(item, frame_ms(frame, offset), projection)
         left, bottom, right, top = camera.contact_rectangle(
-            item.kind, *camera.unproject(centre, 2), fraction)
+            item.kind, *camera.unproject(centre, 2), fractions)
         if left > right or bottom > top:
             return ()
         x, y = centre
@@ -442,7 +445,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         raise ValueError("point_window_ms must be a nonnegative integer or None")
     groups, next_id = [], 0
     offset = occupations.audio_offset_ms
-    fraction = options.contact_offset_fraction
+    fractions = options.contact_offset_fractions
     profiles = {}
     if options.scoring_arcs:
         if progress:
@@ -461,7 +464,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
             if progress:
                 progress('arc_profiles', index, len(parents))
             o = replace(o, parent_occupation_id=None, score_points=tuple(sorted(set(o.score_points),key=lambda p:p.time_ms)))
-            profiles[key] = (profile(o,projection,options.speed_max_m_s,offset,fraction=fraction), anchors(o,projection))
+            profiles[key] = (profile(o,projection,options.speed_max_m_s,offset,fractions=fractions), anchors(o,projection))
     for k, item in enumerate(occupations.items):
         if progress:
             progress('candidates', k, len(occupations.items), chart_ms=item.start_ms)
@@ -472,7 +475,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                 if fitted is not None:
                     down,path,_ = fitted
                     variants.append((down,path))
-                    if fraction is None and len(set(path))==1:
+                    if fractions is None and len(set(path))==1:
                         for dx in (-.012,.012):
                             shifted=tuple((x+dx,y) for x,y in path)
                             caught=covers(item,shifted,down,offset,projection)
@@ -495,7 +498,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                 targets=list(dict.fromkeys(targets))[:3]
                 for q in targets:
                     xy=world(projection,q)
-                    valid=[f for f in range(first,last+1) if hit(n,xy,frame_ms(f,offset),fraction=fraction)]
+                    valid=[f for f in range(first,last+1) if hit(n,xy,frame_ms(f,offset),fractions=fractions)]
                     if not valid:continue
                     downs={valid[0],min(valid,key=lambda f:abs(f-nominal)),valid[-1]}
                     for down in sorted(downs):
@@ -517,7 +520,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                         for amount in (.25, .5, .75):
                             variants.append((first, tuple((x+(u-x)*amount, y+(v-y)*amount)
                                 for (x,y),(u,v) in zip(base, centre))))
-            if fraction is not None:
+            if fractions is not None:
                 if item.parent_occupation_id:
                     spatial_downs = sorted({first, min(max(nominal, first), last), last}) if first <= last else ()
                     spans = [(down, down + 2) for down in spatial_downs]
@@ -529,15 +532,15 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                     spans = [(first, max(first+2, frame_at_or_after(item.end_ms+1, offset)))]
                 for down, up in spans:
                     variants.extend((down, path) for path in
-                                    contact_variants(item, down, up, offset, projection, fraction))
+                                    contact_variants(item, down, up, offset, projection, fractions))
             candidates=[]
-            for down,path in dict.fromkeys(variants) if fraction is not None else variants:
+            for down,path in dict.fromkeys(variants) if fractions is not None else variants:
                 path = native_geometry.guard_path(item,path,down)
                 if any(abs(x)>projection.width_m/2 or abs(y)>projection.height_m/2 for x,y in path):continue
                 up=down+len(path)
                 if any(parent==(item.parent_occupation_id or item.occupation_id) and frame_ms(down,offset)<=stop and frame_ms(up-1,offset)>=start
                        for parent,start,stop in options.contact_exclusions):continue
-                if covers(item,path,down,offset,projection,fraction=fraction) is None:continue
+                if covers(item,path,down,offset,projection,fractions=fractions) is None:continue
                 speed=max((math.dist(a,b)*60 for a,b in zip(path,path[1:])),default=0)
                 if speed>options.speed_max_m_s*1.00001:continue
                 untouched=0
@@ -629,7 +632,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         groups = _swap_at_meeting(groups, occupations, chart_ms)
     if options.full_arc_hold or options.full_ground_hold:
         groups, next_id = _add_partial_holds(groups, projection, options, next_id)
-    if fraction is not None:
+    if fractions is not None:
         groups = _offset_contacts(groups, projection, options, next_id)
     if progress:
         progress('candidates', len(occupations.items), len(occupations.items))
@@ -651,7 +654,7 @@ def _offset_contacts(groups, projection, options, next_id):
         for c in group:
             edges = item.continuous_contact or c.down_frame in sampled
             paths = contact_variants(c.occupation, c.down_frame, c.up_frame, c.audio_offset_ms,
-                                     projection, options.contact_offset_fraction, edges=edges,
+                                     projection, options.contact_offset_fractions, edges=edges,
                                      corners=c.down_frame == nominal and item.kind != "chain")
             for path in paths:
                 speed = max((math.dist(a, b)*60 for a,b in zip(path,path[1:])), default=0.0)

@@ -25,7 +25,8 @@ def projection():
 
 
 @pytest.mark.parametrize("scoring", [False, True])
-def test_all_note_types_offer_xy_offsets_inside_the_inner_hitbox(tmp_path, scoring):
+@pytest.mark.parametrize("fractions", [(.48, .24), (0., .24), (.48, 0.), (0., 0.)])
+def test_all_note_types_offer_xy_offsets_inside_the_inner_hitbox(tmp_path, scoring, fractions):
     from arc_hand_order.planning.arc_scoring import native_occupations
 
     chart_file = tmp_path / "offsets.aff"
@@ -39,11 +40,12 @@ def test_all_note_types_offer_xy_offsets_inside_the_inner_hitbox(tmp_path, scori
                                          chart_events=chart.events)
     device = projection()
     camera = CameraEnvelope(device)
-    options = PlannerOptions(contact_offset_fraction=.6, scoring_arcs=scoring, full_ground_hold=True)
+    options = PlannerOptions(contact_offset_fractions=fractions, scoring_arcs=scoring, full_ground_hold=True)
     for group in build_candidates(occupations, device, options):
         item = group[0].occupation
-        assert len({c.first_xy[0] for c in group}) >= 3
-        assert len({c.first_xy[1] for c in group}) >= 3
+        for axis, fraction in enumerate(fractions):
+            positions = {round(c.first_xy[axis], 8) for c in group}
+            assert len(positions) >= 3 if fraction else len(positions) == 1
         dx, down, up = screen_hitbox(item.kind, device.width_m, device.height_m)
         for c in group:
             region = item.region_at(frame_ms(c.down_frame))
@@ -52,8 +54,23 @@ def test_all_note_types_offer_xy_offsets_inside_the_inner_hitbox(tmp_path, scori
             for view in range(len(TILTS)):
                 cx, cy = camera.project(x, y, view)
                 px, py = c.first_xy
-                assert abs(px - cx) <= .6 * dx + 1e-8
-                assert -.6 * down - 1e-8 <= py - cy <= .6 * up + 1e-8
+                x_limit, y_limit = fractions if view == 2 else (1., 1.)
+                assert abs(px - cx) <= x_limit * dx + 1e-8
+                assert -y_limit * down - 1e-8 <= py - cy <= y_limit * up + 1e-8
+
+
+def test_workbench_passes_contact_axis_limits_to_the_planner(tmp_path):
+    from dashboard.server import Settings
+    from plan_excerpt import create_plan
+
+    chart = tmp_path / "tap.aff"
+    chart.write_text("AudioOffset:0\n-\ntiming(0,120,4);(1000,1);")
+    defaults = Settings()
+    assert (defaults.contact_offset_x_percent, defaults.contact_offset_y_percent) == (48, 24)
+    settings = Settings(contact_offset_x_percent=0, contact_offset_y_percent=73)
+    plan = create_plan(chart, 0, 2000, settings.model_dump())
+    assert plan["planner_options"]["contact_offset_fractions"] == [0., .73]
+    assert plan["misses"] == []
 
 
 def test_native_screen_only_overlap_triggers_grace():

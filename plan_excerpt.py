@@ -10,6 +10,7 @@ from pathlib import Path
 
 from arc_hand_order import api
 from arc_hand_order.chart.arc_connections import connect_arcs
+from arc_hand_order.planning.native_input import DEFAULT_CONTACT_OFFSET_X_PERCENT, DEFAULT_CONTACT_OFFSET_Y_PERCENT
 from arc_hand_order.planning.rules import NATIVE_FAR_WINDOW_MS, NATIVE_PERFECT_WINDOW_MS
 from arc_hand_order.planning.occupations import occupations_from_chart, TimeWindow
 
@@ -141,7 +142,10 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
     planner = {
         'scoring_arcs': scoring,
-        'contact_offset_fraction': .6,
+        'contact_offset_fractions': (
+            settings.get('contact_offset_x_percent', DEFAULT_CONTACT_OFFSET_X_PERCENT) / 100,
+            settings.get('contact_offset_y_percent', DEFAULT_CONTACT_OFFSET_Y_PERCENT) / 100,
+        ),
         'point_window_ms': None,
         'full_point_window': True,
         'speed_max_m_s': settings.get('max_speed_m_s', 3.0),

@@ -97,6 +97,7 @@ function normalizeRun(run) {
   const oldRepeat = saved.prefer_same_hand ? 0 : 5;
   const oldJack = saved.prefer_same_hand ? 0 : 20;
   return { ...run, legacyArcTrace: !("prefer_arc_trace" in saved), legacyArcPaths: !("arc_path_mode" in saved), legacyReleasePolicy: !("full_arc_hold" in saved),
+    legacyContactOffsets: !("contact_offset_x_percent" in saved) || !("contact_offset_y_percent" in saved),
     settings: { ...bootstrap.defaults, ...saved,
     arc_path_mode: saved.arc_path_mode ?? run.planning?.arc_path_mode ?? 'trace',
     prefer_arc_trace: saved.prefer_arc_trace ?? false,
@@ -300,7 +301,7 @@ form.addEventListener("submit", async event => {
   $("error").hidden = true;
   setRenderDisabled(true);
   try {
-    if (selected?.live && sameSettings(settings(), selected.settings)) {
+    if (selected?.live && !selected.legacyContactOffsets && sameSettings(settings(), selected.settings)) {
       live?.setCamera(settings()); setRenderDisabled(false); return;
     }
     const run = await api("/api/render", {

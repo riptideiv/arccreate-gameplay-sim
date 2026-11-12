@@ -16,6 +16,8 @@ SCREEN_HALF_X = 135.315277 / 1148
 SCREEN_HALF_Y = 172.058334 / 802
 TILTS = (-0.05, -0.025, 0.0, 0.025, 0.05)
 LANE_WIDTH = 425.0  # ArcCreate game units (100 per Unity world unit)
+DEFAULT_CONTACT_OFFSET_X_PERCENT = 48
+DEFAULT_CONTACT_OFFSET_Y_PERCENT = 24
 
 
 def screen_hitbox(kind, width, height):
@@ -83,21 +85,18 @@ class CameraEnvelope:
             (p + distance * r) * 100 for p, r in zip(self.position[:2], ray[:2])
         )
 
-    def contact_rectangle(self, kind, x, y, fraction):
+    def contact_rectangle(self, kind, x, y, fractions):
         """Intersect the inner screen rectangles over the camera tilt envelope."""
-        key = (kind, x, y, fraction)
+        key = (kind, x, y, fractions)
         if key not in self.rectangles:
             if len(self.rectangles) >= 65536:
                 self.rectangles.clear()
             centres = [self.project(x, y, view) for view in range(len(TILTS))]
-            dx, down, up = (fraction * edge for edge in screen_hitbox(kind, self.width, self.height))
+            dx, down, up = screen_hitbox(kind, self.width, self.height)
             xs, ys = zip(*centres)
-            # Exported contact positions are rounded to 0.01 mm.
-            inset = .00002
-            self.rectangles[key] = (max(-self.width/2, max(xs)-dx) + inset,
-                                    max(-self.height/2, max(ys)-down) + inset,
-                                    min(self.width/2, min(xs)+dx) - inset,
-                                    min(self.height/2, min(ys)+up) - inset)
+            left, right = _axis_limits(xs, dx, dx, fractions[0], self.width/2)
+            bottom, top = _axis_limits(ys, down, up, fractions[1], self.height/2)
+            self.rectangles[key] = (left, bottom, right, top)
         return self.rectangles[key]
 
     def overlaps(self, a, b, view=2):
@@ -109,6 +108,20 @@ class CameraEnvelope:
             abs(x - u) <= SCREEN_HALF_X * self.width
             and abs(y - v) <= SCREEN_HALF_Y * self.height
         )
+
+
+def _axis_limits(centres, below, above, fraction, screen_edge):
+    low = max(-screen_edge, max(centres) - below * fraction)
+    high = min(screen_edge, min(centres) + above * fraction)
+    if low > high:
+        # At small settings the inner windows can separate as the camera tilts.
+        # Keep the nominal offset limit, and require a native hit in every view.
+        centre = centres[len(TILTS)//2]
+        low = max(-screen_edge, centre - below*fraction, max(centres) - below)
+        high = min(screen_edge, centre + above*fraction, min(centres) + above)
+    # Leave room for the replay's 0.01 mm rounding, including narrow limits.
+    inset = min(.00002, max(0., (high - low)/4))
+    return low + inset, high - inset
 
 
 def camera_for(projection):
@@ -129,8 +142,8 @@ class InputPoint(tuple):
         point.samples, point.camera, point.device_xy = samples, camera, xy
         return point
 
-    def in_contact_rectangle(self, kind, x, y, fraction):
-        left, bottom, right, top = self.camera.contact_rectangle(kind, x, y, fraction)
+    def in_contact_rectangle(self, kind, x, y, fractions):
+        left, bottom, right, top = self.camera.contact_rectangle(kind, x, y, fractions)
         px, py = self.device_xy
         return left - 1e-9 <= px <= right + 1e-9 and bottom - 1e-9 <= py <= top + 1e-9
 

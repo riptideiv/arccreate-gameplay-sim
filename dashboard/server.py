@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from typing import Literal
+from arc_hand_order.planning.native_input import DEFAULT_CONTACT_OFFSET_X_PERCENT, DEFAULT_CONTACT_OFFSET_Y_PERCENT
 
 if __package__:
     from .chart_library import load_catalog, chart_paths
@@ -71,6 +72,8 @@ class Settings(BaseModel):
     enable_red_notes: bool = True
     target_all_red_notes: bool = False
     search_width: int = Field(default=256, ge=32, le=2048)
+    contact_offset_x_percent: int = Field(default=DEFAULT_CONTACT_OFFSET_X_PERCENT, ge=0, le=100)
+    contact_offset_y_percent: int = Field(default=DEFAULT_CONTACT_OFFSET_Y_PERCENT, ge=0, le=100)
     camera_distance_m: float = Field(default=0.29, ge=0.22, le=0.5)
     camera_elevation_deg: float = Field(default=70, ge=25, le=80)
     camera_yaw_deg: float = Field(default=0, ge=-35, le=35)

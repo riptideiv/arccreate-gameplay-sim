@@ -635,10 +635,10 @@ class Regions:
     ``sky_half_x`` game units to either side (rules.SKY_TAP_X, or SKY_DRAWN_HALF_X for its drawn width)."""
 
     def __init__(self, projection: GameplayProjection, sky_half_x: float = rules.SKY_TAP_X,
-                 contact_offset_fraction: float | None = None):
+                 contact_offset_fractions: tuple[float, float] | None = None):
         self.projection = projection
         self.sky_half_x = sky_half_x
-        self.contact_offset_fraction = contact_offset_fraction
+        self.contact_offset_fractions = contact_offset_fractions
         w, h = projection.width_m, projection.height_m
         self.screen = [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]
         self._polygon_cache = {}
@@ -666,13 +666,20 @@ class Regions:
 
     def _polygon(self, occupation, time_ms):
         region = occupation.region_at(min(max(time_ms, occupation.start_ms), occupation.end_ms))
-        if self.contact_offset_fraction is not None:
+        if self.contact_offset_fractions is not None:
             from .native_input import camera_for
             camera = camera_for(self.projection)
             centre = target_xy(occupation, time_ms, self.projection)
             x0, y0, x1, y1 = camera.contact_rectangle(
-                occupation.kind, *camera.unproject(centre, 2), self.contact_offset_fraction)
-            return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)] if x0 < x1 and y0 < y1 else None
+                occupation.kind, *camera.unproject(centre, 2), self.contact_offset_fractions)
+            if x0 > x1 or y0 > y1:
+                return None
+            # Keep centred axes representable by the polygon clipper.
+            if x0 == x1:
+                x0, x1 = x0 - 1e-9, x1 + 1e-9
+            if y0 == y1:
+                y0, y1 = y0 - 1e-9, y1 + 1e-9
+            return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
         if region.lane is not None:
             return self.lanes[region.lane]
         if occupation.kind == "sky":
@@ -820,7 +827,7 @@ class _Graph:
                                 tuple(c.occupation for g in groups for c in g if c.occupation.kind == "chain"))
         self.meetings = meetings
         self.regions = (Regions(projection, SKY_DRAWN_HALF_X if multi.sky_aim_drawn else rules.SKY_TAP_X,
-                                options.contact_offset_fraction)
+                                options.contact_offset_fractions)
                         if (multi.share or multi.second_finger or options.scoring_arcs) else None)
         self.offset = options.audio_offset_ms
         self.fixed = dict(options.fixed_hands)
@@ -1175,7 +1182,7 @@ class _Graph:
         if self.options.scoring_arcs:
             from .arc_scoring import covers
             if any(covers(p.candidate.occupation,path,down,self.offset,self.projection,
-                          fraction=self.options.contact_offset_fraction) is None
+                          fractions=self.options.contact_offset_fractions) is None
                    for p in parts if p.candidate.occupation.native_scoring):return None
         touch = self._intern(parts, tuple(bridges), tuple(path))
         if over:
@@ -1597,7 +1604,7 @@ class _Graph:
             if any(math.dist(a,b)*60>limit for a,b in zip(tail,tail[1:])):continue
             # A newly introduced tick can be caught on an earlier prefix frame.
             if covers(c.occupation,path,t.down,self.offset,self.projection,
-                      fraction=self.options.contact_offset_fraction) is None:continue
+                      fractions=self.options.contact_offset_fractions) is None:continue
             bridges=t.bridges+(((t.up,c.down_frame),) if c.down_frame>t.up else ())
             variants.append(self._intern(t.parts+(Part(c,c.down_frame,c.up_frame),),bridges,path))
         result=tuple(variants)
@@ -2042,7 +2049,7 @@ class _Graph:
                 last=min(new.up,frame_at_or_after(point.contact_window.latest_ms+1,self.offset))
                 if not any((self.graced.get(f) or (f in bindings.get(o.colour,()) and sum(f in fs for fs in bindings.values())==1))
                            and hit(n,world(self.projection,new.xy(f)),frame_ms(f,self.offset),
-                                   fraction=self.options.contact_offset_fraction) for f in range(first,last)):
+                                   fractions=self.options.contact_offset_fractions) for f in range(first,last)):
                     return False
             validated.add(o.occupation_id)
         return True
