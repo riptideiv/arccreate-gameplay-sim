@@ -292,6 +292,7 @@ export const zhCN = {
   "{count} snakes": "{count} 条蛇",
   "{count} items": "{count} 个目标",
   "retry with individual scoring ticks": "改用逐计分点方案重试",
+  "retry with intact arcs and FAR timing": "保留整条蛇并允许 FAR 判定后重试",
   "{time} elapsed": "已用时 {time}",
   "chart {time} s": "谱面时间 {time} s",
   "{count} alternatives retained": "保留 {count} 个候选方案",

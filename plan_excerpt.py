@@ -182,12 +182,36 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             raise
         # Search the native FAR window before resorting to misses. Plan covered
         # contacts explicitly because a missing contact can invalidate a shortcut.
-        occupations = point_windows(split_arc_ticks(occupations), duration, NATIVE_FAR_WINDOW_MS)
+        split = point_windows(split_arc_ticks(occupations), duration, NATIVE_FAR_WINDOW_MS)
         attempt = 2
         multi.update(allow_misses=settings.get("allow_misses",True), forced_misses=tuple(excluded), tick_contacts=True,
                      max_states=settings.get("search_width", 256), meeting_swaps=False,
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
-        result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=occupations, progress=report)
+        can_retry_intact = (scoring and not (excluded or avoid_contacts)
+                            and any(item.kind == "chain" for item in native_items)
+                            and any(not item.continuous_contact for item in native_items))
+        split_error = None
+        try:
+            result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=split, progress=report)
+        except ValueError as error:
+            if not can_retry_intact or "no candidate path" not in str(error):
+                raise
+            split_error = error
+            result = None
+
+        if can_retry_intact and (result is None or result.plan.cost.missed_ticks):
+            # A split-arc beam can discard the release schedules that an intact
+            # arc fit keeps. Check that route with FAR timing before returning misses.
+            attempt = 3
+            intact = point_windows(occupations, duration, NATIVE_FAR_WINDOW_MS)
+            try:
+                result = api.plan_chart(excerpt, multi={**multi, "allow_misses": False}, planner=planner,
+                                        occupation_set=intact, progress=report)
+            except ValueError as error:
+                if "no candidate path" not in str(error):
+                    raise
+                if split_error is not None:
+                    raise split_error from error
     report({'phase': 'writing', 'completed': None, 'total': None})
     output = api.plan_to_dict(result)
     output['chart']['source_audio_offset_ms'] = source_offset_ms

@@ -81,6 +81,29 @@ def test_strict_tap_interval_controls_point_repeats(tmp_path):
         api.plan_chart(loaded, planner=planner, multi={**multi, 'tap_interval_ms': 150})
 
 
+@pytest.mark.parametrize("allow_misses", [True, False])
+def test_split_search_can_recover_with_intact_arcs_and_far_timing(tmp_path, monkeypatch, allow_misses):
+    source = chart(tmp_path, 'arc(100,600,.5,.5,s,1,1,0,none,false);'
+                   '(1000,1);(1017,4);(1033,1);(1050,4);')
+    plan_chart = api.plan_chart
+    attempts = []
+
+    def simulate_split_pruning(*args, **kwargs):
+        items = kwargs['occupation_set'].items
+        split_arc = next((item for item in items if item.parent_occupation_id), None)
+        attempts.append((split_arc is not None, kwargs['multi'].get('allow_misses', False)))
+        if split_arc:
+            kwargs['multi'] = {**kwargs['multi'], 'forced_misses': (split_arc.occupation_id,)}
+        return plan_chart(*args, **kwargs)
+
+    monkeypatch.setattr(api, 'plan_chart', simulate_split_pruning)
+    plan = create_plan(source, 0, 1500, {'arc_path_mode': 'score', 'max_speed_m_s': 4,
+                                        'tap_interval_ms': 150, 'allow_misses': allow_misses})
+    assert attempts == [(False, False), (True, allow_misses), (False, False)]
+    assert plan['misses'] == []
+    assert plan['planning']['planned_far_taps'] == 2
+
+
 def test_far_timing_can_save_a_burst_at_the_strict_tap_interval(tmp_path):
     source = chart(tmp_path, '(1000,1);(1017,4);(1033,1);(1050,4);')
     plan = create_plan(source, 0, 1500, {'tap_interval_ms': 150, 'allow_misses': True})

@@ -376,10 +376,11 @@ function displayJob(run) {
         done: 'Touchpoint search complete', writing: 'Saving contact plan'};
       const known = planning.total > 0;
       const percent = known ? Math.min(100, 100 * planning.completed / planning.total) : null;
+      const retry = {2: 'retry with individual scoring ticks', 3: 'retry with intact arcs and FAR timing'};
       setText($("planning-label"), (labels[planning.phase] || planning.phase)
         + (known ? ' · ' + percent.toFixed(1) + '% · ' + planning.completed.toLocaleString() + ' / '
           + planning.total.toLocaleString() + (planning.phase === 'arc_profiles' ? ' snakes' : ' items') : '')
-        + (planning.attempt > 1 ? ' · retry with individual scoring ticks' : ''));
+        + (retry[planning.attempt] ? ' · ' + retry[planning.attempt] : ''));
       if (known) $("planning-progress").value = percent;
       else $("planning-progress").removeAttribute('value');
       const elapsed = Math.max(0, Math.floor((planning.elapsed_s || 0)
