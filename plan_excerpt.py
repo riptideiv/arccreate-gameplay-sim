@@ -149,6 +149,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         multi["jack_weight"] = settings.get("jack_weight", 0 if legacy_same_hand else 20)
         multi["jack_gap_ms"] = settings.get("jack_gap_ms", 150)
         multi["tap_interval_ms"] = settings.get("tap_interval_ms", 0)
+        multi["allow_faster_taps"] = settings.get("allow_faster_taps", False)
         multi["jack_free"] = settings.get("jack_free", 4)
         planner["point_contact_frames"] = settings.get("point_contact_frames", 2)
         planner["min_air_frames"] = settings.get("min_air_frames", 1)

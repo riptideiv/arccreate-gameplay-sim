@@ -104,6 +104,7 @@ function normalizeRun(run) {
     full_ground_hold: saved.full_ground_hold ?? true,
     allow_clipping: saved.allow_clipping ?? false,
     tap_interval_ms: saved.tap_interval_ms ?? 0,
+    allow_faster_taps: saved.allow_faster_taps ?? false,
     repeat_weight: saved.repeat_weight ?? oldRepeat,
     jack_weight: saved.jack_weight ?? oldJack } };
 }
@@ -131,6 +132,11 @@ function updateClickInterval() {
     return;
   }
   const frames = Math.max(Number(down.value) + Number(air.value), Math.ceil(Number(interval.value) * 60 / 1000));
+  if (byName("allow_faster_taps").checked) {
+    setText($("click-interval"), "The planner aims for at least " + (frames * 1000 / 60).toFixed(1) +
+      " ms between presses and can repeat faster to save notes.");
+    return;
+  }
   setText($("click-interval"), "Point taps require at least " + (frames * 1000 / 60).toFixed(1) +
     " ms between presses, at most " + (60 / frames).toFixed(1) + " taps/s per hand before movement is considered.");
 }
