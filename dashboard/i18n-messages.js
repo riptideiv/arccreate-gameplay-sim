@@ -76,6 +76,8 @@ export const zhCN = {
   "Tap duration": "点按持续时间",
   "frames": "帧",
   "Minimum release gap": "最短离屏间隔",
+  "Minimum tap interval": "最短点按间隔",
+  "Strict press-to-press limit for consecutive point taps on the same finger.": "同一根手指连续点按时，两次按下之间必须满足的最短间隔。",
   "Release gap after a hold or arc": "长条／蛇结束后的离屏间隔",
   "The planner runs at 60 Hz. One frame is 16.7 ms. These durations are required.": "规划以 60 Hz 运行，每帧约 16.7 ms。这些时长是硬性要求。",
   "Arc paths and release": "蛇的路径与松手",

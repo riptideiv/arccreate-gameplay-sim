@@ -103,6 +103,7 @@ function normalizeRun(run) {
     full_arc_hold: saved.full_arc_hold ?? true,
     full_ground_hold: saved.full_ground_hold ?? true,
     allow_clipping: saved.allow_clipping ?? false,
+    tap_interval_ms: saved.tap_interval_ms ?? 0,
     repeat_weight: saved.repeat_weight ?? oldRepeat,
     jack_weight: saved.jack_weight ?? oldJack } };
 }
@@ -124,11 +125,12 @@ function updateClickInterval() {
   $("jack-disabled").hidden = Number(byName("jack_weight").value) !== 0;
   const down = byName("point_contact_frames");
   const air = byName("min_air_frames");
-  if (!down.value || !air.value || !down.validity.valid || !air.validity.valid) {
+  const interval = byName("tap_interval_ms");
+  if (!down.value || !air.value || !interval.value || !down.validity.valid || !air.validity.valid || !interval.validity.valid) {
     setText($("click-interval"), "");
     return;
   }
-  const frames = Number(down.value) + Number(air.value);
+  const frames = Math.max(Number(down.value) + Number(air.value), Math.ceil(Number(interval.value) * 60 / 1000));
   setText($("click-interval"), "Point taps require at least " + (frames * 1000 / 60).toFixed(1) +
     " ms between presses, at most " + (60 / frames).toFixed(1) + " taps/s per hand before movement is considered.");
 }

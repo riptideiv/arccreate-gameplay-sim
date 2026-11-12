@@ -69,3 +69,13 @@ def test_zero_air_gap_at_the_same_position_does_not_divide_by_zero(tmp_path):
         planner={'point_window_ms':0,'min_air_frames':0,'fixed_hands':((1000,'left'),(1033,'left'))},
         multi={'second_finger':False,'second_finger_again':False})
     assert len(result.plan.touches) == 2
+
+
+def test_strict_tap_interval_controls_point_repeats(tmp_path):
+    source = chart(tmp_path, '(1000,1);(1100,1);')
+    loaded = api.load_chart(source)
+    planner = {'point_window_ms': 0, 'fixed_hands': ((1000, 'left'), (1100, 'left'))}
+    multi = {'second_finger': False, 'tap_interval_ms': 100}
+    assert len(api.plan_chart(loaded, planner=planner, multi=multi).plan.touches) == 2
+    with pytest.raises(ValueError, match='no candidate path'):
+        api.plan_chart(loaded, planner=planner, multi={**multi, 'tap_interval_ms': 150})

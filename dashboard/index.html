@@ -101,6 +101,8 @@
       </details>
       <details>
         <summary>Hard timing limits</summary>
+        <label for="tap-interval">Minimum tap interval <span class="input-unit"><input id="tap-interval" name="tap_interval_ms" type="number" min="0" max="1000" step="1" required><span>ms</span></span></label>
+        <p class="hint">Strict press-to-press limit for consecutive point taps on the same finger.</p>
         <label for="tap-frames">Tap duration <span class="input-unit"><input id="tap-frames" name="point_contact_frames" type="number" min="1" max="12" step="1" required><span>frames</span></span></label>
         <label for="air-frames">Minimum release gap <span class="input-unit"><input id="air-frames" name="min_air_frames" type="number" min="0" max="30" step="1" required><span>frames</span></span></label>
         <label for="hold-air-frames">Release gap after a hold or arc <span class="input-unit"><input id="hold-air-frames" name="held_release_air_frames" type="number" min="0" max="30" step="1" required><span>frames</span></span></label>

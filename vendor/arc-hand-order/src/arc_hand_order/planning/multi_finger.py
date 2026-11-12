@@ -135,6 +135,7 @@ class MultiFingerOptions:
     jack_gap_ms: int = 150
     jack_free: int = 4
     jack_weight: float = 0.0
+    tap_interval_ms: int = 0  # Minimum press-to-press interval for consecutive point taps on one finger.
     # The most peak acceleration (m/s^2; 0: off) a finger may need, counted for a rest-to-rest minimum-jerk move
     # (MIN_JERK_PEAK d/T^2): a hand's move in the air between two touches (d over the air time T, from where _release
     # lets it go to where _arrival needs it; _Graph.air_over), and each jump composing makes inside a touch
@@ -221,6 +222,8 @@ class MultiFingerOptions:
             raise ValueError("max_states must be a nonnegative integer")
         if type(self.jack_gap_ms) is not int or self.jack_gap_ms < 0 or type(self.jack_free) is not int or self.jack_free < 1:
             raise ValueError("jack_gap_ms must be a nonnegative integer and jack_free a positive one")
+        if type(self.tap_interval_ms) is not int or self.tap_interval_ms < 0:
+            raise ValueError("tap_interval_ms must be a nonnegative integer")
         if not math.isfinite(self.jack_weight) or self.jack_weight < 0:
             raise ValueError("jack_weight must be finite and nonnegative")
         if (type(self.steady_max_piece_ms) is not int or self.steady_max_piece_ms < 1
@@ -1299,6 +1302,10 @@ class _Graph:
         if previous is None:
             return 0.0
         if current.down - previous.up < self.options.min_air_frames:
+            return None
+        if (self.multi.tap_interval_ms and (current.down - previous.down) * 1000 < self.multi.tap_interval_ms * 60
+                and previous.single is not None and not previous.single.occupation.continuous_contact
+                and current.single is not None and not current.single.occupation.continuous_contact):
             return None
         if current.down - previous.up < self.options.held_release_air_frames and self.held_release(previous):
             return None

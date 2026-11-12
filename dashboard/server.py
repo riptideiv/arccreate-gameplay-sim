@@ -32,8 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261110-hold-excerpt-end'
-STARTUP_PREFERENCES = ('allow_clipping',)
+DEFAULTS_REVISION = '20261111-strict-tap-interval'
+STARTUP_PREFERENCES = ('repeat_comfort_ms', 'tap_interval_ms')
 
 
 class Settings(BaseModel):
@@ -51,12 +51,13 @@ class Settings(BaseModel):
     comfort_speed_m_s: float = Field(default=0.25, ge=0.1, le=2)
     crossing_weight: float = Field(default=1, ge=0, le=128)
     planner_accel_m_s2: float = Field(default=75, ge=1, le=200)
-    repeat_comfort_ms: float = Field(default=167, ge=1, le=1000)
+    repeat_comfort_ms: float = Field(default=180, ge=1, le=1000)
     repeat_weight: float = Field(default=5, ge=0, le=100)
     jack_gap_ms: int = Field(default=133, ge=0, le=1000)
     jack_free: int = Field(default=2, ge=1, le=32)
     jack_weight: float = Field(default=10, ge=0, le=100)
     point_contact_frames: int = Field(default=2, ge=1, le=12)
+    tap_interval_ms: int = Field(default=150, ge=0, le=1000)
     min_air_frames: int = Field(default=1, ge=0, le=30)
     held_release_air_frames: int = Field(default=4, ge=0, le=30)
     arc_path_mode: Literal["score", "trace"] = "score"
