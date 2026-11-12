@@ -32,8 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261112-fast-tap-fallback'
-STARTUP_PREFERENCES = ('allow_faster_taps',)
+DEFAULTS_REVISION = '20261111-strict-tap-interval'
+STARTUP_PREFERENCES = ('repeat_comfort_ms', 'tap_interval_ms')
 
 
 class Settings(BaseModel):
@@ -58,7 +58,6 @@ class Settings(BaseModel):
     jack_weight: float = Field(default=10, ge=0, le=100)
     point_contact_frames: int = Field(default=2, ge=1, le=12)
     tap_interval_ms: int = Field(default=150, ge=0, le=1000)
-    allow_faster_taps: bool = True
     min_air_frames: int = Field(default=1, ge=0, le=30)
     held_release_air_frames: int = Field(default=4, ge=0, le=30)
     arc_path_mode: Literal["score", "trace"] = "score"

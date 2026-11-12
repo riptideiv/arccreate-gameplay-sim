@@ -136,7 +136,6 @@ class MultiFingerOptions:
     jack_free: int = 4
     jack_weight: float = 0.0
     tap_interval_ms: int = 0  # Minimum press-to-press interval for consecutive point taps on one finger.
-    allow_faster_taps: bool = False  # Prefer a short repeat to a miss.
     # The most peak acceleration (m/s^2; 0: off) a finger may need, counted for a rest-to-rest minimum-jerk move
     # (MIN_JERK_PEAK d/T^2): a hand's move in the air between two touches (d over the air time T, from where _release
     # lets it go to where _arrival needs it; _Graph.air_over), and each jump composing makes inside a touch
@@ -445,7 +444,6 @@ class MultiCost:
     missed_ticks: int = 0
     arc_trace_deviation_s: float = 0.0
     missed_red_notes: int = 0
-    tap_interval_shortfall_frames: int = 0
 
     def __add__(self, other):
         return MultiCost(self.base + other.base, self.shares + other.shares,
@@ -461,8 +459,7 @@ class MultiCost:
                          self.preference + other.preference, self.accel_over + other.accel_over,
                          self.crossing_depth + other.crossing_depth, self.missed_ticks + other.missed_ticks,
                          self.arc_trace_deviation_s + other.arc_trace_deviation_s,
-                         self.missed_red_notes + other.missed_red_notes,
-                         self.tap_interval_shortfall_frames + other.tap_interval_shortfall_frames)
+                         self.missed_red_notes + other.missed_red_notes)
 
     def weighted(self, options: PlannerOptions, multi: MultiFingerOptions):
         extra = (self.shares * multi.share_weight + self.second_touches * multi.second_finger_weight
@@ -1301,21 +1298,14 @@ class _Graph:
         return (part.stop == c.up_frame and c.held_to_end and c.occupation.kind in self.options.held_release_air_kinds
                 and self.options.holds_to_end(c.occupation))
 
-    def tap_interval_shortfall(self, previous: Touch | None, current: Touch) -> int:
-        if not self.multi.tap_interval_ms or previous is None:
-            return 0
-        if (previous.single is None or previous.single.occupation.continuous_contact
-                or current.single is None or current.single.occupation.continuous_contact):
-            return 0
-        minimum = (self.multi.tap_interval_ms * 60 + 999) // 1000
-        return max(0, minimum - (current.down - previous.down))
-
     def travel(self, previous: Touch | None, current: Touch):
         if previous is None:
             return 0.0
         if current.down - previous.up < self.options.min_air_frames:
             return None
-        if not self.multi.allow_faster_taps and self.tap_interval_shortfall(previous, current):
+        if (self.multi.tap_interval_ms and (current.down - previous.down) * 1000 < self.multi.tap_interval_ms * 60
+                and previous.single is not None and not previous.single.occupation.continuous_contact
+                and current.single is not None and not current.single.occupation.continuous_contact):
             return None
         if current.down - previous.up < self.options.held_release_air_frames and self.held_release(previous):
             return None
@@ -1963,8 +1953,6 @@ class _Graph:
             features["preference"] = self.preference(c, new, mine, theirs, hand)
         if self.multi.accel_max_m_s2:
             features["accel_over"] = self.air_over(previous, new)
-        if self.multi.allow_faster_taps:
-            features["tap_interval_shortfall_frames"] = self.tap_interval_shortfall(previous, new)
         moved = None
         if (partner is not None and not partner.bridges and all(p.candidate.occupation.kind in ("hold", "chain") for p in partner.parts)
                 and self.overlap_cost(new.id, partner.id) is None):
@@ -2722,8 +2710,7 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     states = [(initial, MultiCost(), None, crossing.initial if crossing else None)]
     visited, pruned = 1, 0
     def rank(cost):
-        return (cost.missed_ticks, cost.missed_red_notes, cost.tap_interval_shortfall_frames,
-                cost.weighted(options, multi))
+        return (cost.missed_ticks, cost.missed_red_notes, cost.weighted(options, multi))
     def crossing_cost(cost, seconds, extra_distance=0.):
         return replace(cost, base=replace(cost.base, crossing_seconds=seconds,
                                           distance_m=cost.base.distance_m + extra_distance))

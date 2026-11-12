@@ -102,7 +102,6 @@ def test_requested_dashboard_defaults_and_idle_speed_affects_crossing_plan(tmp_p
     from plan_cache import request_key
     settings=Settings()
     assert (settings.repeat_comfort_ms,settings.tap_interval_ms)==(180,150)
-    assert settings.allow_faster_taps
     assert (settings.jack_gap_ms,settings.jack_free,settings.jack_weight)==(133,2,10)
     assert settings.scroll_speed==2.5 and settings.song_delay_ms==0
     assert settings.prefer_arc_trace and settings.full_arc_hold

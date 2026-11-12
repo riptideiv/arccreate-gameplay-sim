@@ -79,10 +79,3 @@ def test_strict_tap_interval_controls_point_repeats(tmp_path):
     assert len(api.plan_chart(loaded, planner=planner, multi=multi).plan.touches) == 2
     with pytest.raises(ValueError, match='no candidate path'):
         api.plan_chart(loaded, planner=planner, multi={**multi, 'tap_interval_ms': 150})
-    fallback = {**multi, 'tap_interval_ms': 150, 'allow_faster_taps': True}
-    result = api.plan_chart(loaded, planner=planner, multi=fallback).plan
-    assert len(result.touches) == 2
-    assert result.cost.tap_interval_shortfall_frames == 3
-    alternating = api.plan_chart(loaded, planner={'point_window_ms': 0}, multi=fallback).plan
-    assert len(alternating.touches) == 2
-    assert alternating.cost.tap_interval_shortfall_frames == 0
