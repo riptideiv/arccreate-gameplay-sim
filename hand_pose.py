@@ -23,11 +23,11 @@ HAND_PARTS = (
 )
 
 
-VERSION = "pivot-beam-arms-3"
+VERSION = "pivot-beam-arms-4"
 NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
-# Fixed shoulder pivots and inward/downward elbow poles in tablet space.
+# Fixed shoulder pivots and outward/downward elbow poles in tablet space.
 SHOULDERS = np.array([[-0.18, -0.38, 0.17], [0.18, -0.38, 0.17]])
-ELBOW_POLES = np.array([[0.7, 0.0, -1.0], [-0.7, 0.0, -1.0]])
+ELBOW_POLES = np.array([[-0.7, 0.0, -1.0], [0.7, 0.0, -1.0]])
 UPPER_ARM_LENGTH = 0.29
 FOREARM_LENGTH = 0.26
 ARM_RADIUS = 0.020
@@ -392,8 +392,9 @@ def solve(
     active = np.asarray(active, dtype=bool)
     both_pinned = active.all(axis=1)
     # Keep glove clearance dominant when the wrist turn budget is very tight.
-    yaw_preference = min(1, angular_limit / 180)**2
-    arm_weight *= yaw_preference
+    wrist_freedom = min(1, angular_limit / 180)
+    yaw_preference = wrist_freedom**2
+    arm_weight *= wrist_freedom**3
     # Slow wrists need wider key intervals to traverse the angular catalogue;
     # the final 60 Hz interpolation still respects each frame's turn budget.
     stride = max(stride, math.ceil(30 * 60 / max(angular_limit, 1)))

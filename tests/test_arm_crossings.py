@@ -139,13 +139,13 @@ def test_elbow_swivel_keeps_both_lengths_and_the_shoulder_pivots():
     assert ARM_RADIUS == .020
 
 
-def test_neutral_elbows_point_inward_independently_of_wrist_bearing():
+def test_neutral_elbows_point_outward_independently_of_wrist_bearing():
     wrists = SHOULDERS + [0., .38, 0.]
     forward = np.array([[0., 1., 0.]] * 2)
     elbows = arm_elbows(wrists, forward)
     np.testing.assert_allclose(elbows, arm_elbows(wrists, -forward))
-    assert elbows[0, 0] > SHOULDERS[0, 0]
-    assert elbows[1, 0] < SHOULDERS[1, 0]
+    assert elbows[0, 0] < SHOULDERS[0, 0]
+    assert elbows[1, 0] > SHOULDERS[1, 0]
 
 
 @pytest.mark.skipif(not os.getenv("ARCCREATE_ARGHENA_TAKE"), reason="requires the saved local Arghena take")
