@@ -31,7 +31,16 @@
 
 下载工具、虚拟环境、导入媒体、演奏与缓存忽略于 Git；清单与可复现源码／配置提交。交互签名提示在当前执行环境不可用，任务提交按命令使用 `commit.gpgsign=false`，未修改全局签名或身份。
 
-服务仍为 loopback:8765 与已有 Tailscale 地址；launchd 显式配置 `BLENDER_BIN`，源码默认 PATH／本地安装，不加载房间场景。重载前检查 `/api/state`；新增 UI 模块要检查静态白名单，不能为加载新界面中断活动演奏。
+## 工作台部署
+
+模拟器更新提交后，在提供工作台的 Mac 上运行部署脚本。脚本运行 Python 和 JavaScript 测试，更新独立的工作台源码目录，重启 LaunchAgent，并验证 loopback 和 Tailscale 两个入口。已有演奏、曲库、虚拟环境和缓存保存在部署目录中。服务重启前检查活动任务，有任务时等它结束再重试。
+
+在主工作区的 `output/dashboard-deploy.json` 保存本机配置。键 `launchd_plist` 指向工作台的 plist，`loopback_url` 填本机后端，`dashboard_url` 填 `tailscale serve status` 显示的 HTTPS 地址。`output/` 下的配置由 Git 忽略。
+
+```sh
+git_dir=$(git rev-parse --path-format=absolute --git-common-dir)
+.venv/bin/python tools/deploy_dashboard.py --config "$git_dir/../output/dashboard-deploy.json"
+```
 
 ## 后续修复分支
 

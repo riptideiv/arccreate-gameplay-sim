@@ -88,7 +88,7 @@ node tests/check_webgl_alignment.mjs "$TAKE"
 - 本 Mac 用 `BLENDER_BIN` 显式选 Blender **5.2.3 LTS**，Python 为本仓库 `.venv`。不同 Blender 版本需检查 EEVEE／动画 API，不能假设相同。
 - Blender 查找：`BLENDER_BIN` → PATH → `.tools/Blender.app`。launchd 中可指向已有共享安装，但源码不假设父工作区路径；保持相机投影与 FFmpeg 混流一致。
 - 新游戏画面才需要原生 ArcCreate；纯展示迁移需要已完成演奏、Blender、Node 和 FFmpeg。
-- 服务 `com.dafeiyu.rhythm-workbench` 绑定 loopback:8765，Tailscale Serve 提供 `https://macbook-pro---riptideiv.tail57056e.ts.net/`。先看 `/api/state`；不要为静态界面改动中断活动规划／导出。新增静态文件若不在服务白名单，必须等空闲后重载。
+- 工作台绑定 loopback，Tailscale Serve 提供局域网外访问。实际地址用 `tailscale serve status` 查看。部署前等待规划和导出任务完成，部署方法见[工作台部署](rhythm-git-workflow.md#工作台部署)。
 - Linux／其他引擎保持名称大小写、相对视频路径、打包图像、30 fps 视频和 60 Hz 动作。测试 HTTP byte-range、移动端拖动。无头 Blender 可能需要明确图形后端；实际渲染确认，不能仅凭配置旗标推断 GPU 生效。
 - 保留旧房间和历史快照。后续环境修改共享布景构建器并更新保存演奏，不分叉维护浏览器道具。
 
