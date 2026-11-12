@@ -193,39 +193,41 @@ def boundary_subframes(routes):
 
 
 def solve_swivels(points, poses, parts, routes, gap):
-    """Choose smooth shoulder/elbow motion around the fixed shoulder pivots."""
-    from hand_pose import arm_cost, bases, proxies
+    """Blend bounded corrections around fixed elbow poles across the take."""
+    from hand_pose import arm_metrics, arm_posture_cost, bases, proxies
 
-    frames = np.arange(len(points))
-    weights = []
-    for route in routes:
-        distance = route["start_frame"] - frames
-        if route["end_frame"] is not None:
-            distance = np.maximum(distance, frames - route["end_frame"])
-        u = np.clip(1 - distance/10, 0, 1)
-        weights.append(u*u*(3 - 2*u))
-    weights = np.array(weights)
-    weights /= np.maximum(1, weights.sum(axis=0))
-    degrees = (0., -30., 30., -45., 45., -60., 60., -75., 75., -85., 85.)
+    stride, radius = 24, 32
+    windows = []
+    coverage = np.zeros(len(points))
+    for centre in range(0, len(points)+stride, stride):
+        start = max(0, centre-radius+1)
+        stop = min(len(points), centre+radius)
+        samples = np.arange(start, stop)
+        u = 1 - abs(samples-centre)/radius
+        weight = u*u*(3 - 2*u)
+        windows.append((start, stop, samples, weight))
+        coverage[start:stop] += weight
+    coverage = np.maximum(1, coverage)
+    degrees = np.linspace(-50, 50, 7)
     catalogue = np.array([(left, right) for left in degrees for right in degrees])
     swivels = np.zeros((len(points), 2))
+    selected = np.zeros((len(windows), 2))
     boundaries = boundary_subframes(routes)
-    for weight in weights:
-        region = np.flatnonzero(weight)
-        if not len(region):
-            continue
-        boundary = boundaries[(region[0] <= boundaries) & (boundaries <= region[-1])]
-        frames = np.unique(np.r_[np.arange(region[0]*2, region[-1]*2 + 1)/2, boundary])
+    indices = list(range(len(windows)))
+    # Revisit the keys after their neighbours have been placed.
+    for index in indices + indices[::-1]:
+        start, stop, samples, weight = windows[index]
+        weight = weight / coverage[start:stop]
+        swivels[start:stop] -= weight[:, None] * selected[index]
+        boundary = boundaries[(start <= boundaries) & (boundaries < stop-1)]
+        frames = np.unique(np.r_[np.arange(start*2, (stop-1)*2 + 1)/2, boundary])
         layers = layers_at(frames, routes)
-        frames, layers = frames[layers != 0], layers[layers != 0]
-        if not len(frames):
-            continue
         i = np.minimum(frames.astype(int), len(points)-2)
         u = (frames - i)[:, None, None]
         p = points[i] * (1-u) + points[i+1] * u
         q = poses[i] * (1-u) + poses[i+1] * u
         centres = [proxies(q[:, h], parts[h])[0] + p[:, h, None, :] for h in range(2)]
-        w = np.interp(frames, np.arange(len(weight)), weight)
+        w = np.interp(frames, samples, weight)
         current = sample_swivels(swivels, frames)
         candidates = current + w[None, :, None] * catalogue[:, None, :]
         shape = (len(catalogue), *centres[0].shape)
@@ -233,10 +235,15 @@ def solve_swivels(points, poses, parts, routes, gap):
         margin = layer_margin(expanded, q, parts, layers, candidates)
         shortfall = np.maximum(0, gap-margin) * 1000
         cost = shortfall.max(axis=1)**2 * 300 + np.mean(shortfall**2, axis=1) * 100
-        cost += arm_cost(expanded, bases(q)[..., 1], parts, gap, candidates).mean(axis=1)
-        cost += .002 * np.sum(catalogue**2, axis=1)
+        metrics = arm_metrics(expanded, bases(q)[..., 1], parts, candidates)
+        # Keep the arms apart even when their projected touch order is uncrossed.
+        overlap = np.maximum(0, gap-metrics[0]) * 1000
+        cost += overlap.max(axis=1)**2 * 50 + np.mean(overlap**2, axis=1) * 100
+        cost += arm_posture_cost(metrics, gap).mean(axis=1)
+        cost += .03 * np.sum(catalogue**2, axis=1)
         chosen = catalogue[int(np.argmin(cost))]
-        swivels += weight[:, None] * chosen
+        selected[index] = chosen
+        swivels[start:stop] += weight[:, None] * chosen
     return swivels
 
 

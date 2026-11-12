@@ -8,7 +8,7 @@ import pytest
 
 from arc_hand_order.planning.arm_crossings import ArmState, CrossingGraph, HandPath, extend, order
 from crossing_motion import CrossingMotionError, layer_clearances, layer_margin, layers_at, validate
-from hand_pose import ARM_RADIUS, FOREARM_LENGTH, HAND_PARTS, SHOULDERS, UPPER_ARM_LENGTH, arm_elbows, proxies
+from hand_pose import ARM_RADIUS, FOREARM_LENGTH, HAND_PARTS, SHOULDERS, UPPER_ARM_LENGTH, arm_elbows
 from motion_paths import positions
 
 
@@ -139,6 +139,15 @@ def test_elbow_swivel_keeps_both_lengths_and_the_shoulder_pivots():
     assert ARM_RADIUS == .020
 
 
+def test_neutral_elbows_point_inward_independently_of_wrist_bearing():
+    wrists = SHOULDERS + [0., .38, 0.]
+    forward = np.array([[0., 1., 0.]] * 2)
+    elbows = arm_elbows(wrists, forward)
+    np.testing.assert_allclose(elbows, arm_elbows(wrists, -forward))
+    assert elbows[0, 0] > SHOULDERS[0, 0]
+    assert elbows[1, 0] < SHOULDERS[1, 0]
+
+
 @pytest.mark.skipif(not os.getenv("ARCCREATE_ARGHENA_TAKE"), reason="requires the saved local Arghena take")
 def test_arghena_118_119_cannot_flip_mid_crossing_and_can_swap(monkeypatch):
     import plan_excerpt
@@ -149,13 +158,9 @@ def test_arghena_118_119_cannot_flip_mid_crossing_and_can_swap(monkeypatch):
     motion = json.loads((take/"motion.json").read_text())
     data = np.stack([motion["hands"][h] for h in ("left", "right")], axis=1)
     points = data[..., [0, 2, 1]] * [1, -1, 1] - [.405, .802, .708]
+    # The historical export has fingertip samples and no solved elbow poses.
+    # Reproduce its sustained crossing, then inject a layer flip below.
     assert (points[430:452, 0, 0] > points[430:452, 1, 0]).all()
-    parts = [[(n, (sign*x, y, z), r) for n, (x, y, z), r in HAND_PARTS]
-             for sign in (1, -1)]
-    pose = data[[430, 451], :, -2:]
-    centres = [proxies(pose[:, h], parts[h])[0] + points[[430, 451], h, None] for h in range(2)]
-    historical_layer, _ = layer_clearances(centres, pose, parts, np.array([-1, 1]))
-    assert (historical_layer > 0).all()
 
     chart = Path(saved["chart"]["path"])
     start, end = [saved["preview"][f"chart_{k}_ms"] for k in ("start", "end")]

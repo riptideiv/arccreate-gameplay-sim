@@ -23,11 +23,11 @@ HAND_PARTS = (
 )
 
 
-VERSION = "pivot-beam-arms-2"
+VERSION = "pivot-beam-arms-3"
 NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
-# Seated player in tablet-local meters. The elbow pole points outward and down.
+# Fixed shoulder pivots and inward/downward elbow poles in tablet space.
 SHOULDERS = np.array([[-0.18, -0.38, 0.17], [0.18, -0.38, 0.17]])
-ELBOW_POLES = np.array([[-0.7, 0.0, -1.0], [0.7, 0.0, -1.0]])
+ELBOW_POLES = np.array([[0.7, 0.0, -1.0], [-0.7, 0.0, -1.0]])
 UPPER_ARM_LENGTH = 0.29
 FOREARM_LENGTH = 0.26
 ARM_RADIUS = 0.020
@@ -60,6 +60,7 @@ def proxies(angles, parts):
 
 
 def arm_elbows(wrists, forward, swivels=None):
+    """Place elbows from wrist position and fixed poles, independent of wrist bearing."""
     axis = wrists - SHOULDERS
     distance = np.linalg.norm(axis, axis=-1)
     axis /= np.maximum(distance[..., None], 1e-9)
@@ -69,14 +70,6 @@ def arm_elbows(wrists, forward, swivels=None):
     along = (UPPER_ARM_LENGTH**2 - FOREARM_LENGTH**2 + reach**2) / (2 * reach)
     away = np.sqrt(np.maximum(0, UPPER_ARM_LENGTH**2 - along**2))
     pole = ELBOW_POLES - (ELBOW_POLES * axis).sum(axis=-1)[..., None] * axis
-    pole /= np.maximum(np.linalg.norm(pole, axis=-1, keepdims=True), 1e-9)
-    # Swivel the elbow toward the hand's backward bearing. The outward/downward
-    # bias limits the swivel and leaves pitch available for tapping.
-    backward = -forward.copy()
-    backward[..., 2] = 0
-    backward /= np.maximum(np.linalg.norm(backward, axis=-1, keepdims=True), 1e-9)
-    steering = backward - (backward * axis).sum(axis=-1)[..., None] * axis
-    pole += 0.65 * steering
     pole /= np.maximum(np.linalg.norm(pole, axis=-1, keepdims=True), 1e-9)
     if swivels is not None:
         angle = np.radians(swivels)[..., None]
@@ -151,7 +144,11 @@ def arm_metrics(centres, forward, parts, swivels=None):
 
 
 def arm_cost(centres, forward, parts, gap, swivels=None):
-    margin, yaw_cos, flexion, reach = arm_metrics(centres, forward, parts, swivels)
+    return arm_posture_cost(arm_metrics(centres, forward, parts, swivels), gap)
+
+
+def arm_posture_cost(metrics, gap):
+    margin, yaw_cos, flexion, reach = metrics
     sideways_bend = 320 * (1 - yaw_cos) + 1400 * np.maximum(0, 0.86 - yaw_cos) ** 2
     # Allow downward flex for taps. Backward or excessive flex is less useful.
     pitch_bend = (
@@ -398,7 +395,7 @@ def solve(
     original = points.copy()
     count = len(points)
     swivels = None
-    if routes:
+    if routes is not None:
         from crossing_motion import (
             CrossingMotionError, boundary_subframes, layer_margin, layers_at, sample_swivels,
             solve_swivels, verify,
@@ -411,7 +408,8 @@ def solve(
         )
         swivels = solve_swivels(points, neutral_poses, parts, routes, gap)
         neutral_report = diagnostics(points, neutral_poses, parts, gap)
-        if not neutral_report["residual_proxy_overlap_samples"]:
+        if (not neutral_report["residual_proxy_overlap_samples"]
+                and (routes or not arm_diagnostics(points, neutral_poses, parts, swivels)["overlap_intervals"])):
             try:
                 verify(points, neutral_poses, parts, routes, gap, swivels=swivels)
             except CrossingMotionError:
@@ -585,14 +583,14 @@ def solve(
             where=cap > 1e-9,
         )
         poses[a : b + 1] = route[k] + (route[k + 1] - route[k]) * alpha[:, :, None]
-    if routes:
+    if routes is not None:
         swivels = solve_swivels(points, poses, parts, routes, gap)
     points, body_lifts = air_paths(
         points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed,
         routes=routes, swivels=swivels,
     )
     lifts += body_lifts
-    if routes and body_lifts:
+    if routes is not None and body_lifts:
         swivels = solve_swivels(points, poses, parts, routes, gap)
     report = diagnostics(points, poses, parts, gap)
     report.update(
