@@ -143,8 +143,12 @@ def arm_metrics(centres, forward, parts, swivels=None):
     return margin, np.clip(yaw_cos, -1, 1), flexion, reach
 
 
-def arm_cost(centres, forward, parts, gap, swivels=None):
-    return arm_posture_cost(arm_metrics(centres, forward, parts, swivels), gap)
+def arm_cost(centres, forward, parts, gap, swivels=None, *, yaw_preference=1.):
+    # Prefer spending the wrist's range on tap flexion. A fixed elbow pole can
+    # otherwise make a sideways turn cheaper just by aligning it to the forearm.
+    yaw = np.arctan2(-forward[..., 0], forward[..., 1])
+    sideways = 3500 * yaw_preference * np.sum(1 - np.cos(yaw - np.radians(NEUTRAL[:, 1])), axis=-1)
+    return arm_posture_cost(arm_metrics(centres, forward, parts, swivels), gap) + sideways
 
 
 def arm_posture_cost(metrics, gap):
@@ -388,7 +392,8 @@ def solve(
     active = np.asarray(active, dtype=bool)
     both_pinned = active.all(axis=1)
     # Keep glove clearance dominant when the wrist turn budget is very tight.
-    arm_weight *= min(1, angular_limit / 180)**2
+    yaw_preference = min(1, angular_limit / 180)**2
+    arm_weight *= yaw_preference
     # Slow wrists need wider key intervals to traverse the angular catalogue;
     # the final 60 Hz interpolation still respects each frame's turn budget.
     stride = max(stride, math.ceil(30 * 60 / max(angular_limit, 1)))
@@ -488,7 +493,8 @@ def solve(
         penalty = _pose_penalty(margin, floor, gap, arm_weight, both_pinned[f])
         centres = (ca + points[f, 0], cb + points[f, 1])
         if arm_weight:
-            penalty += arm_weight * arm_cost(centres, forward, parts, gap, None if swivels is None else swivels[f])
+            penalty += arm_weight * arm_cost(centres, forward, parts, gap, None if swivels is None else swivels[f],
+                                             yaw_preference=yaw_preference)
         penalty += crossing_penalty(centres, states, f)
         return penalty
 
@@ -545,7 +551,8 @@ def solve(
                 centres = [proxies(angles[:, h], parts[h])[0] + points[f, h] for h in range(2)]
                 if arm_weight:
                     penalty += arm_weight * arm_cost(centres, bases(angles)[..., 1], parts, gap,
-                                                 None if swivels is None else swivels[f])
+                                                     None if swivels is None else swivels[f],
+                                                     yaw_preference=yaw_preference)
                 penalty += crossing_penalty(centres, angles, f)
             max_penalty = np.maximum(max_penalty, penalty)
         if routes:
