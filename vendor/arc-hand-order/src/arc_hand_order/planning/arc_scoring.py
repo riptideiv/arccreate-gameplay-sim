@@ -337,7 +337,7 @@ def native_occupations(
                 ),
             )
         )
-    items.sort(key=lambda o: (o.start_ms, o.end_ms, o.occupation_id))
+    items.sort(key=lambda o: (o.start_ms, o.end_ms, o.is_red, o.occupation_id))
     return replace(
         occupations,
         items=tuple(items),
@@ -360,7 +360,7 @@ def world(projection, xy):
     return cache[xy]
 
 
-def hit(note, xy, time_ms):
+def hit(note, xy, time_ms, *, fraction=None):
     t = min(max(time_ms, note.start), note.end)
     cache = getattr(note, "_scoring_positions", None)
     if cache is None:
@@ -370,11 +370,13 @@ def hit(note, xy, time_ms):
         cache[t] = note.position(t)
     x, y = cache[t]
     if hasattr(xy, 'collides'):
+        if fraction is not None and not xy.in_contact_rectangle("chain", x, y, fraction):
+            return False
         return xy.collides(x, y, certain=True, inset=8)
     return abs(xy[0] - x) <= HALF_X and abs(xy[1] - y) <= HALF_Y
 
 
-def covers(item, path, down, offset, projection, points=None):
+def covers(item, path, down, offset, projection, points=None, *, fraction=None):
     """Actual path samples, never an averaged or time-collapsed swept hitbox."""
     from .two_finger import frame_ms, frame_at_or_after
 
@@ -391,7 +393,7 @@ def covers(item, path, down, offset, projection, points=None):
             (
                 f
                 for f in range(first, last)
-                if hit(note, world(projection, path[f - down]), frame_ms(f, offset))
+                if hit(note, world(projection, path[f - down]), frame_ms(f, offset), fraction=fraction)
             ),
             None,
         )
@@ -431,7 +433,7 @@ def anchors(item, projection):
     return tuple(pool)
 
 
-def profile(item, projection, max_speed, offset):
+def profile(item, projection, max_speed, offset, *, fraction=None):
     """Bounded single-chain search; return a fully covered path or None.
 
     First try stable anchors. Otherwise visit tick regions with a small beam,
@@ -468,7 +470,7 @@ def profile(item, projection, max_speed, offset):
             (
                 f
                 for f, t in zip(frames, times)
-                if any(n.start <= t <= n.end and hit(n, xy, t) for n in item.notes)
+                if any(n.start <= t <= n.end and hit(n, xy, t, fraction=fraction) for n in item.notes)
             ),
             None,
         )
@@ -484,7 +486,7 @@ def profile(item, projection, max_speed, offset):
                     f
                     for f in fs
                     if f >= bound
-                    and hit(source_note(item, point), xy, frame_ms(f, offset))
+                    and hit(source_note(item, point), xy, frame_ms(f, offset), fraction=fraction)
                 ),
                 None,
             )
@@ -506,7 +508,7 @@ def profile(item, projection, max_speed, offset):
             for anchor in (*pool, *((p,) if p is not None else ())):
                 xy = world(projection, anchor)
                 possible = [
-                    f for f in fs if f >= previous and hit(n, xy, frame_ms(f, offset))
+                    f for f in fs if f >= previous and hit(n, xy, frame_ms(f, offset), fraction=fraction)
                 ]
                 if possible:
                     for f in (possible[0], possible[len(possible) // 2], possible[-1]):
@@ -557,7 +559,7 @@ def profile(item, projection, max_speed, offset):
                 path.append((p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
             else:
                 path.append(route[k][1])
-        caught = covers(item, path, a, offset, projection)
+        caught = covers(item, path, a, offset, projection, fraction=fraction)
         if caught is not None:
             return a, tuple(path), tuple(caught)
     return None

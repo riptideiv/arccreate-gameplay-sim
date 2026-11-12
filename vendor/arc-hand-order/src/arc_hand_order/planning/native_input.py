@@ -7,12 +7,29 @@ up-vector range. Native replay remains the final judge.
 
 import math
 
+from . import rules
+
 
 # Measured from JudgementService.Awake in the fixed 1148 x 802 exporter.
 # These are screen fractions, independent of the physical tablet dimensions.
 SCREEN_HALF_X = 135.315277 / 1148
 SCREEN_HALF_Y = 172.058334 / 802
 TILTS = (-0.05, -0.025, 0.0, 0.025, 0.05)
+LANE_WIDTH = 425.0  # ArcCreate game units (100 per Unity world unit)
+
+
+def screen_hitbox(kind, width, height):
+    """Native screen-space half-extents in metres: left/right, down, up."""
+    arc_x, arc_y = SCREEN_HALF_X * width, SCREEN_HALF_Y * height
+    if kind == "chain":
+        return arc_x, arc_y, arc_y
+    lane_x = arc_x * LANE_WIDTH / (2 * rules.HITBOX_X)
+    lane_y = arc_y * LANE_WIDTH / (2 * rules.HITBOX_Y)
+    if kind == "sky":
+        return (lane_x * 2 * rules.SKY_TAP_X / LANE_WIDTH,
+                lane_y * 2 * rules.SKY_TAP_DOWN / LANE_WIDTH,
+                lane_y * 2 * rules.SKY_TAP_UP / LANE_WIDTH)
+    return lane_x, lane_y, lane_y
 
 
 class CameraEnvelope:
@@ -35,6 +52,7 @@ class CameraEnvelope:
             up = (r[1] * fz - r[2] * fy, r[2] * fx - r[0] * fz, r[0] * fy - r[1] * fx)
             self.bases.append((r, up))
         self.projected = {}
+        self.rectangles = {}
 
     def project(self, x, y, view=2):
         key = (x, y, view)
@@ -65,6 +83,23 @@ class CameraEnvelope:
             (p + distance * r) * 100 for p, r in zip(self.position[:2], ray[:2])
         )
 
+    def contact_rectangle(self, kind, x, y, fraction):
+        """Intersect the inner screen rectangles over the camera tilt envelope."""
+        key = (kind, x, y, fraction)
+        if key not in self.rectangles:
+            if len(self.rectangles) >= 65536:
+                self.rectangles.clear()
+            centres = [self.project(x, y, view) for view in range(len(TILTS))]
+            dx, down, up = (fraction * edge for edge in screen_hitbox(kind, self.width, self.height))
+            xs, ys = zip(*centres)
+            # Exported contact positions are rounded to 0.01 mm.
+            inset = .00002
+            self.rectangles[key] = (max(-self.width/2, max(xs)-dx) + inset,
+                                    max(-self.height/2, max(ys)-down) + inset,
+                                    min(self.width/2, min(xs)+dx) - inset,
+                                    min(self.height/2, min(ys)+up) - inset)
+        return self.rectangles[key]
+
     def overlaps(self, a, b, view=2):
         if abs(a[0] - b[0]) <= 190 and abs(a[1] - b[1]) <= 250:
             return True
@@ -91,8 +126,13 @@ class InputPoint(tuple):
         camera = camera_for(projection)
         samples = tuple(camera.unproject(xy, v) for v in range(len(TILTS)))
         point = super().__new__(cls, samples[2])
-        point.samples, point.camera = samples, camera
+        point.samples, point.camera, point.device_xy = samples, camera, xy
         return point
+
+    def in_contact_rectangle(self, kind, x, y, fraction):
+        left, bottom, right, top = self.camera.contact_rectangle(kind, x, y, fraction)
+        px, py = self.device_xy
+        return left - 1e-9 <= px <= right + 1e-9 and bottom - 1e-9 <= py <= top + 1e-9
 
     def collides(self, x, y, *, certain=False, inset=0):
         results = []

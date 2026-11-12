@@ -634,9 +634,11 @@ class Regions:
     """The notes' regions (``rules``) as convex device polygons, at the planning projection; a sky note's is
     ``sky_half_x`` game units to either side (rules.SKY_TAP_X, or SKY_DRAWN_HALF_X for its drawn width)."""
 
-    def __init__(self, projection: GameplayProjection, sky_half_x: float = rules.SKY_TAP_X):
+    def __init__(self, projection: GameplayProjection, sky_half_x: float = rules.SKY_TAP_X,
+                 contact_offset_fraction: float | None = None):
         self.projection = projection
         self.sky_half_x = sky_half_x
+        self.contact_offset_fraction = contact_offset_fraction
         w, h = projection.width_m, projection.height_m
         self.screen = [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]
         self._polygon_cache = {}
@@ -664,6 +666,13 @@ class Regions:
 
     def _polygon(self, occupation, time_ms):
         region = occupation.region_at(min(max(time_ms, occupation.start_ms), occupation.end_ms))
+        if self.contact_offset_fraction is not None:
+            from .native_input import camera_for
+            camera = camera_for(self.projection)
+            centre = target_xy(occupation, time_ms, self.projection)
+            x0, y0, x1, y1 = camera.contact_rectangle(
+                occupation.kind, *camera.unproject(centre, 2), self.contact_offset_fraction)
+            return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)] if x0 < x1 and y0 < y1 else None
         if region.lane is not None:
             return self.lanes[region.lane]
         if occupation.kind == "sky":
@@ -810,7 +819,8 @@ class _Graph:
                                 if multi.tick_contacts and occupations is not None else
                                 tuple(c.occupation for g in groups for c in g if c.occupation.kind == "chain"))
         self.meetings = meetings
-        self.regions = (Regions(projection, SKY_DRAWN_HALF_X if multi.sky_aim_drawn else rules.SKY_TAP_X)
+        self.regions = (Regions(projection, SKY_DRAWN_HALF_X if multi.sky_aim_drawn else rules.SKY_TAP_X,
+                                options.contact_offset_fraction)
                         if (multi.share or multi.second_finger or options.scoring_arcs) else None)
         self.offset = options.audio_offset_ms
         self.fixed = dict(options.fixed_hands)
@@ -1071,6 +1081,11 @@ class _Graph:
             self.targets[c.id] = path
         return path
 
+    def _candidate_xy(self, candidate, frame):
+        if candidate.contact_path is not None and candidate.down_frame <= frame < candidate.up_frame:
+            return candidate.contact_path[frame - candidate.down_frame]
+        return self.point(candidate.occupation, frame)
+
     def _intern(self, parts, bridges, path):
         key = (tuple((p.candidate.id, p.start, p.stop) for p in parts), bridges, path)
         touch = self.interned.get(key)
@@ -1129,7 +1144,7 @@ class _Graph:
                     return None
                 after = next(p for p in sorted(parts, key=lambda p: p.start) if p.start >= span[1])
                 a_xy = path[span[0] - 1 - down]
-                b_xy = self.point(after.candidate.occupation, span[1])
+                b_xy = self._candidate_xy(after.candidate, span[1])
                 s = (f - span[0] + 1) / (span[1] - span[0] + 1)
                 path.append((a_xy[0] + s * (b_xy[0] - a_xy[0]), a_xy[1] + s * (b_xy[1] - a_xy[1])))
                 previous, served = path[-1], None  # a bridge has its own distance rule
@@ -1159,7 +1174,8 @@ class _Graph:
             return None
         if self.options.scoring_arcs:
             from .arc_scoring import covers
-            if any(covers(p.candidate.occupation,path,down,self.offset,self.projection) is None
+            if any(covers(p.candidate.occupation,path,down,self.offset,self.projection,
+                          fraction=self.options.contact_offset_fraction) is None
                    for p in parts if p.candidate.occupation.native_scoring):return None
         touch = self._intern(parts, tuple(bridges), tuple(path))
         if over:
@@ -1180,16 +1196,16 @@ class _Graph:
                 poly=self.shared(live,frame)
                 if poly:
                     arc=next((c for c in live if c.occupation.native_scoring),None)
-                    preferred=arc.contact_path[frame-arc.down_frame] if arc is not None and arc.contact_path is not None else self.point(mandatory[0].occupation,frame)
+                    preferred = self._candidate_xy(arc or mandatory[0], frame)
                     return _nearest(poly,preferred)
                 live=mandatory
         if len(live) == 1:
-            return self.point(live[0].occupation, frame)
+            return self._candidate_xy(live[0], frame)
         poly = self.shared(live, frame)
         if not poly:
             return None
         chain = next((c for c in live if c.occupation.kind == "chain"), live[0])
-        return _nearest(poly, self.point(chain.occupation, frame))
+        return _nearest(poly, self._candidate_xy(chain, frame))
 
     def _ease(self, path, lives, down, partner):
         """``path`` (a point per frame from ``down``) with the jumps composing makes spread out for accel_max_m_s2,
@@ -1580,7 +1596,8 @@ class _Graph:
             tail=path[max(0,len(t.path)-1):]
             if any(math.dist(a,b)*60>limit for a,b in zip(tail,tail[1:])):continue
             # A newly introduced tick can be caught on an earlier prefix frame.
-            if covers(c.occupation,path,t.down,self.offset,self.projection) is None:continue
+            if covers(c.occupation,path,t.down,self.offset,self.projection,
+                      fraction=self.options.contact_offset_fraction) is None:continue
             bridges=t.bridges+(((t.up,c.down_frame),) if c.down_frame>t.up else ())
             variants.append(self._intern(t.parts+(Part(c,c.down_frame,c.up_frame),),bridges,path))
         result=tuple(variants)
@@ -2024,7 +2041,8 @@ class _Graph:
                 first=max(new.down,frame_at_or_after(point.contact_window.earliest_ms,self.offset))
                 last=min(new.up,frame_at_or_after(point.contact_window.latest_ms+1,self.offset))
                 if not any((self.graced.get(f) or (f in bindings.get(o.colour,()) and sum(f in fs for fs in bindings.values())==1))
-                           and hit(n,world(self.projection,new.xy(f)),frame_ms(f,self.offset)) for f in range(first,last)):
+                           and hit(n,world(self.projection,new.xy(f)),frame_ms(f,self.offset),
+                                   fraction=self.options.contact_offset_fraction) for f in range(first,last)):
                     return False
             validated.add(o.occupation_id)
         return True

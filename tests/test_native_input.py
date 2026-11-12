@@ -3,6 +3,7 @@
 from pathlib import Path
 from types import SimpleNamespace as N
 import sys
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from arc_hand_order import api
@@ -10,13 +11,49 @@ from arc_hand_order.planning.native_input import (
     CameraEnvelope,
     ArcInputGeometry,
     InputPoint,
+    TILTS,
+    screen_hitbox,
 )
 from arc_hand_order.planning.projection import GameplayProjection
 from arc_hand_order.planning.multi_finger import _Graph, Touch
+from arc_hand_order.planning.occupations import occupations_from_chart
+from arc_hand_order.planning.two_finger import PlannerOptions, build_candidates, frame_ms
 
 
 def projection():
     return GameplayProjection(api.load_device())
+
+
+@pytest.mark.parametrize("scoring", [False, True])
+def test_all_note_types_offer_xy_offsets_inside_the_inner_hitbox(tmp_path, scoring):
+    from arc_hand_order.planning.arc_scoring import native_occupations
+
+    chart_file = tmp_path / "offsets.aff"
+    chart_file.write_text("AudioOffset:0\n-\ntiming(0,120,4);(400,1);hold(650,950,4);"
+                          "arc(1100,1450,.5,.5,s,.5,.5,0,none,false);"
+                          "arc(1650,1650,.5,.5,s,1,1,0,none,true)[arctap(1650)];")
+    chart = api.load_chart(chart_file).chart
+    occupations = occupations_from_chart(chart)
+    if scoring:
+        occupations = native_occupations(occupations, set(), {e.event_id:e.timinggroup_id for e in chart.events},
+                                         chart_events=chart.events)
+    device = projection()
+    camera = CameraEnvelope(device)
+    options = PlannerOptions(contact_offset_fraction=.6, scoring_arcs=scoring, full_ground_hold=True)
+    for group in build_candidates(occupations, device, options):
+        item = group[0].occupation
+        assert len({c.first_xy[0] for c in group}) >= 3
+        assert len({c.first_xy[1] for c in group}) >= 3
+        dx, down, up = screen_hitbox(item.kind, device.width_m, device.height_m)
+        for c in group:
+            region = item.region_at(frame_ms(c.down_frame))
+            x, y = ((camera.unproject(device.lane_center_to_device(region.lane), 2))
+                    if region.lane else (region.x, region.y))
+            for view in range(len(TILTS)):
+                cx, cy = camera.project(x, y, view)
+                px, py = c.first_xy
+                assert abs(px - cx) <= .6 * dx + 1e-8
+                assert -.6 * down - 1e-8 <= py - cy <= .6 * up + 1e-8
 
 
 def test_native_screen_only_overlap_triggers_grace():

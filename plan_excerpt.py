@@ -27,7 +27,7 @@ def split_arc_ticks(occupations):
                                  down_window=point.contact_window,
                                  up_window=TimeWindow(point.contact_window.earliest_ms+1,None)))
     return replace(occupations, items=tuple(sorted(items,key=lambda o:(o.first_tick.time_ms if o.kind=="chain" else o.start_ms,
-                                                                    o.end_ms,o.occupation_id))))
+                                                                    o.end_ms,o.is_red,o.occupation_id))))
 
 
 def point_windows(occupations, duration, timing_window):
@@ -141,6 +141,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
     planner = {
         'scoring_arcs': scoring,
+        'contact_offset_fraction': .6,
         'point_window_ms': None,
         'full_point_window': True,
         'speed_max_m_s': settings.get('max_speed_m_s', 3.0),

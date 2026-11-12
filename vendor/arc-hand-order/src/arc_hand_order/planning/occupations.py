@@ -265,7 +265,7 @@ def occupations_from_chart(chart) -> OccupationSet:
         for i, (event, note) in enumerate(zip(source_events, notes, strict=True)):
             add(kind, [event], [i], [note])
     items.sort(key=lambda item: (item.first_tick.time_ms if item.kind == "chain" else item.start_ms,
-                               item.end_ms, item.occupation_id))
+                               item.end_ms, item.is_red, item.occupation_id))
     return OccupationSet(tuple(items), connections,
                          {event_id: item.occupation_id for item in items for event_id in item.source_event_ids},
                          tuple(taps), tuple(sky), tuple(holds), tuple(arcs), chart.audio_offset_ms)

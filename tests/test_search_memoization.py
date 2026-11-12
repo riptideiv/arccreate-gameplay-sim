@@ -40,7 +40,7 @@ def test_polygon_cache_clamps_time_isolates_geometry_and_returns_mutable_copies(
 
 
 def graph():
- g=object.__new__(_Graph);g.options=SimpleNamespace(speed_max_m_s=1);g.offset=0;g.projection=object()
+ g=object.__new__(_Graph);g.options=SimpleNamespace(speed_max_m_s=1,contact_offset_fraction=.6);g.offset=0;g.projection=object()
  g.native_geometry=SimpleNamespace(guard_path=lambda o,p,d,**kw:tuple(p))
  g.trace_preference=None;g.scoring_extensions={};g.extension_prefix_speed={};g._target_path=lambda c:c.contact_path
  g._intern=lambda parts,bridges,path:Touch(100,parts,bridges,0,len(path),path,0)
@@ -51,8 +51,8 @@ def graph():
 
 def test_extension_geometry_cached_without_losing_earlier_tick_windows(monkeypatch):
  g,old,c=graph();calls=[]
- def covers(o,path,down,offset,projection):
-  calls.append(tuple(path));assert path[0]==old.path[0];return [0] # New tick may settle on the old prefix.
+ def covers(o,path,down,offset,projection,*,fraction):
+  calls.append(tuple(path));assert fraction==.6 and path[0]==old.path[0];return [0] # New tick may settle on the old prefix.
  monkeypatch.setattr(arc_scoring,'covers',covers)
  a=g._scoring_extensions(old,c);assert len(a)==2 and len(calls)==2
  assert g._scoring_extensions(old,c) is a and len(calls)==2
@@ -61,7 +61,7 @@ def test_extension_geometry_cached_without_losing_earlier_tick_windows(monkeypat
 
 def test_extension_checks_prefix_at_its_exact_tolerance_and_new_boundary(monkeypatch):
  g,old,c=graph();calls=[]
- monkeypatch.setattr(arc_scoring,'covers',lambda *args:(calls.append(1) or None))
+ monkeypatch.setattr(arc_scoring,'covers',lambda *args,**kwargs:(calls.append(1) or None))
  bad=Touch(2,(),(),0,2,((0,0),(1.00002/60,0)),0)
  assert g._scoring_extensions(bad,c)==() and not calls
  c.first_xy=(.2,0);c.contact_path=((.2,0),(.2,0))
