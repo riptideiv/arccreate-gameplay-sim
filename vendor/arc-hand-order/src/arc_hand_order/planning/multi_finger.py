@@ -2725,13 +2725,28 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
 
     present = {c.occupation.occupation_id for group in groups for c in group}
     empty_items = iter(o for o in occupations.items if o.occupation_id not in present)
+    items = [group[0].occupation if group else next(empty_items) for group in groups]
+    def miss_cost(item):
+        return MultiCost(missed_ticks=item.score_weight, missed_red_notes=int(item.is_red))
+
+    def finish(cost, arms):
+        for route in crossing.finish(arms):
+            finished = crossing_cost(cost, route.crossed_seconds, route.extra_distance_m - arms.extra_distance_m)
+            yield rank(finished), finished, route
+
+    can_stop = crossing is not None and multi.allow_misses
+    remaining_ticks = sum(item.score_weight for item in items)
+    remaining_red = sum(item.is_red for item in items)
+    completed_prefix = None
+    final_alternatives = ()
     earliest = [min((c.down_frame for c in group),default=math.inf) for group in groups]
     if multi.tick_contacts:
         for index in range(len(earliest)-2,-1,-1): earliest[index] = min(earliest[index],earliest[index+1])
-    for k, group in enumerate(groups):
+    for k, (item, group) in enumerate(zip(items, groups)):
         following = {}
         f0 = int(earliest[k]) if math.isfinite(earliest[k]) else 0
-        item = group[0].occupation if group else next(empty_items)
+        remaining_ticks -= item.score_weight
+        remaining_red -= int(item.is_red)
         def retain(state, cost, node, arms):
             key = (state if options.crossing_pass_s else
                    tuple(graph.future(i, f0) for i in state[:4]) + graph.tail_key(state, f0))
@@ -2746,7 +2761,7 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                      states=len(states), states_completed=state_index,
                      candidates=len(group), visited=visited)
             if multi.allow_misses or item.is_red:
-                increment = MultiCost(missed_ticks=item.score_weight, missed_red_notes=int(item.is_red))
+                increment = miss_cost(item)
                 retain(state, cost + increment, (node, (), increment, item.start_ms, state, None, item), arms)
             for candidate in (() if item.occupation_id in multi.forced_misses or set(item.source_event_ids) & set(multi.forced_misses) else group):
                 for hand in HANDS:
@@ -2765,6 +2780,8 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
             item = group[0].occupation if group else occupations.items[k]
             raise ValueError(f"no candidate path at item {k}: {item.occupation_id} ({item.kind} at {item.start_ms} ms)")
         kept = list(following.values())
+        if crossing and k == len(groups) - 1:
+            final_alternatives = kept
         if multi.max_states and len(kept) > multi.max_states:
             kept.sort(key=lambda v: v[1])
             if (options.full_point_window and not item.continuous_contact
@@ -2787,6 +2804,21 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                 kept = distinct + [entry for entry in kept if id(entry) not in selected]
             kept = kept[:multi.max_states]
             pruned += 1
+        if can_stop and k + 1 < len(groups):
+            # A pending travel span can be legal with a future contact but
+            # impossible to finish in place. Remember a legal stopping point
+            # in case the final beam loses every finishable path.
+            missed_tail = MultiCost(missed_ticks=remaining_ticks, missed_red_notes=remaining_red)
+            for cost, _, node, _, arms in sorted(kept, key=lambda entry: entry[1]):
+                total = cost + missed_tail
+                if completed_prefix is not None and rank(total)[:4] > completed_prefix[0][:4]:
+                    break
+                routes = tuple(finish(total, arms))
+                for score, finished, route in routes:
+                    if completed_prefix is None or score < completed_prefix[0]:
+                        completed_prefix = (score, finished, node, route, k + 1)
+                if routes:
+                    break
         states = [(new, total, node, arms) for total, _, node, new, arms in kept]
         visited += len(states)
         progress('search', k + 1, len(groups), chart_ms=item.last_tick.time_ms,
@@ -2797,11 +2829,23 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
         # Padding the shorter path can reveal a detour that shortens a
         # crossing. The unfinished crossing cost is not a lower bound.
         for _, cost, node, arms in sorted(states, key=lambda entry: rank(entry[1])):
-            for route in crossing.finish(arms):
-                finished_cost = crossing_cost(cost, route.crossed_seconds, route.extra_distance_m - arms.extra_distance_m)
-                score = rank(finished_cost)
+            for score, finished_cost, route in finish(cost, arms):
                 if best is None or score < best[0]:
                     best = (score, finished_cost, node, route)
+        recovering = best is None
+        if recovering:
+            kept_nodes = {id(node) for _, _, node, _ in states}
+            for cost, _, node, _, arms in final_alternatives:
+                if id(node) in kept_nodes:
+                    continue
+                for score, finished, route in finish(cost, arms):
+                    if best is None or score < best[0]:
+                        best = (score, finished, node, route)
+        if recovering and completed_prefix is not None and (best is None or completed_prefix[0] < best[0]):
+            score, finished, node, route, stop = completed_prefix
+            for item in items[stop:]:
+                node = (node, (), miss_cost(item), item.start_ms, None, None, item)
+            best = (score, finished, node, route)
         if best is None:
             raise ValueError("no candidate path through the final contacts")
         _, cost, node, arms = best

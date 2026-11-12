@@ -33,6 +33,29 @@ def test_approach_above_requires_over_and_below_keeps_both_beam_keys():
     assert len({s.key for s in states}) == 2
 
 
+def test_allow_misses_can_finish_an_earlier_legal_path(tmp_path, monkeypatch):
+    from arc_hand_order import api
+
+    chart = tmp_path / "ending.aff"
+    chart.write_text("AudioOffset:0\n-\ntiming(0,120,4);(200,1);(400,1);(600,1);(800,1);")
+    finish = CrossingGraph.finish
+
+    def finish_before_conflict(graph, state):
+        if max(len(hand.points) for hand in state.paths) >= 36:
+            return ()
+        return finish(graph, state)
+
+    monkeypatch.setattr(CrossingGraph, "finish", finish_before_conflict)
+    result = api.plan_chart(api.load_chart(chart), planner={"point_window_ms": 0}, multi={
+        "allow_misses": True, "max_states": 1, "arm_crossing_travel": (.006, 1., 60),
+        "second_finger": False, "covered_holds": False, "covered_arcs": False,
+        "meeting_swaps": False, "steady_arcs": False, "enveloped_arcs": False,
+    })
+    assert [item.start_ms for item in result.plan.skipped] == [600, 800]
+    assert result.plan.cost.missed_ticks == 2
+    assert result.plan.crossing_last_frame == 60
+
+
 def test_locked_upper_finger_prunes_route_that_requires_lift_after_entry():
     left = path([-1, 1, .4, 1], [-.020, -.020, -.004, -.020])
     right = path([0]*len(left), 0)
