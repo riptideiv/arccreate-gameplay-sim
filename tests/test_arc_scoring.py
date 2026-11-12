@@ -1,6 +1,8 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from arc_hand_order import api
 from arc_hand_order.planning.occupations import occupations_from_chart
@@ -210,17 +212,27 @@ def test_trace_preference_can_still_shortcut_an_impossible_zigzag(tmp_path):
     assert output["cost"]["components"]["arc_trace_deviation_s"] > 0
 
 
-def test_split_tick_trace_cost_covers_each_visual_frame_once(tmp_path):
+@pytest.mark.parametrize("include_tail", [False, True])
+def test_split_tick_trace_cost_covers_each_frame_once(tmp_path, include_tail):
     from arc_hand_order.planning.arc_scoring import trace_cells
+    from arc_hand_order.planning.two_finger import frame_ms
 
     f = chart(tmp_path, "arc(1000,3000,.3,.7,s,.5,.5,0,none,false);")
     occupations = native_occupations(occupations_from_chart(api.load_chart(f).chart))
-    cells = sorted(trace_cells(split_arc_ticks(occupations).items, 0).values())
-    assert cells[0][0] == 60 and cells[-1][1] == 181
+    arc = occupations.items[0]
+    cells = sorted(
+        trace_cells(split_arc_ticks(occupations).items, 0, include_tail=include_tail).values()
+    )
+    end_ms = arc.end_ms if include_tail else arc.last_tick.time_ms
+    assert cells[0][0] == 60
+    assert frame_ms(cells[-1][1] - 1) <= end_ms < frame_ms(cells[-1][1])
     assert all(a[1] == b[0] for a, b in zip(cells, cells[1:]))
 
 
-def test_trace_preference_also_follows_geometry_between_individual_tick_jobs(tmp_path):
+@pytest.mark.parametrize("full_arc_hold", [False, True])
+def test_trace_preference_also_follows_geometry_between_individual_tick_jobs(
+    tmp_path, full_arc_hold
+):
     f = chart(tmp_path, "arc(1000,2000,.3,.7,s,.5,.5,0,none,false);")
     output = create_plan(
         f,
@@ -230,6 +242,7 @@ def test_trace_preference_also_follows_geometry_between_individual_tick_jobs(tmp
             "arc_path_mode": "score",
             "max_speed_m_s": 1.6,
             "prefer_arc_trace": True,
+            "full_arc_hold": full_arc_hold,
             "arc_trace_weight": 1000,
         },
         excluded=("force-tick-search",),
@@ -237,4 +250,4 @@ def test_trace_preference_also_follows_geometry_between_individual_tick_jobs(tmp
     assert output["planning"]["skipped_ticks"] == 0
     assert output["cost"]["components"]["arc_trace_deviation_s"] < 1e-9
     assert len(output["touches"]) == 1
-    assert output["touches"][0]["up_ms"] > 2000
+    assert (output["touches"][0]["up_ms"] > 2000) == full_arc_hold

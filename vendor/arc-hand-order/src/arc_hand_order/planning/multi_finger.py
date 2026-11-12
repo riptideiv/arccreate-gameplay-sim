@@ -839,7 +839,9 @@ class _Graph:
         self.trace_preference = None
         if options.scoring_arcs and options.prefer_arc_trace and options.arc_trace_weight:
             from .arc_scoring import TracePreference
-            self.trace_preference = TracePreference(groups, projection, self.offset)
+            self.trace_preference = TracePreference(
+                groups, projection, self.offset, include_tail=options.full_arc_hold
+            )
         self.points = {}  # (occupation id, frame) -> planned target
         self.polygons = {}  # (occupation ids, frame) -> shared region with the margin
         self.composed = {}

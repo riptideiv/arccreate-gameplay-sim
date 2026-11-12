@@ -30,11 +30,11 @@ def trace_position(item, frame, offset, projection):
     return result
 
 
-def trace_cells(items, offset):
-    """Partition each snake's visual lifetime between its tick jobs.
+def trace_cells(items, offset, *, include_tail=True):
+    """Partition each snake's trace window between its tick jobs.
 
-    Each frame is charged once, independent of tick density. Untraced gaps,
-    heads and tails count too, rather than rewarding two-frame tick taps.
+    Each frame is counted once, including the head and gaps between ticks.
+    The window ends at the last scoring tick unless the visual tail is included.
     """
     from .two_finger import frame_at_or_after
 
@@ -53,9 +53,12 @@ def trace_cells(items, offset):
             (a.last_tick.time_ms + b.first_tick.time_ms) / 2
             for a, b in zip(jobs, jobs[1:])
         )
-        boundaries.append(jobs[0].end_ms + 1)
+        end = jobs[0].end_ms
+        if not include_tail:
+            end = min(end, max(job.last_tick.time_ms for job in jobs))
+        boundaries.append(end + 1)
         boundaries = [
-            min(jobs[0].end_ms + 1, max(jobs[0].start_ms, t)) for t in boundaries
+            min(end + 1, max(jobs[0].start_ms, t)) for t in boundaries
         ]
         for job, first, stop in zip(jobs, boundaries, boundaries[1:]):
             cells[job.occupation_id] = (
@@ -68,14 +71,14 @@ def trace_cells(items, offset):
 class TracePreference:
     """Deviation-seconds of actual composed touches, cached across extensions."""
 
-    def __init__(self, groups, projection, offset):
+    def __init__(self, groups, projection, offset, *, include_tail):
         items = {
             c.occupation.occupation_id: c.occupation
             for group in groups
             for c in group
             if c.occupation.kind == "chain"
         }
-        self.cells = trace_cells(items.values(), offset)
+        self.cells = trace_cells(items.values(), offset, include_tail=include_tail)
         self.centres = {
             key: tuple(
                 trace_position(item, f, offset, projection)
