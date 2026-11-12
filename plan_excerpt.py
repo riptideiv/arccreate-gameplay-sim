@@ -10,6 +10,7 @@ from pathlib import Path
 
 from arc_hand_order import api
 from arc_hand_order.chart.arc_connections import connect_arcs
+from arc_hand_order.planning.rules import NATIVE_FAR_WINDOW_MS, NATIVE_PERFECT_WINDOW_MS
 from arc_hand_order.planning.occupations import occupations_from_chart, TimeWindow
 
 
@@ -27,6 +28,18 @@ def split_arc_ticks(occupations):
                                  up_window=TimeWindow(point.contact_window.earliest_ms+1,None)))
     return replace(occupations, items=tuple(sorted(items,key=lambda o:(o.first_tick.time_ms if o.kind=="chain" else o.start_ms,
                                                                     o.end_ms,o.occupation_id))))
+
+
+def point_windows(occupations, duration, timing_window):
+    items = []
+    for item in occupations.items:
+        if not item.continuous_contact:
+            window = TimeWindow(max(0, item.start_ms - timing_window),
+                                min(duration - 1, item.start_ms + timing_window - 1))
+            points = tuple(replace(point, contact_window=window) for point in item.score_points)
+            item = replace(item, down_window=window, score_points=points)
+        items.append(item)
+    return replace(occupations, items=tuple(items))
 
 
 def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False,
@@ -128,6 +141,8 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
     planner = {
         'scoring_arcs': scoring,
+        'point_window_ms': None,
+        'full_point_window': True,
         'speed_max_m_s': settings.get('max_speed_m_s', 3.0),
         'prefer_arc_trace': settings.get('prefer_arc_trace', False),
         'arc_trace_weight': settings.get('arc_trace_weight', 1000),
@@ -159,13 +174,15 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     try:
         if excluded or avoid_contacts:
             raise ValueError("no candidate path: retrying verified motion")
-        result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=occupations, progress=report)
+        result = api.plan_chart(excerpt, multi=multi, planner=planner,
+                                occupation_set=point_windows(occupations, duration, NATIVE_PERFECT_WINDOW_MS),
+                                progress=report)
     except ValueError as error:
         if "no candidate path" not in str(error):
             raise
-        # Preserve scoring ticks before ergonomic costs. Covered-note shortcuts depend
-        # on other contacts existing, so the skip-capable search plans them explicitly.
-        occupations = split_arc_ticks(occupations)
+        # Search the native FAR window before resorting to misses. Plan covered
+        # contacts explicitly because a missing contact can invalidate a shortcut.
+        occupations = point_windows(split_arc_ticks(occupations), duration, NATIVE_FAR_WINDOW_MS)
         attempt = 2
         multi.update(allow_misses=settings.get("allow_misses",True), forced_misses=tuple(excluded), tick_contacts=True,
                      max_states=settings.get("search_width", 256), meeting_swaps=False,
@@ -214,6 +231,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     output["planning"] = {"arc_path_mode": 'score' if scoring else 'trace',
                           "input_model": 'native-screen-world-camera-envelope' if scoring else 'legacy-trace',
                           "skipped_ticks": result.plan.cost.missed_ticks,
+                          "planned_far_taps": result.plan.cost.far_taps,
                           "red_notes_enabled": enable_red, "target_all_red_notes": target_red,
                           "skipped_red_notes": result.plan.cost.missed_red_notes,
                           "planned_red_notes": sum(o.is_red for o in native_items) - result.plan.cost.missed_red_notes,
@@ -221,8 +239,8 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                           "arc_reacquisitions": sum(len(ids)-1 for ids in parents.values()),
                           "contact_exclusions": list(avoid_contacts),
                           "pruned_items": result.plan.pruned_items,
-                          "policy": ("score ticks first, then red catches, then movement cost; bounded candidate search" if target_red
-                                     else "score ticks first, then movement cost; bounded candidate search")}
+                          "policy": ("score ticks first, then red catches, then point judgements and movement cost; bounded candidate search"
+                                     if target_red else "score ticks first, then point judgements and movement cost; bounded candidate search")}
     output["preview"] = {
         "chart_start_ms": start_ms,
         "chart_end_ms": end_ms,

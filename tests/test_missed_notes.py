@@ -79,3 +79,17 @@ def test_strict_tap_interval_controls_point_repeats(tmp_path):
     assert len(api.plan_chart(loaded, planner=planner, multi=multi).plan.touches) == 2
     with pytest.raises(ValueError, match='no candidate path'):
         api.plan_chart(loaded, planner=planner, multi={**multi, 'tap_interval_ms': 150})
+
+
+def test_far_timing_can_save_a_burst_at_the_strict_tap_interval(tmp_path):
+    source = chart(tmp_path, '(1000,1);(1017,4);(1033,1);(1050,4);')
+    plan = create_plan(source, 0, 1500, {'tap_interval_ms': 150, 'allow_misses': True})
+    assert plan['planning']['skipped_ticks'] == 0
+    assert plan['planning']['planned_far_taps'] == 2
+    touches = {touch['id']: touch for touch in plan['touches']}
+    for note in plan['notes']:
+        touch, = (touches[identifier] for identifier in note['touches'])
+        assert -100 <= touch['down_ms'] - note['start_ms'] < 100
+    for hand in ('left', 'right'):
+        a, b = sorted(t['down_frame'] for t in touches.values() if t['hand'] == hand)
+        assert b - a >= 9

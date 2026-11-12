@@ -444,6 +444,8 @@ class MultiCost:
     missed_ticks: int = 0
     arc_trace_deviation_s: float = 0.0
     missed_red_notes: int = 0
+    far_taps: int = 0
+    non_max_taps: int = 0
 
     def __add__(self, other):
         return MultiCost(self.base + other.base, self.shares + other.shares,
@@ -459,7 +461,8 @@ class MultiCost:
                          self.preference + other.preference, self.accel_over + other.accel_over,
                          self.crossing_depth + other.crossing_depth, self.missed_ticks + other.missed_ticks,
                          self.arc_trace_deviation_s + other.arc_trace_deviation_s,
-                         self.missed_red_notes + other.missed_red_notes)
+                         self.missed_red_notes + other.missed_red_notes,
+                         self.far_taps + other.far_taps, self.non_max_taps + other.non_max_taps)
 
     def weighted(self, options: PlannerOptions, multi: MultiFingerOptions):
         extra = (self.shares * multi.share_weight + self.second_touches * multi.second_finger_weight
@@ -1953,6 +1956,10 @@ class _Graph:
             features["preference"] = self.preference(c, new, mine, theirs, hand)
         if self.multi.accel_max_m_s2:
             features["accel_over"] = self.air_over(previous, new)
+        if self.options.full_point_window and not c.occupation.continuous_contact:
+            error = new.down_ms - c.occupation.start_ms
+            features["far_taps"] = int(not -rules.NATIVE_PERFECT_WINDOW_MS <= error < rules.NATIVE_PERFECT_WINDOW_MS)
+            features["non_max_taps"] = int(not -rules.NATIVE_MAX_WINDOW_MS <= error < rules.NATIVE_MAX_WINDOW_MS)
         moved = None
         if (partner is not None and not partner.bridges and all(p.candidate.occupation.kind in ("hold", "chain") for p in partner.parts)
                 and self.overlap_cost(new.id, partner.id) is None):
@@ -2710,7 +2717,8 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     states = [(initial, MultiCost(), None, crossing.initial if crossing else None)]
     visited, pruned = 1, 0
     def rank(cost):
-        return (cost.missed_ticks, cost.missed_red_notes, cost.weighted(options, multi))
+        return (cost.missed_ticks, cost.missed_red_notes, cost.far_taps, cost.non_max_taps,
+                cost.weighted(options, multi))
     def crossing_cost(cost, seconds, extra_distance=0.):
         return replace(cost, base=replace(cost.base, crossing_seconds=seconds,
                                           distance_m=cost.base.distance_m + extra_distance))
@@ -2758,7 +2766,26 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
             raise ValueError(f"no candidate path at item {k}: {item.occupation_id} ({item.kind} at {item.start_ms} ms)")
         kept = list(following.values())
         if multi.max_states and len(kept) > multi.max_states:
-            kept = sorted(kept, key=lambda v: v[1])[:multi.max_states]
+            kept.sort(key=lambda v: v[1])
+            if (options.full_point_window and not item.continuous_contact
+                    and item.start_ms - item.down_window.earliest_ms > rules.NATIVE_PERFECT_WINDOW_MS):
+                # Preserve different release schedules while the wider timing
+                # window is in play. Many higher-ranked routes can share the
+                # same hand availability and all miss the same later burst.
+                schedules = {}
+                best_misses = kept[0][1][:2]
+                for entry in kept:
+                    if entry[1][:2] != best_misses:
+                        break
+                    timing = tuple((graph.touches[i].down, graph.touches[i].up) if i >= 0 else None
+                                   for i in entry[3][:4])
+                    schedules.setdefault(timing, entry)
+                    if len(schedules) == multi.max_states:
+                        break
+                distinct = list(schedules.values())
+                selected = {id(entry) for entry in distinct}
+                kept = distinct + [entry for entry in kept if id(entry) not in selected]
+            kept = kept[:multi.max_states]
             pruned += 1
         states = [(new, total, node, arms) for total, _, node, new, arms in kept]
         visited += len(states)

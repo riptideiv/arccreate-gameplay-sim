@@ -63,6 +63,7 @@ class PlannerOptions:
     # Optional stricter point-note timing target, checked after frame rounding.
     # None keeps the occupation's window; 25 requests Max-PURE timing.
     point_window_ms: int | None = None
+    full_point_window: bool = False  # Enumerate every frame in the occupation's bounded press window.
     distance_weight: float = 5.0  # cost per metre of straight-line transfer, even below comfort speed
     # Hold every arc chain from the frame it reaches the line
     # to the first frame after it ends, instead of from its first tick until
@@ -552,6 +553,10 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
             down_frames = [frame_at_or_after(desired_down, offset)]
             settled = max(p.contact_window.earliest_ms for p in item.score_points)
             up_frame = frame_at_or_after(settled, offset) + 1
+        elif options.full_point_window:
+            first = frame_at_or_after(item.down_window.earliest_ms, offset)
+            stop = frame_at_or_after(item.down_window.latest_ms + 1, offset)
+            down_frames = range(first, stop)
         else:
             down_frames = sorted({round((item.start_ms + delta + offset) * 60 / 1000) for delta in options.offsets_ms})
         for down in down_frames:
