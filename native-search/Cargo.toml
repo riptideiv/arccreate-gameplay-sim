@@ -1,0 +1,22 @@
+[package]
+name = "arc-hand-order-native"
+version = "0.2.0"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[lib]
+name = "arc_hand_order_native"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.27" }
+rayon = "1.11"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+
+[features]
+extension-module = ["pyo3/extension-module"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

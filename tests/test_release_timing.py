@@ -23,8 +23,9 @@ def snake(tmp_path):
     return chart
 
 
-@pytest.mark.parametrize("settings", [None, {"max_speed_m_s": 3}, Settings().model_dump()])
-def test_new_plans_release_a_connected_snake_after_its_score_is_secured(snake, settings):
+@pytest.mark.parametrize("settings", [None, {"max_speed_m_s": 3},
+                                      Settings(full_arc_hold=False, prefer_arc_trace=False).model_dump()])
+def test_early_release_policy_releases_a_connected_snake_after_score_is_secured(snake, settings):
     output = create_plan(snake, 0, 3000, settings)
     assert output["planner_options"]["full_arc_hold"] is False
     touch, = output["touches"]

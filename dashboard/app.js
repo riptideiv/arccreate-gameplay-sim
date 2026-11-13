@@ -1,6 +1,7 @@
 import { setText, setAttributeText, initI18n } from './i18n.js';
 import { RhythmPreview } from './live-preview.js';
 import { ChartRange } from './chart-range.js';
+import { PreviewRecorder } from './preview-recorder.js';
 
 initI18n();
 
@@ -15,14 +16,59 @@ let pollTimer;
 let exportSubmitting = false;
 let sceneSubmitting = false;
 const chartRange = new ChartRange(form, () => markDirty());
-let live;
+let live, recorder, deferredTake, webglDownload, webglResult;
 try { live = new RhythmPreview($("live-scene"), video, $("live-performance")); }
 catch (error) { setText($("live-performance"), "Live 3D unavailable: " + error.message); }
+
+recorder = new PreviewRecorder(live, video, state => {
+  setText($('webgl-export-hint'), state.message);
+  $('webgl-export-progress').hidden = !state.active;
+  $('webgl-export-progress').value = state.progress;
+});
+function lockRecording(locked) {
+  form.inert = locked;
+  $('export-fps').disabled = locked;
+  for (const element of document.querySelectorAll('#live-transport button, #live-transport input, #playback-speed, #history button')) element.disabled = locked;
+  $('cancel-webgl').hidden = !locked;
+  $('webgl-export-progress').hidden = !locked;
+  setRenderDisabled(currentJob?.status === 'running');
+  updateExportControls();
+}
+$('cancel-webgl').addEventListener('click', () => recorder.cancel());
+let endingCapture = false;
+$('export-ending').addEventListener('click', () => { endingCapture = true; $('export-webgl').click(); });
+$('export-webgl').addEventListener('click', async () => {
+  if (!selected?.live || recorder.active) return;
+  $('error').hidden = true;
+  const savedSpeed = $('playback-speed').value;
+  try {
+    // record() starts synchronously inside this user gesture, then awaits media.
+    const startTime = endingCapture ? selected.ending.start_s : 0; endingCapture = false;
+    const task = recorder.record({fps: Number($('export-fps').value), startTime}); $('playback-speed').value = '1'; lockRecording(true);
+    const result = await task;
+    if (webglDownload) URL.revokeObjectURL(webglDownload);
+    webglDownload = URL.createObjectURL(result.blob);
+    webglResult = {width:result.width, height:result.height, fps:result.fps, startTime:result.startTime, media:selected.video, id:selected.id, scene:selected.live.scene, view:JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))};
+    $('download-webgl').href = webglDownload;
+    Object.assign($('download-webgl').dataset, {mimeType:result.mimeType,width:result.width,height:result.height,fps:result.fps,startTime:result.startTime,wallSeconds:result.wallSeconds,durationSeconds:result.duration});
+    $('download-webgl').download = `${selected.settings.chart}-${selected.settings.start_s}-${selected.settings.end_s}-${result.startTime ? "ending-" + result.startTime : "preview"}-${result.width}x${result.height}-${result.fps}fps.${result.extension}`;
+    setText($('download-webgl'), `Download ${result.extension.toUpperCase()}`);
+    $('download-webgl').hidden = false;
+    setText($('webgl-export-hint'), `Video ready · ${result.width} × ${result.height} · ${result.fps} fps target with game audio.`);
+  } catch (error) {
+    setText($('webgl-export-hint'), error.message);
+    if (!error.message.startsWith('Export cancelled')) showError(error.message);
+  } finally {
+    $('playback-speed').value = savedSpeed;
+    lockRecording(false);
+    if (deferredTake) { const pending = deferredTake; deferredTake = null; showTake(...pending); }
+  }
+});
 
 const cameraFields = new Set(['camera_distance_m', 'camera_elevation_deg', 'camera_yaw_deg', 'camera_lens_mm', 'quality']);
 const clock = value => Math.floor(value / 60) + ':' + String(Math.floor(value % 60)).padStart(2, '0');
 $("play-preview").addEventListener('click', async () => {
-  try { if (video.paused) await video.play(); else video.pause(); }
+  try { if (video.paused) { await recorder.resumeAudio(); await video.play(); } else video.pause(); }
   catch (error) { showError('Could not play the preview: ' + error.message); }
 });
 $("seek-preview").addEventListener('input', event => { video.currentTime = Number(event.target.value); live?.pose(video.currentTime); });
@@ -37,8 +83,8 @@ function updateTransport() {
 for (const event of ['timeupdate', 'loadedmetadata', 'play', 'pause', 'seeked']) video.addEventListener(event, updateTransport);
 
 function setRenderDisabled(disabled) {
-  renderButton.disabled = disabled;
-  $("mobile-render").disabled = disabled;
+  renderButton.disabled = disabled || !!recorder?.active;
+  $("mobile-render").disabled = disabled || !!recorder?.active;
 }
 
 for (const field of fields.filter(field => field.type === "number")) {
@@ -51,11 +97,14 @@ function normalizeRun(run) {
   const oldRepeat = saved.prefer_same_hand ? 0 : 5;
   const oldJack = saved.prefer_same_hand ? 0 : 20;
   return { ...run, legacyArcTrace: !("prefer_arc_trace" in saved), legacyArcPaths: !("arc_path_mode" in saved), legacyReleasePolicy: !("full_arc_hold" in saved),
+    legacyContactOffsets: !("contact_offset_x_percent" in saved) || !("contact_offset_y_percent" in saved),
     settings: { ...bootstrap.defaults, ...saved,
     arc_path_mode: saved.arc_path_mode ?? run.planning?.arc_path_mode ?? 'trace',
     prefer_arc_trace: saved.prefer_arc_trace ?? false,
     full_arc_hold: saved.full_arc_hold ?? true,
     full_ground_hold: saved.full_ground_hold ?? true,
+    allow_clipping: saved.allow_clipping ?? false,
+    tap_interval_ms: saved.tap_interval_ms ?? 0,
     repeat_weight: saved.repeat_weight ?? oldRepeat,
     jack_weight: saved.jack_weight ?? oldJack } };
 }
@@ -77,11 +126,12 @@ function updateClickInterval() {
   $("jack-disabled").hidden = Number(byName("jack_weight").value) !== 0;
   const down = byName("point_contact_frames");
   const air = byName("min_air_frames");
-  if (!down.value || !air.value || !down.validity.valid || !air.validity.valid) {
+  const interval = byName("tap_interval_ms");
+  if (!down.value || !air.value || !interval.value || !down.validity.valid || !air.validity.valid || !interval.validity.valid) {
     setText($("click-interval"), "");
     return;
   }
-  const frames = Number(down.value) + Number(air.value);
+  const frames = Math.max(Number(down.value) + Number(air.value), Math.ceil(Number(interval.value) * 60 / 1000));
   setText($("click-interval"), "Point taps require at least " + (frames * 1000 / 60).toFixed(1) +
     " ms between presses, at most " + (60 / frames).toFixed(1) + " taps/s per hand before movement is considered.");
 }
@@ -98,10 +148,52 @@ function fill(values) {
     else field.value = values[field.name];
   }
   syncSliders();
+  updateChartCompatibility();
+  updateRedNotes();
   updateClickInterval();
   updateReleasePolicy();
   live?.setCamera(settings());
   markDirty();
+}
+
+function updateRedNotes() {
+  $('target-red').disabled = !byName('enable_red_notes').checked;
+}
+
+function populateCharts() {
+  const select = byName('chart');
+  select.replaceChildren();
+  const groups = new Map();
+  const entries = Object.entries(bootstrap.charts);
+  for (const [key, chart] of entries) {
+    const groupName = chart.group || 'Original projects';
+    let group = groups.get(groupName);
+    if (!group) {
+      group = document.createElement('optgroup');
+      if (chart.group) group.label = chart.group;
+      else setAttributeText(group, 'label', groupName);
+      groups.set(groupName, group); select.append(group);
+    }
+    const option = document.createElement('option');
+    option.value = key;
+    if (chart.available === false) setText(option, chart.title + ' · unavailable');
+    else option.textContent = chart.title;
+    option.disabled = chart.available === false;
+    if (chart.unavailable_reason) setAttributeText(option, 'title', chart.unavailable_reason);
+    group.append(option);
+  }
+  const unavailable = entries.filter(([, chart]) => chart.available === false).length;
+  setText($('chart-library-info'), `${entries.length} charts · grouped by song and difficulty` +
+    (unavailable ? ` · ${unavailable} require newer chart-format support.` : '.'));
+}
+
+function updateChartCompatibility() {
+  const chart = bootstrap?.charts[byName('chart').value];
+  const warnings = Object.entries(chart?.warnings || {});
+  $('chart-compatibility').hidden = !warnings.length && !chart?.unavailable_reason;
+  setText($('chart-compatibility'), chart?.unavailable_reason || (warnings.length ?
+    'Compatibility notice: this chart uses features the planner may not fully model (' +
+    warnings.map(([code]) => code.replace(/^unsupported_/, '').replaceAll('_', ' ')).join(', ') + ').' : ''));
 }
 
 function syncSliders() {
@@ -124,7 +216,12 @@ function markDirty() {
 function updateExportControls() {
   if (!selected) return;
   const current = settings();
-  const running = currentJob?.status === 'running' || exportSubmitting || sceneSubmitting;
+  const running = currentJob?.status === 'running' || exportSubmitting || sceneSubmitting || recorder?.active;
+  const crossings = selected.metrics?.arm_crossings;
+  const crossingStatus = !crossings ? 'Generate a new preview to apply planned arm crossings to this take.'
+    : crossings.verified ? `Verified arm crossing routes: ${crossings.routes}.`
+    : `Clipping allowed · ${crossings.clearance_shortfall_samples} samples below arm clearance.`;
+  setText($('crossing-status'), crossingStatus);
   const currentSet = selected.presentation?.revision === bootstrap.presentation_revision;
   $('presentation-set').hidden = !selected.live;
   $('refresh-scene').disabled = running || currentSet;
@@ -133,16 +230,26 @@ function updateExportControls() {
   const dirty = !sameSettings(current, selected.settings);
   const invalidCamera = [...cameraFields].some(name => !byName(name).validity.valid || byName(name).value === '');
   const saved = selected.export_video || (!selected.live ? selected.video : null);
+  $('webgl-export').hidden = !selected.live;
+  $('add-ending').hidden = selected.ending?.flow === 'arccreate-native-v1';
+  setText($('add-ending'), selected.ending ? 'Update results flow' : 'Add results ending');
+  $('add-ending').disabled = running || selected.settings.start_s !== 0;
+  $('export-ending').hidden = !selected.ending;
+  $('export-ending').disabled = !!recorder?.active || !live?.enabled;
+  if (!recorder?.supported()) setText($('webgl-export-hint'), 'This browser cannot record a canvas with audio. Use Blender MP4 export below.');
+  $('export-webgl').disabled = !!recorder?.active || !recorder?.supported() || !live?.enabled || invalidCamera;
+  $('download-webgl').hidden = !webglResult || webglResult.id !== selected.id || webglResult.scene !== selected.live?.scene || webglResult.media !== selected.video;
+  if (webglResult && webglResult.id === selected.id && webglResult.media === selected.video && !recorder.active) setText($('webgl-export-hint'), webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · ${webglResult.fps} fps target with game audio.`);
   $('video-export').hidden = false;
   $('export-video').hidden = !selected.live;
-  $('export-video').disabled = running || dirty || invalidCamera;
+  $('export-video').disabled = running || dirty || invalidCamera || !!selected.ending;
   const ownExport = currentJob?.export_only && currentJob.id === selected.id;
-  setText($('export-video'), exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export MP4');
+  setText($('export-video'), exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export Blender MP4');
   $('download-export').hidden = !saved;
   if (saved) $('download-export').href = saved;
   const oldCamera = selected.export_view && [...cameraFields].some(name => current[name] !== selected.export_view[name]);
   const dimensions = current.quality === 'final' ? '1024 × 768' : '640 × 480';
-  let message = !selected.live ? 'The saved 3D video is ready to download.'
+  let message = selected.ending ? 'Results endings export through the WebGL preview.' : !selected.live ? 'The saved 3D video is ready to download.'
     : exportSubmitting ? 'Starting your video export…'
     : running && ownExport ? (currentJob.stage + ' · ' + Math.round(currentJob.progress) + '%')
     : running ? 'The renderer is busy. Export will be available when it finishes.'
@@ -157,6 +264,7 @@ for (const slider of form.querySelectorAll("[data-for]")) {
     slider.addEventListener("input", () => { byName(slider.dataset.for).value = slider.value; live?.setCamera(settings()); markDirty(); });
 }
 form.addEventListener("input", event => {
+  updateRedNotes();
   if (event.target.name) syncSliders();
   updateClickInterval();
   updateReleasePolicy();
@@ -169,6 +277,7 @@ byName("chart").addEventListener("change", () => {
   byName("start_s").value = chart.start_s;
   byName("end_s").value = chart.end_s;
   chartRange.sync(chart.duration);
+  updateChartCompatibility();
   markDirty();
 });
 $("reset").addEventListener("click", () => fill(bootstrap.defaults));
@@ -192,7 +301,7 @@ form.addEventListener("submit", async event => {
   $("error").hidden = true;
   setRenderDisabled(true);
   try {
-    if (selected?.live && sameSettings(settings(), selected.settings)) {
+    if (selected?.live && !selected.legacyContactOffsets && sameSettings(settings(), selected.settings)) {
       live?.setCamera(settings()); setRenderDisabled(false); return;
     }
     const run = await api("/api/render", {
@@ -227,6 +336,10 @@ $("export-video").addEventListener('click', async () => {
   catch (error) { showError(error.message); }
   finally { exportSubmitting = false; updateExportControls(); }
 });
+$('add-ending').addEventListener('click', async () => {
+  try { displayJob(normalizeRun(await api('/api/ending', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:selected.id})}))); schedulePoll(300); }
+  catch(error) { showError(error.message); }
+});
 $('refresh-scene').addEventListener('click', async () => {
   if (!selected?.live || $('refresh-scene').disabled) return;
   sceneSubmitting = true; updateExportControls();
@@ -257,17 +370,20 @@ function displayJob(run) {
     const planning = run.planning_progress;
     $("planning-status").hidden = !planning;
     if (planning) {
-      const labels = {loading: 'Reading chart', preparing: 'Preparing touchpoint search',
+      const labels = {backend: 'Preparing touchpoint search', loading: 'Reading chart', preparing: 'Preparing touchpoint search',
         geometry: 'Checking arc input regions', arc_profiles: 'Preparing snake paths',
         candidates: 'Generating touchpoint candidates', graph: 'Preparing search constraints',
-        search: 'Searching touchpoint plans', finalizing: 'Reconstructing hand contacts',
+        validation: 'Verifying contact plan', search: 'Searching touchpoint plans', finalizing: 'Reconstructing hand contacts',
         done: 'Touchpoint search complete', writing: 'Saving contact plan'};
       const known = planning.total > 0;
       const percent = known ? Math.min(100, 100 * planning.completed / planning.total) : null;
+      const retry = {checkpoint: 'resuming near the failure with FAR timing',
+        split: 'retry with individual scoring ticks', intact: 'retry with intact arcs and FAR timing'};
+      const retryLabel = retry[planning.retry];
       setText($("planning-label"), (labels[planning.phase] || planning.phase)
         + (known ? ' · ' + percent.toFixed(1) + '% · ' + planning.completed.toLocaleString() + ' / '
           + planning.total.toLocaleString() + (planning.phase === 'arc_profiles' ? ' snakes' : ' items') : '')
-        + (planning.attempt > 1 ? ' · retry with individual scoring ticks' : ''));
+        + (retryLabel ? ' · ' + retryLabel : ''));
       if (known) $("planning-progress").value = percent;
       else $("planning-progress").removeAttribute('value');
       const elapsed = Math.max(0, Math.floor((planning.elapsed_s || 0)
@@ -281,8 +397,8 @@ function displayJob(run) {
     const chart = bootstrap.charts[run.settings.chart];
     setText($("job-detail"), chart.title + " · " + run.settings.start_s + "–" + run.settings.end_s +
       " s. The previous take stays available while this renders.");
-  } else if (run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') !== lastTerminal) {
-    lastTerminal = run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '');
+  } else if (run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') + (run.video || '') + (run.ending_error || '') !== lastTerminal) {
+    lastTerminal = run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') + (run.video || '') + (run.ending_error || '');
     if (run.status === "complete") {
       if (selected?.id === run.id && run.live?.scene !== selected.live?.scene) {
         showTake(run);
@@ -290,7 +406,8 @@ function displayJob(run) {
         selected = run;
         updateExportControls();
       } else if (!selected || run.created >= selected.created) showTake(run);
-      if (run.scene_error) showError('The scene update stopped: ' + run.scene_error + ' The previous scene remains available.');
+      if (run.ending_error) showError(run.ending_error);
+      else if (run.scene_error) showError('The scene update stopped: ' + run.scene_error + ' The previous scene remains available.');
       else if (run.export_error) showError('The MP4 export stopped: ' + run.export_error + ' The live preview remains available.');
       else $("error").hidden = true;
     } else if (run.status === "failed") {
@@ -300,6 +417,7 @@ function displayJob(run) {
 }
 
 function showTake(run, restoreControls = false) {
+  if (recorder?.active) { deferredTake = [run, restoreControls]; return; }
   selected = run;
   $("error").hidden = true;
   if (restoreControls) fill(run.settings);
@@ -314,7 +432,7 @@ function showTake(run, restoreControls = false) {
   $("live-transport").hidden = !run.live;
   $("export-video").hidden = !run.live;
   if (run.live && !live) showError('This browser cannot start WebGL. Try Safari or Chrome with WebGL enabled.');
-  live?.load(run).then(() => { if (selected?.id === run.id && run.live) live.setCamera(settings()); })
+  live?.load(run).then(() => { if (selected?.id === run.id && run.live) { live.setCamera(settings()); updateExportControls(); } })
     .catch(error => showError('Live preview could not load: ' + error.message));
   $("judgement-report").hidden = !run.judgements;
   $("arc-tick-summary").hidden = !run.arc_tick_validation;
@@ -328,13 +446,20 @@ function showTake(run, restoreControls = false) {
   }
   if (run.judgements) {
     const j = run.judgements;
+    $('hit-audio-report').hidden = !run.audio_stems?.hits;
+    if (run.audio_stems?.hits) {
+      $('hit-audio-download').href = run.audio_stems.hits;
+      setText($('hit-audio-counts'), `${run.sound_events.block_hits} block clicks · ${run.sound_events.arc_tick_hits} snake tick clicks from actual catches.`);
+    }
     setText($("judgement-summary"), j.hits + ' hits · ' + j.misses + ' misses · score ' + j.score.toLocaleString()
+      + ((j.red_hits || j.red_misses) ? ` · red: ${j.red_hits || 0} caught / ${j.red_misses || 0} missed (no score)` : '')
       + (run.planning?.arc_reacquisitions ? ' · ' + run.planning.arc_reacquisitions + ' planned arc reacquisitions' : ''));
     $("skipped-targets").replaceChildren();
     for (const miss of run.planned_misses || []) {
       const li = document.createElement('li'), button = document.createElement('button');
       button.type = 'button';
-      setText(button, (run.settings.start_s + miss.start_ms / 1000).toFixed(2) + ' s · ' + (miss.kind === 'arc_tick' ? 'arc tick' : miss.kind) + ' · ' + miss.scoring_ticks + ' scoring tick' + (miss.scoring_ticks === 1 ? '' : 's'));
+      setText(button, (run.settings.start_s + miss.start_ms / 1000).toFixed(2) + ' s · ' +
+        (miss.kind === 'red_sky' ? 'red sky note · no score' : (miss.kind === 'arc_tick' ? 'arc tick' : miss.kind) + ' · ' + miss.scoring_ticks + ' scoring tick' + (miss.scoring_ticks === 1 ? '' : 's')));
       setAttributeText(button, 'title', miss.reason || '');
       button.addEventListener('click', () => { video.currentTime = Math.max(0, miss.start_ms / 1000 - 1); $("preview").scrollIntoView({block:'start'}); });
       li.append(button); $("skipped-targets").append(li);
@@ -390,6 +515,7 @@ function history(runs) {
   for (const run of takes.slice(0, 8)) {
     const button = document.createElement("button");
     button.type = "button";
+    button.disabled = !!recorder?.active;
     button.className = "take" + (run.id === selected?.id ? " selected" : "");
     button.setAttribute("aria-pressed", String(run.id === selected?.id));
     const mark = document.createElement("span");
@@ -432,16 +558,16 @@ async function poll() {
 async function start() {
   try {
     bootstrap = await api("/api/bootstrap");
+    populateCharts();
     bootstrap.history = bootstrap.history.map(normalizeRun);
     fill(bootstrap.defaults);
     const latest = bootstrap.history.find(run => run.status === "complete");
     if (latest) {
       showTake(latest, true);
-      // Keep old takes faithful when restored, but start new work with early arc release.
-      if (latest.legacyReleasePolicy || latest.legacyArcPaths || latest.legacyArcTrace) fill({ ...latest.settings,
-        prefer_arc_trace: latest.legacyArcTrace ? bootstrap.defaults.prefer_arc_trace : latest.settings.prefer_arc_trace,
-        full_arc_hold: latest.legacyReleasePolicy ? bootstrap.defaults.full_arc_hold : latest.settings.full_arc_hold,
-        arc_path_mode: latest.legacyArcPaths ? bootstrap.defaults.arc_path_mode : latest.settings.arc_path_mode });
+      // Apply newly requested preferences once when migrating older takes.
+      // Explicit saved-take selection still restores its historical settings.
+      if (latest.defaults_revision !== bootstrap.defaults_revision) fill({ ...latest.settings,
+        ...Object.fromEntries(bootstrap.startup_preferences.map(name => [name, bootstrap.defaults[name]])) });
     }
     displayJob(normalizeRun(bootstrap.active));
     history(bootstrap.history);

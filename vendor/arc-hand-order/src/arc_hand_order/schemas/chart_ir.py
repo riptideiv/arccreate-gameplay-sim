@@ -75,6 +75,7 @@ class ArcEvent(ChartEvent):
     color: NonNegativeInt
     effect: NonEmptyString
     is_guideline: bool
+    is_designant: bool = False
     # Every arc whose end meets this one's start or whose start meets its end; chain: the links chosen of them.
     connected_event_ids: list[NonEmptyString]
     chain: ArcChain | None = None

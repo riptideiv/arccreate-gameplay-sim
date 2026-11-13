@@ -5,11 +5,12 @@ import {translate, getLanguage, setLanguage, setText, setAttributeText} from '..
 assert.equal(getLanguage(), 'zh-CN');
 const examples = [
  ['Play', '播放'],
- ['Hands, tablet and presentation set with audio · MP4 · 30 fps · 640 × 480. Uses the current camera.', '双手、平板和展示场景，含音频 · MP4 · 30 fps · 640 × 480，使用当前相机。'],
+ ['Video ready · 640 × 480 · up to 30 fps with game audio.', '视频已就绪 · 640 × 480 · 最高 30 fps，含游戏音频。'],
+ ['270 charts · grouped by song and difficulty.', '共 270 张谱面 · 按歌曲和难度分组。'],
  ['56.55–75.00 s · 18.45 s selected', '56.55–75.00 s · 已选 18.45 秒'],
  ['15 hits · 0 misses · score 1,234 · 3 planned arc reacquisitions', '命中 15 · 漏键 0 · 分数 1,234 · 规划续接蛇 3 次'],
  ['Searching touchpoint plans · 14.5% · 30 / 200 items', '正在搜索触点方案 · 14.5% · 30 / 200 个目标'],
- ['Ex-Otogibanashi · 0–6.65 s. The previous take stays available while this renders.', 'Ex-Otogibanashi · 0–6.65 s。生成期间仍可查看上一段演奏。'],
+ ['Recording preview · 3.2 / 10.0 s', '正在录制预览 · 3.2 / 10.0 s'],
  ['Live preview could not load: Tablet dimensions do not match the contact plan.', '无法加载实时预览：平板尺寸与触点规划不一致。'],
  ['76 / 76 planned arc catches confirmed by native replay. Also caught 2 additional arc ticks.', '原生回放已确认 76 / 76 个规划中的蛇计分点，另接住了 2 个计分点。'],
  ['Welcome, Queen of Fiction.', 'Welcome, Queen of Fiction.'],
@@ -38,10 +39,7 @@ for(const m of stripped.matchAll(/(?:aria-label|title|placeholder)="([^"]+)"/g))
 const element={textContent:'',isConnected:true,value:'2.5',setAttribute(name,value){this[name]=value;}};
 setText(element,'Play'); setAttributeText(element,'aria-label','Play preview');
 assert.equal(element.textContent,'播放');assert.equal(element['aria-label'],'播放预览');
-const stored = new Map();
-globalThis.window = {localStorage: {getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value)}};
 setLanguage('en');assert.equal(element.textContent,'Play');
-assert.equal((await import('../dashboard/i18n.js?reload')).getLanguage(), 'en');
 assert.equal(element['aria-label'],'Play preview');
 assert.equal(element.value,'2.5');
 setLanguage('zh-CN');assert.equal(element.textContent,'播放');

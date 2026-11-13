@@ -48,6 +48,7 @@ As there, optimality is over the finite candidates only.
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
+from collections import deque
 from dataclasses import asdict, dataclass, field, fields, replace
 from functools import cached_property, lru_cache
 import math
@@ -79,6 +80,8 @@ class MultiFingerOptions:
     allow_misses: bool = False
     forced_misses: tuple[str, ...] = ()
     tick_contacts: bool = False
+    # (lift metres, idle speed m/s, requested final frame) for one-index plans.
+    arm_crossing_travel: tuple[float, float, int] | None = None
     bridge_max_gap_ms: int = 0  # 0: off
     bridge_max_distance_m: float = 0.015
     # With bridges: a finger sliding on from an arc catches the next same-colour chain where it can, also where the arc
@@ -133,6 +136,7 @@ class MultiFingerOptions:
     jack_gap_ms: int = 150
     jack_free: int = 4
     jack_weight: float = 0.0
+    tap_interval_ms: int = 0  # Minimum press-to-press interval for consecutive point taps on one finger.
     # The most peak acceleration (m/s^2; 0: off) a finger may need, counted for a rest-to-rest minimum-jerk move
     # (MIN_JERK_PEAK d/T^2): a hand's move in the air between two touches (d over the air time T, from where _release
     # lets it go to where _arrival needs it; _Graph.air_over), and each jump composing makes inside a touch
@@ -206,12 +210,21 @@ class MultiFingerOptions:
     max_states: int = 20000
 
     def __post_init__(self):
+        if self.arm_crossing_travel is not None:
+            lift, idle, requested = self.arm_crossing_travel
+            if self.second_finger:
+                raise ValueError("Arm crossings require one finger per hand")
+            if (not math.isfinite(lift) or lift < 0 or not math.isfinite(idle) or idle <= 0
+                    or type(requested) is not int or requested < 0):
+                raise ValueError("Invalid arm crossing travel settings")
         if type(self.bridge_max_gap_ms) is not int or self.bridge_max_gap_ms < 0:
             raise ValueError("bridge_max_gap_ms must be a nonnegative integer")
         if type(self.max_states) is not int or self.max_states < 0:
             raise ValueError("max_states must be a nonnegative integer")
         if type(self.jack_gap_ms) is not int or self.jack_gap_ms < 0 or type(self.jack_free) is not int or self.jack_free < 1:
             raise ValueError("jack_gap_ms must be a nonnegative integer and jack_free a positive one")
+        if type(self.tap_interval_ms) is not int or self.tap_interval_ms < 0:
+            raise ValueError("tap_interval_ms must be a nonnegative integer")
         if not math.isfinite(self.jack_weight) or self.jack_weight < 0:
             raise ValueError("jack_weight must be finite and nonnegative")
         if (type(self.steady_max_piece_ms) is not int or self.steady_max_piece_ms < 1
@@ -431,6 +444,9 @@ class MultiCost:
     crossing_depth: float = 0.0  # metre-seconds crossed beyond the margin (MultiFingerOptions.crossing_depth_weight)
     missed_ticks: int = 0
     arc_trace_deviation_s: float = 0.0
+    missed_red_notes: int = 0
+    far_taps: int = 0
+    non_max_taps: int = 0
 
     def __add__(self, other):
         return MultiCost(self.base + other.base, self.shares + other.shares,
@@ -445,7 +461,9 @@ class MultiCost:
                          self.collision_s + other.collision_s, self.arc_takeovers + other.arc_takeovers,
                          self.preference + other.preference, self.accel_over + other.accel_over,
                          self.crossing_depth + other.crossing_depth, self.missed_ticks + other.missed_ticks,
-                         self.arc_trace_deviation_s + other.arc_trace_deviation_s)
+                         self.arc_trace_deviation_s + other.arc_trace_deviation_s,
+                         self.missed_red_notes + other.missed_red_notes,
+                         self.far_taps + other.far_taps, self.non_max_taps + other.non_max_taps)
 
     def weighted(self, options: PlannerOptions, multi: MultiFingerOptions):
         extra = (self.shares * multi.share_weight + self.second_touches * multi.second_finger_weight
@@ -541,6 +559,9 @@ class MultiPlan:
     steady: tuple[Occupation, ...] = ()  # runs of short arc pieces planned as one, on a smoothed path
     step_costs: tuple = ()  # (chart ms of the item, MultiCost increment) of each DP step on the chosen path
     skipped: tuple[Occupation, ...] = ()
+    arm_crossings: tuple = ()
+    crossing_last_frame: int | None = None
+    crossing_travel: tuple = ()
 
     @property
     def choices(self) -> tuple[tuple[Candidate, str], ...]:
@@ -614,11 +635,15 @@ class Regions:
     """The notes' regions (``rules``) as convex device polygons, at the planning projection; a sky note's is
     ``sky_half_x`` game units to either side (rules.SKY_TAP_X, or SKY_DRAWN_HALF_X for its drawn width)."""
 
-    def __init__(self, projection: GameplayProjection, sky_half_x: float = rules.SKY_TAP_X):
+    def __init__(self, projection: GameplayProjection, sky_half_x: float = rules.SKY_TAP_X,
+                 contact_offset_fractions: tuple[float, float] | None = None):
         self.projection = projection
         self.sky_half_x = sky_half_x
+        self.contact_offset_fractions = contact_offset_fractions
         w, h = projection.width_m, projection.height_m
         self.screen = [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]
+        self._polygon_cache = {}
+        self._geometry_refs = {}  # Prevent id reuse for temporary/split occupations.
         self.lanes = {}
         for lane, (x0, x1) in LANE_X.items():
             corners = [projection.ground_to_device(x, z) for x, z in
@@ -626,7 +651,36 @@ class Regions:
             self.lanes[lane] = _inner(list(self.screen), corners, 0.0)
 
     def polygon(self, occupation, time_ms):
+        # Scope is one Regions/projection/region-settings instance. Split jobs
+        # may select different source notes even when their parent ID matches.
+        now = min(max(time_ms, occupation.start_ms), occupation.end_ms)
+        key = (id(occupation), now)
+        if key not in self._polygon_cache:
+            if len(self._polygon_cache) >= 65536:
+                self._polygon_cache.clear()
+                self._geometry_refs.clear()
+            self._geometry_refs[id(occupation)] = occupation
+            polygon = self._polygon(occupation, now)
+            self._polygon_cache[key] = None if polygon is None else tuple(polygon)
+        polygon = self._polygon_cache[key]
+        return None if polygon is None else list(polygon)
+
+    def _polygon(self, occupation, time_ms):
         region = occupation.region_at(min(max(time_ms, occupation.start_ms), occupation.end_ms))
+        if self.contact_offset_fractions is not None:
+            from .native_input import camera_for
+            camera = camera_for(self.projection)
+            centre = target_xy(occupation, time_ms, self.projection)
+            x0, y0, x1, y1 = camera.contact_rectangle(
+                occupation.kind, *camera.unproject(centre, 2), self.contact_offset_fractions)
+            if x0 > x1 or y0 > y1:
+                return None
+            # Keep centred axes representable by the polygon clipper.
+            if x0 == x1:
+                x0, x1 = x0 - 1e-9, x1 + 1e-9
+            if y0 == y1:
+                y0, y1 = y0 - 1e-9, y1 + 1e-9
+            return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
         if region.lane is not None:
             return self.lanes[region.lane]
         if occupation.kind == "sky":
@@ -773,21 +827,31 @@ class _Graph:
                                 if multi.tick_contacts and occupations is not None else
                                 tuple(c.occupation for g in groups for c in g if c.occupation.kind == "chain"))
         self.meetings = meetings
-        self.regions = (Regions(projection, SKY_DRAWN_HALF_X if multi.sky_aim_drawn else rules.SKY_TAP_X)
+        self.regions = (Regions(projection, SKY_DRAWN_HALF_X if multi.sky_aim_drawn else rules.SKY_TAP_X,
+                                options.contact_offset_fractions)
                         if (multi.share or multi.second_finger or options.scoring_arcs) else None)
         self.offset = options.audio_offset_ms
         self.fixed = dict(options.fixed_hands)
         self.touches: list[Touch] = []
         self.interned: dict = {}
         self.targets = {}
+        self.scoring_extensions = {}  # (old touch, candidate) -> ordered physical variants, including failures
+        self.extension_prefix_speed = {}
         self.trace_preference = None
         if options.scoring_arcs and options.prefer_arc_trace and options.arc_trace_weight:
             from .arc_scoring import TracePreference
-            self.trace_preference = TracePreference(groups, projection, self.offset)
+            self.trace_preference = TracePreference(
+                groups, projection, self.offset, include_tail=options.full_arc_hold
+            )
         self.points = {}  # (occupation id, frame) -> planned target
         self.polygons = {}  # (occupation ids, frame) -> shared region with the margin
         self.composed = {}
         self.futures = {}
+        self.future_frame = None
+        self.prefix_matches = {}
+        self.clash_pairs = {}
+        self.steal_pairs = {}
+        self.lock_expiries = {}
         self.dense_cache = {}
         self.bindings = {}
         self.native_frame_regions = {}
@@ -824,6 +888,10 @@ class _Graph:
         # pair intersects. Grace clears an existing lock permanently.
         self.lock_grace = sorted(self.graced if self.graced is not None else self._grace_frames(groups)) if multi.tick_contacts else []
         self.arc_notes = {(o.colour,n.start,n.end,n.interval) for o in self.arc_occupations for n in o.notes}
+        self.arc_notes_by_colour = {
+            colour: tuple((a, b, interval) for col, a, b, interval in self.arc_notes if col == colour)
+            for colour in range(4)
+        }
         self.contested = self._contested(groups) if self.own is not None else frozenset()
         # The geometry features computed (MultiFingerOptions.computes); kinds: crossing seconds by kind, collision_s.
         self.wants_apart = multi.computes("apart_level_weight", "apart_near_weight", "apart_clear_weight")
@@ -1007,6 +1075,12 @@ class _Graph:
 
     def future(self, touch_id: int, f0: int):
         """What later moves can read of a touch, when no later press comes before frame ``f0``."""
+        # No later layer consults the previous frame's suffix keys. Keeping
+        # every layer's copied path suffixes makes whole-chart searches grow
+        # unnecessarily even though these entries can never hit again.
+        if self.__dict__.get('future_frame') != f0:
+            self.futures.clear()
+            self.future_frame = f0
         if touch_id < 0:
             return -1
         key = (touch_id, f0)
@@ -1031,6 +1105,11 @@ class _Graph:
             path = c.contact_path if c.contact_path is not None else tuple(self.point(c.occupation, f) for f in range(c.down_frame, c.up_frame))
             self.targets[c.id] = path
         return path
+
+    def _candidate_xy(self, candidate, frame):
+        if candidate.contact_path is not None and candidate.down_frame <= frame < candidate.up_frame:
+            return candidate.contact_path[frame - candidate.down_frame]
+        return self.point(candidate.occupation, frame)
 
     def _intern(self, parts, bridges, path):
         key = (tuple((p.candidate.id, p.start, p.stop) for p in parts), bridges, path)
@@ -1090,7 +1169,7 @@ class _Graph:
                     return None
                 after = next(p for p in sorted(parts, key=lambda p: p.start) if p.start >= span[1])
                 a_xy = path[span[0] - 1 - down]
-                b_xy = self.point(after.candidate.occupation, span[1])
+                b_xy = self._candidate_xy(after.candidate, span[1])
                 s = (f - span[0] + 1) / (span[1] - span[0] + 1)
                 path.append((a_xy[0] + s * (b_xy[0] - a_xy[0]), a_xy[1] + s * (b_xy[1] - a_xy[1])))
                 previous, served = path[-1], None  # a bridge has its own distance rule
@@ -1120,7 +1199,8 @@ class _Graph:
             return None
         if self.options.scoring_arcs:
             from .arc_scoring import covers
-            if any(covers(p.candidate.occupation,path,down,self.offset,self.projection) is None
+            if any(covers(p.candidate.occupation,path,down,self.offset,self.projection,
+                          fractions=self.options.contact_offset_fractions) is None
                    for p in parts if p.candidate.occupation.native_scoring):return None
         touch = self._intern(parts, tuple(bridges), tuple(path))
         if over:
@@ -1141,16 +1221,16 @@ class _Graph:
                 poly=self.shared(live,frame)
                 if poly:
                     arc=next((c for c in live if c.occupation.native_scoring),None)
-                    preferred=arc.contact_path[frame-arc.down_frame] if arc is not None and arc.contact_path is not None else self.point(mandatory[0].occupation,frame)
+                    preferred = self._candidate_xy(arc or mandatory[0], frame)
                     return _nearest(poly,preferred)
                 live=mandatory
         if len(live) == 1:
-            return self.point(live[0].occupation, frame)
+            return self._candidate_xy(live[0], frame)
         poly = self.shared(live, frame)
         if not poly:
             return None
         chain = next((c for c in live if c.occupation.kind == "chain"), live[0])
-        return _nearest(poly, self.point(chain.occupation, frame))
+        return _nearest(poly, self._candidate_xy(chain, frame))
 
     def _ease(self, path, lives, down, partner):
         """``path`` (a point per frame from ``down``) with the jumps composing makes spread out for accel_max_m_s2,
@@ -1266,6 +1346,10 @@ class _Graph:
         if previous is None:
             return 0.0
         if current.down - previous.up < self.options.min_air_frames:
+            return None
+        if (self.multi.tap_interval_ms and (current.down - previous.down) * 1000 < self.multi.tap_interval_ms * 60
+                and previous.single is not None and not previous.single.occupation.continuous_contact
+                and current.single is not None and not current.single.occupation.continuous_contact):
             return None
         if current.down - previous.up < self.options.held_release_air_frames and self.held_release(previous):
             return None
@@ -1502,6 +1586,49 @@ class _Graph:
 
     # transitions --------------------------------------------------------
 
+    def _scoring_extensions(self, t, c):
+        """Only state-independent geometry. _finish still checks both hands and all locks/costs."""
+        from .arc_scoring import covers
+        key = (t.id, c.id)
+        if key in self.scoring_extensions:
+            return self.scoring_extensions[key]
+        end=max(t.up,c.up_frame)
+        paths=[t.path+(t.last_xy,)*(end-t.up)]
+        if c.down_frame>=t.up:
+            span=c.down_frame-t.up+1
+            a,b=t.last_xy,c.first_xy
+            slide=tuple((a[0]+(b[0]-a[0])*(j+1)/span,a[1]+(b[1]-a[1])*(j+1)/span) for j in range(span))
+            paths.append(t.path+slide+self._target_path(c)[1:])
+            if self.trace_preference is not None:
+                from .arc_scoring import trace_position
+                centre = tuple(trace_position(c.occupation, f, self.offset, self.projection)
+                               for f in range(t.up, end))
+                straight = paths[-1][len(t.path):]
+                for amount in (.25, .5, .75, 1):
+                    tail = tuple((x+(u-x)*amount, y+(v-y)*amount)
+                                 for (x,y),(u,v) in zip(straight, centre))
+                    paths.append(t.path+tail)
+        limit = self.options.speed_max_m_s*1.00001
+        if t.id not in self.extension_prefix_speed:
+            self.extension_prefix_speed[t.id] = all(math.dist(a,b)*60 <= limit for a,b in zip(t.path,t.path[1:]))
+        variants=[]
+        for path in paths:
+            path = self.native_geometry.guard_path(c.occupation,path,t.down,fixed_prefix=len(t.path))
+            if len(path)!=end-t.down:continue
+            # The prefix is unchanged by the guard. Validate it once at this
+            # branch's exact tolerance, then include the prefix/tail boundary.
+            if not self.extension_prefix_speed[t.id]:continue
+            tail=path[max(0,len(t.path)-1):]
+            if any(math.dist(a,b)*60>limit for a,b in zip(tail,tail[1:])):continue
+            # A newly introduced tick can be caught on an earlier prefix frame.
+            if covers(c.occupation,path,t.down,self.offset,self.projection,
+                      fractions=self.options.contact_offset_fractions) is None:continue
+            bridges=t.bridges+(((t.up,c.down_frame),) if c.down_frame>t.up else ())
+            variants.append(self._intern(t.parts+(Part(c,c.down_frame,c.up_frame),),bridges,path))
+        result=tuple(variants)
+        self.scoring_extensions[key]=result
+        return result
+
     def steps(self, state, c: Candidate, hand: str):
         """(new state, cost increment, changes) for each way ``hand`` can take candidate ``c``."""
         h = 0 if hand == "left" else 2
@@ -1530,29 +1657,7 @@ class _Graph:
             for k,t in enumerate(mine):
                 if t is None or c.down_frame<t.down: continue
                 if t.end_part.candidate.occupation.parent_occupation_id != c.occupation.parent_occupation_id:continue
-                end=max(t.up,c.up_frame)
-                paths=[t.path+(t.last_xy,)*(end-t.up)]
-                if c.down_frame>=t.up:
-                    span=c.down_frame-t.up+1
-                    a,b=t.last_xy,c.first_xy
-                    slide=tuple((a[0]+(b[0]-a[0])*(j+1)/span,a[1]+(b[1]-a[1])*(j+1)/span) for j in range(span))
-                    paths.append(t.path+slide+self._target_path(c)[1:])
-                    if self.trace_preference is not None:
-                        from .arc_scoring import trace_position
-                        centre = tuple(trace_position(c.occupation, f, self.offset, self.projection)
-                                       for f in range(t.up, end))
-                        straight = paths[-1][len(t.path):]
-                        for amount in (.25, .5, .75, 1):
-                            tail = tuple((x+(u-x)*amount, y+(v-y)*amount)
-                                         for (x,y),(u,v) in zip(straight, centre))
-                            paths.append(t.path+tail)
-                for path in paths:
-                    path = self.native_geometry.guard_path(c.occupation,path,t.down,fixed_prefix=len(t.path))
-                    if len(path)!=end-t.down:continue
-                    if any(math.dist(a,b)*60>self.options.speed_max_m_s*1.00001 for a,b in zip(path,path[1:])):continue
-                    if covers(c.occupation,path,t.down,self.offset,self.projection) is None:continue
-                    bridges=t.bridges+(((t.up,c.down_frame),) if c.down_frame>t.up else ())
-                    new=self._intern(t.parts+(Part(c,c.down_frame,c.up_frame),),bridges,path)
+                for new in self._scoring_extensions(t, c):
                     step=self._finish(state,h,k,mine,theirs,new,t,hand,self.part_cost(c,hand),bridge=True)
                     if step is not None:yield step
         # Continue following the actual arc between scoring ticks, without a new
@@ -1740,13 +1845,16 @@ class _Graph:
     def clash(self, touch: Touch, others) -> bool:
         """Whether ``touch`` and another touch hold one arc colour on the same frame: a colour binds one touch and
         takes no other."""
-        mine = self.bound_frames(touch)
-        if not mine:
-            return False
         for other in others:
-            for colour, frames in self.bound_frames(other).items():
-                if colour in mine and not mine[colour].isdisjoint(frames):
-                    return True
+            key = (min(touch.id, other.id), max(touch.id, other.id))
+            if key not in self.clash_pairs:
+                mine = self.bound_frames(touch)
+                if len(self.clash_pairs) >= 65536:
+                    self.clash_pairs.clear()
+                self.clash_pairs[key] = any(colour in mine and not mine[colour].isdisjoint(frames)
+                    for colour, frames in self.bound_frames(other).items())
+            if self.clash_pairs[key]:
+                return True
         return False
 
     def steals(self, touch: Touch, others) -> bool:
@@ -1754,6 +1862,20 @@ class _Graph:
         the colour is free to bind: the first frame of each stretch ``touch`` holds the colour (its first frame on
         it, or after grace). Touches are taken in press order and the first one inside the hitbox binds the colour:
         that finger keeps it, and once it lifts the colour takes no other finger for a while."""
+        for other in others:
+            key = (touch.id, other.id)
+            if key not in self.steal_pairs:
+                if len(self.steal_pairs) >= 65536:
+                    self.steal_pairs.clear()
+                self.steal_pairs[key] = self._steals_from(touch, other)
+            if self.steal_pairs[key]:
+                return True
+        return False
+
+    def _steals_from(self, touch: Touch, other: Touch) -> bool:
+        """Directional pair predicate; the surrounding state's other slots are irrelevant."""
+        if other.down >= touch.down:
+            return False
         spans = self.arc_spans(touch)
         for colour, frames in self.bound_frames(touch).items():
             for f in sorted(g for g in frames if g - 1 not in frames):
@@ -1761,15 +1883,14 @@ class _Graph:
                 if span is None:
                     continue
                 region = self.regions.polygon(span[1], frame_ms(f, self.offset))
-                for other in others:
-                    # bound on this frame: to this colour it is a clash (refused before), and a touch bound to
-                    # another colour is not taken. A colour it takes only later does not protect it.
-                    if (other.down >= touch.down or not other.active(f)
-                            or any(f in frames for frames in self.bound_frames(other).values())):
-                        continue
-                    xy = other.xy(f)
-                    if _nearest(region, xy) == xy:
-                        return True
+                # A touch bound to another colour is not taken. A colour it
+                # takes only later does not protect it on this frame.
+                if (not other.active(f)
+                        or any(f in frames for frames in self.bound_frames(other).values())):
+                    continue
+                xy = other.xy(f)
+                if _nearest(region, xy) == xy:
+                    return True
         return False
 
     def dense(self, c: Candidate) -> bool:
@@ -1893,6 +2014,10 @@ class _Graph:
             features["preference"] = self.preference(c, new, mine, theirs, hand)
         if self.multi.accel_max_m_s2:
             features["accel_over"] = self.air_over(previous, new)
+        if self.options.full_point_window and not c.occupation.continuous_contact:
+            error = new.down_ms - c.occupation.start_ms
+            features["far_taps"] = int(not -rules.NATIVE_PERFECT_WINDOW_MS <= error < rules.NATIVE_PERFECT_WINDOW_MS)
+            features["non_max_taps"] = int(not -rules.NATIVE_MAX_WINDOW_MS <= error < rules.NATIVE_MAX_WINDOW_MS)
         moved = None
         if (partner is not None and not partner.bridges and all(p.candidate.occupation.kind in ("hold", "chain") for p in partner.parts)
                 and self.overlap_cost(new.id, partner.id) is None):
@@ -1946,6 +2071,8 @@ class _Graph:
         return now
 
     def native_claims_valid(self,new):
+        if '_native_claims_valid' in new.__dict__:
+            return new.__dict__['_native_claims_valid']
         from .arc_scoring import source_note,world,hit
         validated=new.__dict__.setdefault('_native_validated',set())
         bindings=self.bound_frames(new)
@@ -1957,10 +2084,46 @@ class _Graph:
                 first=max(new.down,frame_at_or_after(point.contact_window.earliest_ms,self.offset))
                 last=min(new.up,frame_at_or_after(point.contact_window.latest_ms+1,self.offset))
                 if not any((self.graced.get(f) or (f in bindings.get(o.colour,()) and sum(f in fs for fs in bindings.values())==1))
-                           and hit(n,world(self.projection,new.xy(f)),frame_ms(f,self.offset)) for f in range(first,last)):
+                           and hit(n,world(self.projection,new.xy(f)),frame_ms(f,self.offset),
+                                   fractions=self.options.contact_offset_fractions) for f in range(first,last)):
+                    new.__dict__['_native_claims_valid'] = False
                     return False
             validated.add(o.occupation_id)
+        new.__dict__['_native_claims_valid'] = True
         return True
+
+    def _prefix_matches(self, new, old):
+        key = (new.id, old.id)
+        if key not in self.prefix_matches:
+            if len(self.prefix_matches) >= 65536:
+                self.prefix_matches.clear()
+            self.prefix_matches[key] = new.down == old.down and new.path[:len(old.path)] == old.path
+        return self.prefix_matches[key]
+
+    def lock_expiry(self, colour, up):
+        """Chart-only release lock; the current state's existing lock is applied separately."""
+        key = (colour, up)
+        if key not in self.lock_expiries:
+            now = frame_ms(up, self.offset)
+            notes = self.arc_notes_by_colour[colour]
+            active = [(a, b, interval) for a, b, interval in notes if a <= now <= b]
+            unlock = -1
+            if active:
+                interval = max(interval for _, _, interval in active)
+                duration = min(round(interval * 4), 1000) if math.isfinite(interval) else 1000
+                # ArcCreate clears the lock at the first gap in this colour.
+                end = max(b for _, b, _ in active)
+                while True:
+                    following = [b for a, b, _ in notes if a <= end + 1 and b > end]
+                    if not following:
+                        break
+                    end = max(following)
+                unlock = min(now + duration, end)
+                index = bisect_left(self.lock_grace, up)
+                if index < len(self.lock_grace):
+                    unlock = min(unlock, frame_ms(self.lock_grace[index], self.offset) - 1)
+            self.lock_expiries[key] = unlock
+        return self.lock_expiries[key]
 
     def _finish(self, state, h, k, mine, theirs, new, old, hand, base, *, share=False, second=False, bridge=False,
                 partner_new=None, features=None, second_free=False):
@@ -1981,9 +2144,16 @@ class _Graph:
                     if state[self.lock_index+o.colour] >= new.down_ms:
                         return None
         if self.options.scoring_arcs:
-            if old is not None and new.down==old.down and new.path[:len(old.path)]==old.path:
+            if old is not None and self._prefix_matches(new, old):
                 new.__dict__.setdefault('_native_prefix',old)
-                new.__dict__.setdefault('_native_validated',set()).update(old.__dict__.get('_native_validated',()))
+                if not new.__dict__.get('_native_claims_valid', False):
+                    validated = new.__dict__.setdefault('_native_validated', set())
+                    previous_count = len(validated)
+                    validated.update(old.__dict__.get('_native_validated', ()))
+                    if len(validated) != previous_count:
+                        # Preserve the existing inheritance semantics even if
+                        # a previously rejected interned touch is revisited.
+                        new.__dict__.pop('_native_claims_valid', None)
             if not self.native_claims_valid(new):return None
         steal = 0.0
         if self.graced is not None:
@@ -2038,22 +2208,7 @@ class _Graph:
         if self.lock_index is not None:
             for colour in (set(self.bound_frames(new)) if self.options.scoring_arcs else {p.candidate.occupation.colour for p in new.parts if p.candidate.occupation.kind == "chain"}):
                 if colour not in range(4): continue
-                active = [(a,b,interval) for col,a,b,interval in self.arc_notes if col == colour and a <= new.up_ms <= b]
-                unlock = -1
-                if active:
-                    interval = max(interval for _,_,interval in active)
-                    duration = min(round(interval*4),1000) if math.isfinite(interval) else 1000
-                    # ArcCreate clears this lock at the first frame with no arc
-                    # of the colour in range, even before its timer expires.
-                    end = max(b for _,b,_ in active)
-                    while True:
-                        following = [b for col,a,b,_ in self.arc_notes if col == colour and a <= end+1 and b > end]
-                        if not following: break
-                        end = max(following)
-                    unlock = min(new.up_ms+duration,end)
-                    index = bisect_left(self.lock_grace,new.up)
-                    if index < len(self.lock_grace):
-                        unlock = min(unlock,frame_ms(self.lock_grace[index],self.offset)-1)
+                unlock = self.lock_expiry(colour, new.up)
                 slots[self.lock_index+colour] = max(slots[self.lock_index+colour],unlock)
         return tuple(slots), increment, changes
 
@@ -2567,10 +2722,20 @@ def _unkept(plan: MultiPlan, occupations: OccupationSet, projection: GameplayPro
 
 def plan_multi_finger(occupations: OccupationSet, projection: GameplayProjection,
                       options: PlannerOptions = PlannerOptions(),
-                      multi: MultiFingerOptions = MultiFingerOptions(), progress=None) -> MultiPlan:
+                      multi: MultiFingerOptions = MultiFingerOptions(), progress=None, *,
+                      search_backend='auto', search_workers=0, keep_checkpoints=False, checkpoint=None) -> MultiPlan:
+    from .execution import plan as execute_search, validate_execution
+    validate_execution(search_backend, search_workers)
+    return execute_search(occupations, projection, options, multi, progress,
+                          search_backend=search_backend, search_workers=search_workers, keep_checkpoints=keep_checkpoints, checkpoint=checkpoint)
+
+
+def _plan_python(occupations, projection, options, multi, progress=None, *, keep_checkpoints=False, checkpoint=None):
+    """Reference implementation after the public execution policy has reported its choice."""
     reporter = ProgressReporter(progress)
     if not (multi.covered_holds or multi.covered_arcs or multi.steady_arcs or multi.enveloped_arcs):
-        return _plan_items(occupations, projection, options, multi, reporter)
+        return _plan_items(occupations, projection, options, multi, reporter,
+                           keep_checkpoints=keep_checkpoints, checkpoint=checkpoint)
     enveloped = enveloped_arcs(occupations, projection, multi) if multi.enveloped_arcs else ()
     plan = _plan_covered(occupations, projection, options, multi, enveloped, reporter)
     if plan is None:  # a piece left to another colour's finger was not kept: plan the chart without any
@@ -2627,12 +2792,66 @@ def _plan_covered(occupations, projection, options, multi, enveloped, progress=N
 PATH_TRACE: list | None = None
 
 
+# Leave several tap intervals for retiming before the first blocked contact.
+RETRY_REWIND_MS = 2000
+
+
+@dataclass(frozen=True)
+class BeamCheckpoint:
+    items: tuple[Occupation, ...]
+    groups: tuple
+    states: list[tuple]
+    touches: dict[int, Touch]
+    visited: int
+    pruned: int
+    blocked_ms: int
+
+
+class NoCandidatePath(ValueError):
+    def __init__(self, message, checkpoint):
+        super().__init__(message)
+        self.checkpoint = checkpoint
+
+
+def _checkpoint_states(checkpoint, graph):
+    """Import the frontier's touches; earlier contacts live in its ancestry."""
+    imported = {}
+
+    def restore(touch):
+        if touch.id not in imported:
+            copy = graph._intern(touch.parts, touch.bridges, touch.path)
+            if graph.jumps_over(touch):
+                copy.__dict__['_over'] = graph.jumps_over(touch)
+            prefix = touch.__dict__.get('_native_prefix')
+            if prefix is not None:
+                copy.__dict__['_native_prefix'] = restore(prefix)
+            imported[touch.id] = copy
+        return imported[touch.id]
+
+    # Only the contact and takeover slots hold touch IDs. The remaining slots
+    # hold repeat counts and native colour lock expiry times.
+    slots = (0, 1, 2, 3) if graph.own is None else (0, 1, 2, 3, graph.own, graph.own + 1)
+    result = []
+    for state, cost, node, arms in checkpoint.states:
+        state = list(state)
+        for slot in slots:
+            if state[slot] >= 0:
+                state[slot] = restore(checkpoint.touches[state[slot]]).id
+        result.append((tuple(state), cost, node, arms))
+    return result
+
+
 def _plan_items(occupations: OccupationSet, projection: GameplayProjection, options: PlannerOptions,
-                multi: MultiFingerOptions, progress=None) -> MultiPlan:
+                multi: MultiFingerOptions, progress=None, *,
+                keep_checkpoints=False, checkpoint=None) -> MultiPlan:
     progress = progress or ProgressReporter()
     progress('preparing')
     options = replace(options, audio_offset_ms=occupations.audio_offset_ms)
-    groups = build_candidates(occupations, projection, options, progress=progress)
+    start = len(checkpoint.items) if checkpoint is not None else 0
+    if checkpoint is not None and occupations.items[:start] != checkpoint.items:
+        raise ValueError("The retry occupations do not match the beam checkpoint")
+    groups = build_candidates(occupations, projection, options, progress=progress,
+                              prefix=checkpoint.groups if checkpoint is not None else ())
     meetings = None
     if multi.meeting_swaps:
         groups, meetings = meeting_candidates(groups, projection, options)
@@ -2640,55 +2859,182 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     progress('graph')
     graph = _Graph(groups, projection, options, multi, meetings, occupations)
     # Four slots (left 1, 2, right 1, 2: touch ids), then with jack_weight each hand's fast-run length.
-    states = {(-1, -1, -1, -1) + ((0, 0) if multi.jack_weight else ()) + ((-1, -1) if multi.arc_takeover_weight else ()) + ((-1,)*4 if multi.tick_contacts else ()):
-              (MultiCost(), None)}
+    initial = ((-1,) * 4 + ((0, 0) if multi.jack_weight else ())
+               + ((-1, -1) if multi.arc_takeover_weight else ()) + ((-1,) * 4 if multi.tick_contacts else ()))
+    crossing = None
+    if multi.arm_crossing_travel is not None:
+        from .arm_crossings import CrossingGraph
+        lift, idle_speed, requested = multi.arm_crossing_travel
+        crossing = CrossingGraph(lift, options.speed_max_m_s, idle_speed, requested)
+    states = [(initial, MultiCost(), None, crossing.initial if crossing else None)]
     visited, pruned = 1, 0
+    if checkpoint is not None:
+        states = _checkpoint_states(checkpoint, graph)
+        visited, pruned = checkpoint.visited, checkpoint.pruned
+
     def rank(cost):
-        return (cost.missed_ticks, cost.weighted(options, multi))
+        return (cost.missed_ticks, cost.missed_red_notes, cost.far_taps, cost.non_max_taps,
+                cost.weighted(options, multi))
+    def crossing_cost(cost, seconds, extra_distance=0.):
+        return replace(cost, base=replace(cost.base, crossing_seconds=seconds,
+                                          distance_m=cost.base.distance_m + extra_distance))
+
     present = {c.occupation.occupation_id for group in groups for c in group}
     empty_items = iter(o for o in occupations.items if o.occupation_id not in present)
+    items = [group[0].occupation if group else next(empty_items) for group in groups]
+    def miss_cost(item):
+        return MultiCost(missed_ticks=item.score_weight, missed_red_notes=int(item.is_red))
+
+    def finish(cost, arms):
+        for route in crossing.finish(arms):
+            finished = crossing_cost(cost, route.crossed_seconds, route.extra_distance_m - arms.extra_distance_m)
+            yield rank(finished), finished, route
+
+    can_stop = crossing is not None and multi.allow_misses
+    remaining_ticks = sum(item.score_weight for item in items[start:])
+    remaining_red = sum(item.is_red for item in items[start:])
+    completed_prefix = None
+    final_alternatives = ()
     earliest = [min((c.down_frame for c in group),default=math.inf) for group in groups]
     if multi.tick_contacts:
         for index in range(len(earliest)-2,-1,-1): earliest[index] = min(earliest[index],earliest[index+1])
-    for k, group in enumerate(groups):
+    checkpoints = deque(maxlen=3)
+    last_checkpoint_ms = items[0].start_ms if items else 0
+    prefix_end_ms = last_checkpoint_ms
+
+    def blocked(message, blocked_ms):
+        for cut_ms, cut, frontier, work, drops in reversed(checkpoints):
+            if cut >= len(items) or cut_ms > blocked_ms - RETRY_REWIND_MS:
+                continue
+            touch_slots = (0, 1, 2, 3) if graph.own is None else (0, 1, 2, 3, graph.own, graph.own + 1)
+            touches = {state[slot]: graph.touches[state[slot]]
+                       for state, _, _, _ in frontier for slot in touch_slots if state[slot] >= 0}
+            resume = BeamCheckpoint(tuple(items[:cut]), groups[:cut], frontier, touches, work, drops, blocked_ms)
+            return NoCandidatePath(message, resume)
+        return NoCandidatePath(message, None)
+
+    if checkpoint is not None:
+        progress('search', start, len(groups), chart_ms=items[start].first_tick.time_ms,
+                 states=len(states), states_completed=0, candidates=len(groups[start]), visited=visited,
+                 resumed_from=start, blocked_ms=checkpoint.blocked_ms)
+    for k, (item, group) in enumerate(zip(items[start:], groups[start:]), start):
+        item_ms = item.first_tick.time_ms if item.kind == "chain" else item.start_ms
         following = {}
         f0 = int(earliest[k]) if math.isfinite(earliest[k]) else 0
-        item = group[0].occupation if group else next(empty_items)
-        for state_index, (state, (cost, node)) in enumerate(states.items()):
+        remaining_ticks -= item.score_weight
+        remaining_red -= int(item.is_red)
+        def retain(state, cost, node, arms):
+            key = (state if options.crossing_pass_s else
+                   tuple(graph.future(i, f0) for i in state[:4]) + graph.tail_key(state, f0))
+            if crossing:
+                key += (arms.key,)
+            weight = rank(cost)
+            if key not in following or weight < following[key][1]:
+                following[key] = (cost, weight, node, state, arms)
+
+        for state_index, (state, cost, node, arms) in enumerate(states):
             progress('search', k, len(groups), chart_ms=item.first_tick.time_ms,
                      states=len(states), states_completed=state_index,
                      candidates=len(group), visited=visited)
-            if multi.allow_misses:
-                increment = MultiCost(missed_ticks=item.score_weight)
-                total = cost + increment
-                key = state if options.crossing_pass_s else (tuple(graph.future(i, f0) for i in state[:4]) + graph.tail_key(state, f0))
-                weight = rank(total)
-                if key not in following or weight < following[key][1]:
-                    following[key] = (total, weight, (node, (), increment, item.start_ms,
-                                                     state, None, item), state)
+            if multi.allow_misses or item.is_red:
+                increment = miss_cost(item)
+                retain(state, cost + increment, (node, (), increment, item.start_ms, state, None, item), arms)
             for candidate in (() if item.occupation_id in multi.forced_misses or set(item.source_event_ids) & set(multi.forced_misses) else group):
                 for hand in HANDS:
                     for new, increment, changes in graph.steps(state, candidate, hand):
-                        total = cost + increment
-                        weight = rank(total)
-                        key = new if options.crossing_pass_s else (tuple(graph.future(i, f0) for i in new[:4])
-                                                                   + graph.tail_key(new, f0))
-                        if key not in following or weight < following[key][1]:
-                            following[key] = (total, weight, (node, changes, increment, candidate.occupation.start_ms,
-                                                              state, candidate, hand), new)
+                        routes = crossing.step(arms, changes) if crossing else (None,)
+                        for route in routes:
+                            total = cost + increment
+                            step_cost = increment
+                            if route is not None:
+                                extra = route.extra_distance_m - arms.extra_distance_m
+                                total = crossing_cost(total, route.crossed_seconds, extra)
+                                step_cost = crossing_cost(increment, route.crossed_seconds - arms.crossed_seconds, extra)
+                            step = (node, changes, step_cost, candidate.occupation.start_ms, state, candidate, hand)
+                            retain(new, total, step, route)
         if not following:
             item = group[0].occupation if group else occupations.items[k]
-            raise ValueError(f"no candidate path at item {k}: {item.occupation_id} ({item.kind} at {item.start_ms} ms)")
+            raise blocked(
+                f"no candidate path at item {k}: {item.occupation_id} ({item.kind} at {item.start_ms} ms)",
+                item_ms,
+            )
         kept = list(following.values())
+        if crossing and k == len(groups) - 1:
+            final_alternatives = kept
         if multi.max_states and len(kept) > multi.max_states:
-            kept = sorted(kept, key=lambda v: v[1])[:multi.max_states]
+            kept.sort(key=lambda v: v[1])
+            if (options.full_point_window and not item.continuous_contact
+                    and item.start_ms - item.down_window.earliest_ms > rules.NATIVE_PERFECT_WINDOW_MS):
+                # Preserve different release schedules while the wider timing
+                # window is in play. Many higher-ranked routes can share the
+                # same hand availability and all miss the same later burst.
+                schedules = {}
+                best_misses = kept[0][1][:2]
+                for entry in kept:
+                    if entry[1][:2] != best_misses:
+                        break
+                    timing = tuple((graph.touches[i].down, graph.touches[i].up) if i >= 0 else None
+                                   for i in entry[3][:4])
+                    schedules.setdefault(timing, entry)
+                    if len(schedules) == multi.max_states:
+                        break
+                distinct = list(schedules.values())
+                selected = {id(entry) for entry in distinct}
+                kept = distinct + [entry for entry in kept if id(entry) not in selected]
+            kept = kept[:multi.max_states]
             pruned += 1
-        states = {new: (total, node) for total, _, node, new in kept}
+        if can_stop and k + 1 < len(groups):
+            # A pending travel span can be legal with a future contact but
+            # impossible to finish in place. Remember a legal stopping point
+            # in case the final beam loses every finishable path.
+            missed_tail = MultiCost(missed_ticks=remaining_ticks, missed_red_notes=remaining_red)
+            for cost, _, node, _, arms in sorted(kept, key=lambda entry: entry[1]):
+                total = cost + missed_tail
+                if completed_prefix is not None and rank(total)[:4] > completed_prefix[0][:4]:
+                    break
+                routes = tuple(finish(total, arms))
+                for score, finished, route in routes:
+                    if completed_prefix is None or score < completed_prefix[0]:
+                        completed_prefix = (score, finished, node, route, k + 1)
+                if routes:
+                    break
+        states = [(new, total, node, arms) for total, _, node, new, arms in kept]
         visited += len(states)
+        if keep_checkpoints:
+            prefix_end_ms = max(prefix_end_ms, item_ms)
+            if prefix_end_ms >= last_checkpoint_ms + RETRY_REWIND_MS:
+                checkpoints.append((prefix_end_ms, k + 1, states, visited, pruned))
+                last_checkpoint_ms = prefix_end_ms
         progress('search', k + 1, len(groups), chart_ms=item.last_tick.time_ms,
                  states=len(states), states_completed=len(states), candidates=len(group), visited=visited)
     progress('finalizing')
-    final_state, (cost, node) = min(states.items(), key=lambda kv: rank(kv[1][0]))
+    if crossing:
+        best = None
+        # Padding the shorter path can reveal a detour that shortens a
+        # crossing. The unfinished crossing cost is not a lower bound.
+        for _, cost, node, arms in sorted(states, key=lambda entry: rank(entry[1])):
+            for score, finished_cost, route in finish(cost, arms):
+                if best is None or score < best[0]:
+                    best = (score, finished_cost, node, route)
+        recovering = best is None
+        if recovering:
+            kept_nodes = {id(node) for _, _, node, _ in states}
+            for cost, _, node, _, arms in final_alternatives:
+                if id(node) in kept_nodes:
+                    continue
+                for score, finished, route in finish(cost, arms):
+                    if best is None or score < best[0]:
+                        best = (score, finished, node, route)
+        if recovering and completed_prefix is not None and (best is None or completed_prefix[0] < best[0]):
+            score, finished, node, route, stop = completed_prefix
+            for item in items[stop:]:
+                node = (node, (), miss_cost(item), item.start_ms, None, None, item)
+            best = (score, finished, node, route)
+        if best is None:
+            raise blocked("no candidate path through the final contacts", items[-1].last_tick.time_ms)
+        _, cost, node, arms = best
+    else:
+        _, cost, node, arms = min(states, key=lambda entry: rank(entry[1]))
     steps, step_costs, path, skipped = [], [], [], []
     while node is not None:
         node, changes, increment, start_ms, before, candidate, hand = node
@@ -2710,7 +3056,9 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     touches = tuple(sorted((FingerTouch(t, HANDS[slot // 2], slot % 2) for slot, t in done),
                            key=press_order))
     result = MultiPlan(touches, cost, options, multi, visited, pruned, step_costs=tuple(reversed(step_costs)),
-                       skipped=tuple(reversed(skipped)))
+                       skipped=tuple(reversed(skipped)), arm_crossings=arms.routes if arms else (),
+                       crossing_last_frame=arms.through if arms else None,
+                       crossing_travel=crossing.travel_segments(arms) if crossing else ())
     progress('done', len(groups), len(groups), visited=visited)
     return result
 

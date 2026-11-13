@@ -7,12 +7,31 @@ up-vector range. Native replay remains the final judge.
 
 import math
 
+from . import rules
+
 
 # Measured from JudgementService.Awake in the fixed 1148 x 802 exporter.
 # These are screen fractions, independent of the physical tablet dimensions.
 SCREEN_HALF_X = 135.315277 / 1148
 SCREEN_HALF_Y = 172.058334 / 802
 TILTS = (-0.05, -0.025, 0.0, 0.025, 0.05)
+LANE_WIDTH = 425.0  # ArcCreate game units (100 per Unity world unit)
+DEFAULT_CONTACT_OFFSET_X_PERCENT = 48
+DEFAULT_CONTACT_OFFSET_Y_PERCENT = 24
+
+
+def screen_hitbox(kind, width, height):
+    """Native screen-space half-extents in metres: left/right, down, up."""
+    arc_x, arc_y = SCREEN_HALF_X * width, SCREEN_HALF_Y * height
+    if kind == "chain":
+        return arc_x, arc_y, arc_y
+    lane_x = arc_x * LANE_WIDTH / (2 * rules.HITBOX_X)
+    lane_y = arc_y * LANE_WIDTH / (2 * rules.HITBOX_Y)
+    if kind == "sky":
+        return (lane_x * 2 * rules.SKY_TAP_X / LANE_WIDTH,
+                lane_y * 2 * rules.SKY_TAP_DOWN / LANE_WIDTH,
+                lane_y * 2 * rules.SKY_TAP_UP / LANE_WIDTH)
+    return lane_x, lane_y, lane_y
 
 
 class CameraEnvelope:
@@ -35,6 +54,7 @@ class CameraEnvelope:
             up = (r[1] * fz - r[2] * fy, r[2] * fx - r[0] * fz, r[0] * fy - r[1] * fx)
             self.bases.append((r, up))
         self.projected = {}
+        self.rectangles = {}
 
     def project(self, x, y, view=2):
         key = (x, y, view)
@@ -65,6 +85,20 @@ class CameraEnvelope:
             (p + distance * r) * 100 for p, r in zip(self.position[:2], ray[:2])
         )
 
+    def contact_rectangle(self, kind, x, y, fractions):
+        """Intersect the inner screen rectangles over the camera tilt envelope."""
+        key = (kind, x, y, fractions)
+        if key not in self.rectangles:
+            if len(self.rectangles) >= 65536:
+                self.rectangles.clear()
+            centres = [self.project(x, y, view) for view in range(len(TILTS))]
+            dx, down, up = screen_hitbox(kind, self.width, self.height)
+            xs, ys = zip(*centres)
+            left, right = _axis_limits(xs, dx, dx, fractions[0], self.width/2)
+            bottom, top = _axis_limits(ys, down, up, fractions[1], self.height/2)
+            self.rectangles[key] = (left, bottom, right, top)
+        return self.rectangles[key]
+
     def overlaps(self, a, b, view=2):
         if abs(a[0] - b[0]) <= 190 and abs(a[1] - b[1]) <= 250:
             return True
@@ -74,6 +108,20 @@ class CameraEnvelope:
             abs(x - u) <= SCREEN_HALF_X * self.width
             and abs(y - v) <= SCREEN_HALF_Y * self.height
         )
+
+
+def _axis_limits(centres, below, above, fraction, screen_edge):
+    low = max(-screen_edge, max(centres) - below * fraction)
+    high = min(screen_edge, min(centres) + above * fraction)
+    if low > high:
+        # At small settings the inner windows can separate as the camera tilts.
+        # Keep the nominal offset limit, and require a native hit in every view.
+        centre = centres[len(TILTS)//2]
+        low = max(-screen_edge, centre - below*fraction, max(centres) - below)
+        high = min(screen_edge, centre + above*fraction, min(centres) + above)
+    # Leave room for the replay's 0.01 mm rounding, including narrow limits.
+    inset = min(.00002, max(0., (high - low)/4))
+    return low + inset, high - inset
 
 
 def camera_for(projection):
@@ -91,8 +139,13 @@ class InputPoint(tuple):
         camera = camera_for(projection)
         samples = tuple(camera.unproject(xy, v) for v in range(len(TILTS)))
         point = super().__new__(cls, samples[2])
-        point.samples, point.camera = samples, camera
+        point.samples, point.camera, point.device_xy = samples, camera, xy
         return point
+
+    def in_contact_rectangle(self, kind, x, y, fractions):
+        left, bottom, right, top = self.camera.contact_rectangle(kind, x, y, fractions)
+        px, py = self.device_xy
+        return left - 1e-9 <= px <= right + 1e-9 and bottom - 1e-9 <= py <= top + 1e-9
 
     def collides(self, x, y, *, certain=False, inset=0):
         results = []
@@ -124,6 +177,7 @@ class ArcInputGeometry:
         self.camera = camera_for(projection)
         self.regions = {}
         self.active_notes = {}
+        self.guard_targets = {}
         self.notes = {
             (o.colour, id(n)): n
             for o in occupations
@@ -178,16 +232,18 @@ class ArcInputGeometry:
             weight = self.guards.get(f, 0.0)
             if not weight:
                 continue
-            now = frame_ms(f, self.offset)
-            active = [
-                n for colour, n in self.active_notes.get(f, ()) if colour == item.colour
-            ]
-            if not active:
+            key = (f, item.colour)
+            if key not in self.guard_targets:
+                now = frame_ms(f, self.offset)
+                # Preserve active-note order, including nearest-target ties.
+                self.guard_targets[key] = tuple(
+                    self.projection.judgement_to_device(*n.position(now))
+                    for colour, n in self.active_notes.get(f, ()) if colour == item.colour
+                )
+            targets = self.guard_targets[key]
+            if not targets:
                 continue
             # A colour can branch. Retain the branch nearest the selected path.
-            targets = [
-                self.projection.judgement_to_device(*n.position(now)) for n in active
-            ]
             x, y = out[k]
             a, b = min(targets, key=lambda p: math.dist(p, (x, y)))
             out[k] = (x + (a - x) * weight, y + (b - y) * weight)

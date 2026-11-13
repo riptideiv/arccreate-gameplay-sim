@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
-blender=${BLENDER_BIN:-../../work/tools/Blender.app/Contents/MacOS/Blender}
+blender=${BLENDER_BIN:-$(command -v blender || true)}
+blender=${blender:-.tools/Blender.app/Contents/MacOS/Blender}
 blend=${1:?provide the baked Blender file}
 gameplay=${2:?provide the ArcCreate clip used in Blender}
 video=${3:?provide the output MP4 path}

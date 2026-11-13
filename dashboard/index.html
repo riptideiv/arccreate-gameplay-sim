@@ -27,6 +27,8 @@
       <h2>Chart window</h2>
       <label for="chart">Chart</label>
       <select name="chart" id="chart"><option value="ex-otogibanashi">Ex-Otogibanashi</option><option value="bibideba">BIBBIDIBA</option></select>
+      <p id="chart-library-info" class="hint"></p>
+      <p id="chart-compatibility" class="hint" role="status" hidden></p>
       <div class="range-heading"><span>Selected window</span><button id="full-chart" type="button">Full chart</button></div>
       <div id="chart-range" class="chart-range" role="group" aria-label="Chart window">
         <div class="range-track" aria-hidden="true"><span></span></div>
@@ -47,17 +49,37 @@
       </details>
     </section>
     <section>
+      <h2>Scroll and audio</h2>
+      <div class="knob"><label for="scroll-speed">Chart scroll speed</label><input id="scroll-speed" name="scroll_speed" type="number" min="1" max="10" step="0.1" required><input aria-label="Chart scroll speed slider" data-for="scroll_speed" type="range" min="1" max="10" step="0.1"></div>
+      <p class="hint">ArcCreate scale 1–10. Higher values bring notes toward you faster. Note timing and song tempo stay unchanged.</p>
+      <div class="knob"><label for="song-delay">Song audio delay</label><span class="input-unit"><input id="song-delay" name="song_delay_ms" type="number" min="-2000" max="2000" step="1" required><span>ms</span></span><input aria-label="Song audio delay slider" data-for="song_delay_ms" type="range" min="-2000" max="2000" step="10"></div>
+      <p class="hint">Positive = song later than video; negative = earlier. Video, hand contacts and hit sounds stay fixed.</p>
+      <label><input name="hit_sounds" type="checkbox"> Hit sounds</label>
+      <p class="hint">Clicks for caught block notes and snake scoring ticks. Missed notes stay silent. Build to apply; these controls reuse contact plans.</p>
+    </section>
+    <section>
+      <h2>Red sky notes</h2>
+      <label class="check"><input type="checkbox" name="enable_red_notes"> Enable red notes</label>
+      <label class="check"><input type="checkbox" name="target_all_red_notes" id="target-red"> Target every red note</label>
+      <p class="hint">Red notes award no score and never break combo. With targeting off, hands focus on scoring notes; incidental red catches still register. With targeting on, the planner seeks every feasible red catch after protecting normal score.</p>
+    </section>
+    <section>
       <h2>Hand motion</h2>
       <div class="knob"><label for="speed">Max move speed</label><span class="input-unit"><input id="speed" name="max_speed_m_s" type="number" min="0.1" max="4" step="0.05" required><span>m/s</span></span><input aria-label="Max move speed slider" data-for="max_speed_m_s" type="range" min="0.1" max="4" step="0.05"></div>
       <p class="hint">Checked on the full glove, including movement from wrist turns.</p>
+      <div class="knob"><label for="idle-speed">Idle / detour speed</label><span class="input-unit"><input id="idle-speed" name="idle_speed_m_s" type="number" min="0.05" max="4" step="0.05" required><span>m/s</span></span><input aria-label="Idle movement speed slider" data-for="idle_speed_m_s" type="range" min="0.05" max="4" step="0.05"></div>
+      <p class="hint">Limits optional returns to the side and collision detours. Required moves between notes can use the main move-speed limit. Hands stay nearer the notes when a leisurely return will not fit.</p>
+      <p class="hint" id="crossing-status"></p>
       <div class="knob"><label for="turn">Max wrist turn</label><span class="input-unit"><input id="turn" name="angular_limit_deg_s" type="number" min="30" max="1440" step="30" required><span>°/s</span></span><input aria-label="Max wrist turn slider" data-for="angular_limit_deg_s" type="range" min="30" max="1440" step="30"></div>
       <div class="knob"><label for="lift">Finger lift</label><span class="input-unit"><input id="lift" name="lift_mm" type="number" min="0" max="30" step="1" required><span>mm</span></span><input aria-label="Finger lift slider" data-for="lift_mm" type="range" min="0" max="30" step="1"></div>
       <div class="knob"><label for="clearance">Preferred hand clearance</label><span class="input-unit"><input id="clearance" name="clearance_mm" type="number" min="0.5" max="8" step="0.5" required><span>mm</span></span><input aria-label="Hand clearance slider" data-for="clearance_mm" type="range" min="0.5" max="8" step="0.5"></div>
-      <p class="hint">Hands pivot around their touch points to avoid overlap. Released hands can lift or move around the other hand. Contacts stay fixed; unresolved overlap is reported without blocking playback.</p>
+      <label class="check"><input name="allow_clipping" type="checkbox" checked> Allow 3D clipping</label>
+      <p class="hint">The preview can play through arm clearance shortfalls while keeping the planned touches.</p>
       <details>
         <summary>Planner preferences</summary>
         <label>Comfort speed <span class="input-unit"><input name="comfort_speed_m_s" type="number" min="0.1" max="2" step="0.05" required><span>m/s</span></span></label>
-        <label>Crossing cost <input name="crossing_weight" type="number" min="0" max="30" step="0.5" required></label>
+        <label>Crossing cost per second <input name="crossing_weight" type="number" min="0" max="128" step="0.5" required></label>
+        <p class="hint">An interval counts in full if both endpoints are crossed, or by half if one endpoint is crossed.</p>
         <label>Acceleration preference <span class="input-unit"><input name="planner_accel_m_s2" type="number" min="1" max="200" step="1" required><span>m/s²</span></span></label>
         <p class="hint">Acceleration is an upstream planner preference. Move and turn speeds above are enforced on the animation.</p>
       </details>
@@ -79,12 +101,20 @@
       </details>
       <details>
         <summary>Hard timing limits</summary>
+        <label for="tap-interval">Minimum tap interval <span class="input-unit"><input id="tap-interval" name="tap_interval_ms" type="number" min="0" max="1000" step="1" required><span>ms</span></span></label>
+        <p class="hint">Strict press-to-press limit for consecutive point taps on the same finger.</p>
         <label for="tap-frames">Tap duration <span class="input-unit"><input id="tap-frames" name="point_contact_frames" type="number" min="1" max="12" step="1" required><span>frames</span></span></label>
         <label for="air-frames">Minimum release gap <span class="input-unit"><input id="air-frames" name="min_air_frames" type="number" min="0" max="30" step="1" required><span>frames</span></span></label>
         <label for="hold-air-frames">Release gap after a hold or arc <span class="input-unit"><input id="hold-air-frames" name="held_release_air_frames" type="number" min="0" max="30" step="1" required><span>frames</span></span></label>
         <p class="hint">The planner runs at 60 Hz. One frame is 16.7 ms. These durations are required.</p>
       </details>
       <p class="hint" id="click-interval" aria-live="polite"></p>
+    </section>
+    <section id="contact-position">
+      <h2>Contact position</h2>
+      <label for="contact-offset-x">Horizontal offset limit <span class="input-unit"><input id="contact-offset-x" name="contact_offset_x_percent" type="number" min="0" max="100" step="1" required><span>%</span></span></label>
+      <label for="contact-offset-y">Vertical offset limit <span class="input-unit"><input id="contact-offset-y" name="contact_offset_y_percent" type="number" min="0" max="100" step="1" required><span>%</span></span></label>
+      <p class="hint">Percent of ArcCreate’s maximum offset from the note center, in each direction. Zero centers that axis. Applies to all note types.</p>
     </section>
     <section id="arc-release">
       <h2>Arc paths and release</h2>
@@ -141,11 +171,16 @@
       <div><h2>Presentation set</h2><p id="presentation-hint" class="hint" aria-live="polite"></p></div>
       <div class="export-actions"><button id="refresh-scene" type="button">Update presentation</button></div>
     </section>
-    <section class="video-export" id="video-export" hidden aria-label="Video export">
-      <div><h2>Export video</h2><p id="export-hint" class="hint" aria-live="polite">Export this take with the current camera and audio.</p></div>
-      <div class="export-actions"><button id="export-video" type="button">Export MP4</button><a id="download-export" download hidden>Download MP4</a></div>
+    <section class="video-export" id="webgl-export" hidden aria-label="Preview video export">
+      <div><h2>Export preview video</h2><p id="webgl-export-hint" class="hint" aria-live="polite">Records this view with game audio at 1×. Keep the page visible until it finishes.</p><progress id="webgl-export-progress" max="100" value="0" hidden aria-label="Preview recording progress"></progress></div>
+      <div class="export-actions"><button id="add-ending" type="button">Add results ending</button><button id="export-ending" type="button" hidden>Export ending only</button><label for="export-fps">Video frame rate</label><select id="export-fps"><option value="30">30 fps</option><option value="60" selected>60 fps</option></select><button id="export-webgl" type="button">Export preview video</button><button id="cancel-webgl" type="button" hidden>Cancel export</button><a id="download-webgl" download hidden>Download video</a></div>
     </section>
+    <details id="video-export" class="analysis" hidden><summary>Blender MP4 export</summary>
+      <p id="export-hint" class="hint" aria-live="polite">Offline Blender rendering with the current camera and audio.</p>
+      <div class="export-actions"><button id="export-video" type="button">Export Blender MP4</button><a id="download-export" download hidden>Download Blender MP4</a></div>
+    </details>
     <section class="analysis" id="judgement-report" hidden>
+      <p id="hit-audio-report" class="hint" hidden><span id="hit-audio-counts"></span> <a id="hit-audio-download" download>Download hit sounds (WAV)</a></p>
       <h2>ArcCreate results</h2><p id="judgement-summary"></p><p id="arc-tick-summary" class="hint" hidden></p><a id="arc-tick-report" hidden target="_blank" rel="noopener">Native arc-tick report</a>
       <p class="hint">Score, combo, effects and hit sounds follow the two-hand touch replay. Window boundaries can also cause misses.</p>
       <details><summary>Planned missed ticks and notes</summary><ul id="skipped-targets"></ul></details>

@@ -567,13 +567,14 @@ class _Converter:
             end = start
         curve, effect = self.word(node, 4), self.word(node, 8)
         trace = node.arguments[9]
-        if not isinstance(trace.value, bool) or trace.kind != "identifier":
-            raise _ConversionError("arc argument 10 must be true or false", trace.source)
+        designant = trace.kind == "identifier" and trace.value == "designant"
+        if not designant and (not isinstance(trace.value, bool) or trace.kind != "identifier"):
+            raise _ConversionError("arc argument 10 must be true, false or designant", trace.source)
         arc = ArcEvent(**base, type="arc", start_time_ms=start, end_time_ms=end,
                        start_aff_xy=[self.number(node, 2), self.number(node, 5)],
                        end_aff_xy=[self.number(node, 3), self.number(node, 6)],
                        interpolation=curve, color=self.integer(node, 7), effect=effect,
-                       is_guideline=trace.value, connected_event_ids=[])
+                       is_guideline=True if designant else trace.value, is_designant=designant, connected_event_ids=[])
         self.events.append(arc)
         if reversed_duration:
             self.features.add("reversed_arc_duration")
@@ -586,6 +587,8 @@ class _Converter:
         if curve not in SUPPORTED_CURVES:
             self.features.add("unknown_curve")
             self.block("unsupported_arc_curve", f"Unknown Arc interpolation {curve!r} is preserved", node, arc.event_id)
+        if designant:
+            self.features.add("designant")
         if effect != "none":
             self.features.add("arc_effect")
             self.block("unsupported_arc_effect", f"Arc effect {effect!r} is preserved but its input semantics are not implemented", node, arc.event_id)

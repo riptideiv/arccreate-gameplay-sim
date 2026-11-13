@@ -63,6 +63,7 @@ class PlannerOptions:
     # Optional stricter point-note timing target, checked after frame rounding.
     # None keeps the occupation's window; 25 requests Max-PURE timing.
     point_window_ms: int | None = None
+    full_point_window: bool = False  # Enumerate every frame in the occupation's bounded press window.
     distance_weight: float = 5.0  # cost per metre of straight-line transfer, even below comfort speed
     # Hold every arc chain from the frame it reaches the line
     # to the first frame after it ends, instead of from its first tick until
@@ -116,8 +117,14 @@ class PlannerOptions:
     scoring_arcs: bool = False
     prefer_arc_trace: bool = False
     arc_trace_weight: float = 1000.0
+    contact_offset_fractions: tuple[float, float] | None = None
 
     def __post_init__(self):
+        if self.contact_offset_fractions is not None and (
+            len(self.contact_offset_fractions) != 2
+            or not all(0 <= value <= 1 for value in self.contact_offset_fractions)
+        ):
+            raise ValueError("contact_offset_fractions must contain X and Y fractions in [0, 1]")
         if not math.isfinite(self.arc_trace_weight) or self.arc_trace_weight < 0:
             raise ValueError("arc_trace_weight must be finite and nonnegative")
         if not math.isfinite(self.distance_weight) or self.distance_weight < 0:
@@ -380,6 +387,33 @@ def target_xy(occupation: Occupation, time_ms: int, projection: GameplayProjecti
     return projection.judgement_to_device(region.x, region.y)
 
 
+def contact_variants(item, down, up, offset, projection, fractions, *, edges=True, corners=False):
+    """Sample the centre and inner rectangle edges at a consistent offset through a contact."""
+    from .native_input import camera_for
+
+    camera = camera_for(projection)
+    directions = [(0, 0)]
+    if edges:
+        directions += [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    if corners:
+        directions += [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+    axes = []
+    frames = range(down, up) if item.kind == "chain" else (down,)
+    for frame in frames:
+        centre = target_xy(item, frame_ms(frame, offset), projection)
+        left, bottom, right, top = camera.contact_rectangle(
+            item.kind, *camera.unproject(centre, 2), fractions)
+        if left > right or bottom > top:
+            return ()
+        x, y = centre
+        axes.append(((left, min(max(x, left), right), right),
+                     (bottom, min(max(y, bottom), top), top)))
+    paths = tuple(tuple((x[dx+1], y[dy+1]) for x, y in axes) for dx, dy in directions)
+    if item.kind != "chain":
+        paths = tuple(path * (up - down) for path in paths)
+    return tuple(dict.fromkeys(paths))
+
+
 def crossing_pass(previous: "Candidate", following: "Candidate", other: "Candidate | None", hand: str,
                   projection: GameplayProjection, margin_m: float = 0.005):
     """Whether one hand's flight from ``previous`` to ``following`` swaps sides with the other hand.
@@ -404,13 +438,18 @@ def crossing_pass(previous: "Candidate", following: "Candidate", other: "Candida
 
 
 def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
-                     options: PlannerOptions, progress=None) -> tuple[tuple[Candidate, ...], ...]:
+                     options: PlannerOptions, progress=None, *,
+                     prefix: tuple[tuple[Candidate, ...], ...] = ()) -> tuple[tuple[Candidate, ...], ...]:
     """Finite graph; nominal ordering is retained even when ±33 ms overlaps."""
     if options.point_window_ms is not None and (
             type(options.point_window_ms) is not int or options.point_window_ms < 0):
         raise ValueError("point_window_ms must be a nonnegative integer or None")
-    groups, next_id = [], 0
+    groups = []
+    next_id = max((c.id for group in prefix for c in group), default=-1) + 1
+    start = len(prefix)
+    items = occupations.items[start:]
     offset = occupations.audio_offset_ms
+    fractions = options.contact_offset_fractions
     profiles = {}
     if options.scoring_arcs:
         if progress:
@@ -418,9 +457,9 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         from .arc_scoring import profile, anchors, source_note, covers, hit, world, trace_cells, trace_position
         from .native_input import geometry_for
         native_geometry = geometry_for(occupations.items, projection, offset)
-        cells = trace_cells([o for o in occupations.items if o.kind == 'chain'], offset)
+        cells = trace_cells([o for o in items if o.kind == 'chain'], offset)
         parents = {}
-        for o in occupations.items:
+        for o in items:
             if o.kind == 'chain':
                 key = o.parent_occupation_id or o.occupation_id
                 if key not in parents: parents[key] = o
@@ -429,8 +468,8 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
             if progress:
                 progress('arc_profiles', index, len(parents))
             o = replace(o, parent_occupation_id=None, score_points=tuple(sorted(set(o.score_points),key=lambda p:p.time_ms)))
-            profiles[key] = (profile(o,projection,options.speed_max_m_s,offset), anchors(o,projection))
-    for k, item in enumerate(occupations.items):
+            profiles[key] = (profile(o,projection,options.speed_max_m_s,offset,fractions=fractions), anchors(o,projection))
+    for k, item in enumerate(items, start):
         if progress:
             progress('candidates', k, len(occupations.items), chart_ms=item.start_ms)
         if options.scoring_arcs and item.kind == 'chain':
@@ -440,7 +479,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                 if fitted is not None:
                     down,path,_ = fitted
                     variants.append((down,path))
-                    if len(set(path))==1:
+                    if fractions is None and len(set(path))==1:
                         for dx in (-.012,.012):
                             shifted=tuple((x+dx,y) for x,y in path)
                             caught=covers(item,shifted,down,offset,projection)
@@ -463,7 +502,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                 targets=list(dict.fromkeys(targets))[:3]
                 for q in targets:
                     xy=world(projection,q)
-                    valid=[f for f in range(first,last+1) if hit(n,xy,frame_ms(f,offset))]
+                    valid=[f for f in range(first,last+1) if hit(n,xy,frame_ms(f,offset),fractions=fractions)]
                     if not valid:continue
                     downs={valid[0],min(valid,key=lambda f:abs(f-nominal)),valid[-1]}
                     for down in sorted(downs):
@@ -485,14 +524,27 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                         for amount in (.25, .5, .75):
                             variants.append((first, tuple((x+(u-x)*amount, y+(v-y)*amount)
                                 for (x,y),(u,v) in zip(base, centre))))
+            if fractions is not None:
+                if item.parent_occupation_id:
+                    spatial_downs = sorted({first, min(max(nominal, first), last), last}) if first <= last else ()
+                    spans = [(down, down + 2) for down in spatial_downs]
+                elif fitted is not None:
+                    down, path, _ = fitted
+                    spans = [(down, down+len(path))]
+                else:
+                    first = max(0, frame_at_or_after(item.start_ms, offset))
+                    spans = [(first, max(first+2, frame_at_or_after(item.end_ms+1, offset)))]
+                for down, up in spans:
+                    variants.extend((down, path) for path in
+                                    contact_variants(item, down, up, offset, projection, fractions))
             candidates=[]
-            for down,path in variants:
+            for down,path in dict.fromkeys(variants) if fractions is not None else variants:
                 path = native_geometry.guard_path(item,path,down)
                 if any(abs(x)>projection.width_m/2 or abs(y)>projection.height_m/2 for x,y in path):continue
                 up=down+len(path)
                 if any(parent==(item.parent_occupation_id or item.occupation_id) and frame_ms(down,offset)<=stop and frame_ms(up-1,offset)>=start
                        for parent,start,stop in options.contact_exclusions):continue
-                if covers(item,path,down,offset,projection) is None:continue
+                if covers(item,path,down,offset,projection,fractions=fractions) is None:continue
                 speed=max((math.dist(a,b)*60 for a,b in zip(path,path[1:])),default=0)
                 if speed>options.speed_max_m_s*1.00001:continue
                 untouched=0
@@ -552,6 +604,10 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
             down_frames = [frame_at_or_after(desired_down, offset)]
             settled = max(p.contact_window.earliest_ms for p in item.score_points)
             up_frame = frame_at_or_after(settled, offset) + 1
+        elif options.full_point_window:
+            first = frame_at_or_after(item.down_window.earliest_ms, offset)
+            stop = frame_at_or_after(item.down_window.latest_ms + 1, offset)
+            down_frames = range(first, stop)
         else:
             down_frames = sorted({round((item.start_ms + delta + offset) * 60 / 1000) for delta in options.offsets_ms})
         for down in down_frames:
@@ -569,7 +625,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
             candidates.append(Candidate(next_id, k, item, down, up, points[0], points[-1], offset, speed))
             next_id += 1
         groups.append(tuple(candidates))
-    if options.full_arc_hold and not any(o.parent_occupation_id for o in occupations.items):
+    if not prefix and options.full_arc_hold and not any(o.parent_occupation_id for o in items):
         # A full hold presses before the chain's first tick, so process items in press order.
         order = sorted(range(len(groups)), key=lambda i: (min((c.down_frame for c in groups[i]), default=0), i))
         groups = [tuple(replace(c, item_index=n) for c in groups[i]) for n, i in enumerate(order)]
@@ -580,9 +636,38 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         groups = _swap_at_meeting(groups, occupations, chart_ms)
     if options.full_arc_hold or options.full_ground_hold:
         groups, next_id = _add_partial_holds(groups, projection, options, next_id)
+    if fractions is not None:
+        groups = _offset_contacts(groups, projection, options, next_id)
     if progress:
         progress('candidates', len(occupations.items), len(occupations.items))
-    return tuple(groups)
+    return prefix + tuple(groups)
+
+
+def _offset_contacts(groups, projection, options, next_id):
+    """Expand spatial choices at a few press times; retain centre timing resolution."""
+    result = []
+    for group in groups:
+        if not group or group[0].occupation.native_scoring:
+            result.append(group)
+            continue
+        item = group[0].occupation
+        times = {c.down_frame for c in group}
+        nominal = min(group, key=lambda c: abs(c.down_ms - item.start_ms)).down_frame
+        sampled = {min(times), nominal, max(times)}
+        variants = []
+        for c in group:
+            edges = item.continuous_contact or c.down_frame in sampled
+            paths = contact_variants(c.occupation, c.down_frame, c.up_frame, c.audio_offset_ms,
+                                     projection, options.contact_offset_fractions, edges=edges,
+                                     corners=c.down_frame == nominal and item.kind != "chain")
+            for path in paths:
+                speed = max((math.dist(a, b)*60 for a,b in zip(path,path[1:])), default=0.0)
+                if speed <= options.speed_max_m_s * 1.00001:
+                    variants.append(replace(c, id=next_id, first_xy=path[0], last_xy=path[-1],
+                                            max_contact_sample_speed_m_s=speed, contact_path=path))
+                    next_id += 1
+        result.append(tuple(variants))
+    return result
 
 
 def _add_partial_holds(groups, projection, options, next_id):

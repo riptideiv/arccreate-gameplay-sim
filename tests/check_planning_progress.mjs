@@ -15,7 +15,6 @@ const $ = id => {
 };
 const context = vm.createContext({$, Date, Math, String,
   bootstrap: {charts: {bibideba: {title: 'BIBBIDIBA'}}},
-  setText(element, text) { element.textContent = text; },
   setRenderDisabled() {}, updateExportControls() {}, currentJob: null,
 });
 vm.runInContext(functionSource, context);

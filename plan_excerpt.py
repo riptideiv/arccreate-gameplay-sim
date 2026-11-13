@@ -3,13 +3,17 @@
 import argparse
 from dataclasses import replace
 import json
+import math
 import re
 import time
 from pathlib import Path
 
 from arc_hand_order import api
 from arc_hand_order.chart.arc_connections import connect_arcs
+from arc_hand_order.planning.native_input import DEFAULT_CONTACT_OFFSET_X_PERCENT, DEFAULT_CONTACT_OFFSET_Y_PERCENT
+from arc_hand_order.planning.rules import NATIVE_FAR_WINDOW_MS, NATIVE_PERFECT_WINDOW_MS
 from arc_hand_order.planning.occupations import occupations_from_chart, TimeWindow
+from arc_hand_order.planning.multi_finger import NoCandidatePath
 
 
 def split_arc_ticks(occupations):
@@ -25,21 +29,72 @@ def split_arc_ticks(occupations):
                                  down_window=point.contact_window,
                                  up_window=TimeWindow(point.contact_window.earliest_ms+1,None)))
     return replace(occupations, items=tuple(sorted(items,key=lambda o:(o.first_tick.time_ms if o.kind=="chain" else o.start_ms,
-                                                                    o.end_ms,o.occupation_id))))
+                                                                    o.end_ms,o.is_red,o.occupation_id))))
 
 
-def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False, excluded=(), avoid_contacts=(), progress=None):
+def point_windows(occupations, duration, timing_window):
+    items = []
+    for item in occupations.items:
+        if not item.continuous_contact:
+            window = TimeWindow(max(0, item.start_ms - timing_window),
+                                min(duration - 1, item.start_ms + timing_window - 1))
+            points = tuple(replace(point, contact_window=window) for point in item.score_points)
+            item = replace(item, down_window=window, score_points=points)
+        items.append(item)
+    return replace(occupations, items=tuple(items))
+
+
+def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False,
+                excluded=(), avoid_contacts=(), progress=None, *, cache_dir=None,
+                search_backend='auto', search_workers=0):
+    """Library calls default to uncached. CLI/dashboard opt into completed reuse."""
+    from arc_hand_order.planning.execution import validate_execution
+    validate_execution(search_backend, search_workers)
+    execution = dict(search_backend=search_backend, search_workers=search_workers)
+    if cache_dir is None:
+        return _create_plan(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,progress,**execution)
+    from plan_cache import request_key, read, write
+    began=time.monotonic()
+    excluded,avoid_contacts=tuple(excluded),tuple(avoid_contacts)
+    key,request=request_key(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,search_backend=search_backend)
+    cached=read(cache_dir,key,request)
+    if cached is not None:
+        if progress:progress({'phase':'done','completed':1,'total':1,'cache_hit':True,
+                              'attempt':0,'elapsed_s':round(time.monotonic()-began,3)})
+        return cached
+    result=_create_plan(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,progress,**execution)
+    write(cache_dir,key,request,result)
+    return result
+
+
+def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False, excluded=(), avoid_contacts=(), progress=None, *, search_backend='auto', search_workers=0):
     if not 0 <= start_ms < end_ms:
         raise ValueError("Expected 0 <= start_ms < end_ms")
     settings = settings or {}
     began = time.monotonic()
     attempt = 1
+    retry = None
     def report(event):
         if progress:
-            progress({**event, 'attempt': attempt, 'elapsed_s': round(time.monotonic() - began, 1)})
+            progress({**event, 'attempt': attempt, 'retry': retry,
+                      'elapsed_s': round(time.monotonic() - began, 1)})
+        elif event.get('phase') == 'backend' and event.get('requested_backend') == 'native' and event.get('search_backend') == 'python':
+            import warnings
+            warnings.warn('Native search unavailable; using Python: ' + event.get('fallback_reason', 'unsupported configuration'),
+                          RuntimeWarning, stacklevel=2)
     report({'phase': 'loading', 'completed': None, 'total': None})
     loaded = api.load_chart(chart_path)
     chart = loaded.chart.model_copy(deep=True)
+    source_offset_ms = chart.audio_offset_ms
+    # A negative source offset must not put visible excerpt contacts in negative
+    # animation frames. Keep source audio timing separate from the sample grid.
+    chart.audio_offset_ms = max(0, source_offset_ms)
+    red_arcs = {e.event_id for e in chart.events if e.type == 'arc' and e.is_designant}
+    red_taps = {e.event_id for e in chart.events if e.type == 'arctap' and e.parent_arc_id in red_arcs}
+    enable_red = settings.get('enable_red_notes', True)
+    target_red = enable_red and settings.get('target_all_red_notes', False)
+    chart.events = [e for e in chart.events if (enable_red or e.event_id not in red_arcs)
+                    and (target_red or e.event_id not in red_taps)]
     events = [
         event for event in chart.events
         if (event.type == "timing" and event.start_time_ms < end_ms)
@@ -86,12 +141,25 @@ def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=Fa
                              if item.continuous_contact else item.up_window))
     occupations = replace(occupations, items=tuple(items))
     native_items = occupations.items
-    multi = {"second_finger": False, "second_finger_again": False}
+    multi = {
+        "second_finger": False, "second_finger_again": False,
+        "max_states": settings.get("search_width", 256),
+        "arm_crossing_travel": (settings.get("lift_mm", 8) / 1000,
+                                settings.get("idle_speed_m_s", 1),
+                                math.ceil((duration + chart.audio_offset_ms) * 60 / 1000)),
+    }
     if scoring:
         multi.update(tick_contacts=True, max_states=settings.get('search_width',256), meeting_swaps=False,
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
     planner = {
         'scoring_arcs': scoring,
+        'contact_offset_fractions': (
+            settings.get('contact_offset_x_percent', DEFAULT_CONTACT_OFFSET_X_PERCENT) / 100,
+            settings.get('contact_offset_y_percent', DEFAULT_CONTACT_OFFSET_Y_PERCENT) / 100,
+        ),
+        'point_window_ms': None,
+        'full_point_window': True,
+        'speed_max_m_s': settings.get('max_speed_m_s', 3.0),
         'prefer_arc_trace': settings.get('prefer_arc_trace', False),
         'arc_trace_weight': settings.get('arc_trace_weight', 1000),
         "contact_exclusions": tuple((x['parent'],x['start_ms'],x['end_ms']) for x in avoid_contacts),
@@ -101,7 +169,6 @@ def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=Fa
         "partial_ground_hold_weight": settings.get("partial_ground_hold_weight", 500),
     }
     if settings:
-        planner["speed_max_m_s"] = settings.get("max_speed_m_s",3.0)
         planner["speed_comfort_m_s"] = min(settings.get("comfort_speed_m_s", 0.25),
                                           planner["speed_max_m_s"])
         planner["crossing_weight"] = settings.get("crossing_weight", 1)
@@ -112,6 +179,7 @@ def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=Fa
         multi["repeat_comfort_s"] = planner["repeat_comfort_s"]
         multi["jack_weight"] = settings.get("jack_weight", 0 if legacy_same_hand else 20)
         multi["jack_gap_ms"] = settings.get("jack_gap_ms", 150)
+        multi["tap_interval_ms"] = settings.get("tap_interval_ms", 0)
         multi["jack_free"] = settings.get("jack_free", 4)
         planner["point_contact_frames"] = settings.get("point_contact_frames", 2)
         planner["min_air_frames"] = settings.get("min_air_frames", 1)
@@ -119,23 +187,79 @@ def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=Fa
     elif prefer_same_hand:
         multi["jack_weight"] = 0
         planner["repeat_weight"] = 0
-    try:
-        if excluded or avoid_contacts:
-            raise ValueError("no candidate path: retrying verified motion")
-        result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=occupations, progress=report)
-    except ValueError as error:
-        if "no candidate path" not in str(error):
-            raise
-        # Preserve scoring ticks before ergonomic costs. Covered-note shortcuts depend
-        # on other contacts existing, so the skip-capable search plans them explicitly.
-        occupations = split_arc_ticks(occupations)
+    result = None
+    checkpoint = None
+    if not (excluded or avoid_contacts):
+        try:
+            result = api.plan_chart(
+                excerpt, multi=multi, planner=planner,
+                occupation_set=point_windows(occupations, duration, NATIVE_PERFECT_WINDOW_MS),
+                progress=report, keep_checkpoints=scoring, search_backend=search_backend, search_workers=search_workers,
+            )
+        except ValueError as error:
+            if "no candidate path" not in str(error):
+                raise
+            if isinstance(error, NoCandidatePath):
+                checkpoint = error.checkpoint
+
+    if result is None:
+        # Search the native FAR window before resorting to misses. Plan covered
+        # contacts explicitly because a missing contact can invalidate a shortcut.
+        split = point_windows(split_arc_ticks(occupations), duration, NATIVE_FAR_WINDOW_MS)
         attempt = 2
         multi.update(allow_misses=settings.get("allow_misses",True), forced_misses=tuple(excluded), tick_contacts=True,
                      max_states=settings.get("search_width", 256), meeting_swaps=False,
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
-        result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=occupations, progress=report)
+        can_retry_intact = (scoring and not (excluded or avoid_contacts)
+                            and any(item.kind == "chain" for item in native_items)
+                            and any(not item.continuous_contact for item in native_items))
+        if checkpoint is not None:
+            retry = 'checkpoint'
+            kept = {item.occupation_id for item in checkpoint.items}
+            tail = tuple(item for item in split.items
+                         if (item.parent_occupation_id or item.occupation_id) not in kept)
+            local_retry = replace(split, items=checkpoint.items + tail)
+            try:
+                resumed = api.plan_chart(
+                    excerpt, multi={**multi, "allow_misses": False}, planner=planner,
+                    occupation_set=local_retry, progress=report, checkpoint=checkpoint, search_backend=search_backend, search_workers=search_workers,
+                )
+            except NoCandidatePath:
+                pass
+            else:
+                if not resumed.plan.cost.missed_ticks:
+                    result = resumed
+            checkpoint = None
+            if result is None:
+                attempt += 1
+
+        split_error = None
+        if result is None:
+            retry = 'split'
+            try:
+                result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=split, progress=report, search_backend=search_backend, search_workers=search_workers)
+            except ValueError as error:
+                if not can_retry_intact or "no candidate path" not in str(error):
+                    raise
+                split_error = error
+
+        if can_retry_intact and (result is None or result.plan.cost.missed_ticks):
+            # A split-arc beam can discard the release schedules that an intact
+            # arc fit keeps. Check that route with FAR timing before returning misses.
+            attempt += 1
+            retry = 'intact'
+            intact = point_windows(occupations, duration, NATIVE_FAR_WINDOW_MS)
+            try:
+                result = api.plan_chart(excerpt, multi={**multi, "allow_misses": False}, planner=planner,
+                                        occupation_set=intact, progress=report, search_backend=search_backend, search_workers=search_workers)
+            except ValueError as error:
+                if "no candidate path" not in str(error):
+                    raise
+                if split_error is not None:
+                    raise split_error from error
     report({'phase': 'writing', 'completed': None, 'total': None})
     output = api.plan_to_dict(result)
+    output['chart']['source_audio_offset_ms'] = source_offset_ms
     # A point at the excerpt boundary may have an early press in frame -1.
     # Keep only the visible portion of that contact in the playback timeline.
     for touch in output["touches"]:
@@ -146,7 +270,7 @@ def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=Fa
             for part in touch["parts"]:
                 part["from_frame"] = max(0, part["from_frame"])
                 part["from_ms"] = max(-chart.audio_offset_ms, part["from_ms"])
-    output["misses"] = [{"events": list(o.source_event_ids), "kind": "arc_tick" if o.parent_occupation_id else o.kind,
+    output["misses"] = [{"events": list(o.source_event_ids), "kind": "red_sky" if o.is_red else "arc_tick" if o.parent_occupation_id else o.kind,
                          "tick_id": o.occupation_id if o.parent_occupation_id else None,
                          "parent_occupation_id": o.parent_occupation_id,
                          "start_ms": o.first_tick.time_ms if o.parent_occupation_id else o.start_ms,
@@ -176,15 +300,20 @@ def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=Fa
     output["planning"] = {"arc_path_mode": 'score' if scoring else 'trace',
                           "input_model": 'native-screen-world-camera-envelope' if scoring else 'legacy-trace',
                           "skipped_ticks": result.plan.cost.missed_ticks,
+                          "planned_far_taps": result.plan.cost.far_taps,
+                          "red_notes_enabled": enable_red, "target_all_red_notes": target_red,
+                          "skipped_red_notes": result.plan.cost.missed_red_notes,
+                          "planned_red_notes": sum(o.is_red for o in native_items) - result.plan.cost.missed_red_notes,
                           "tick_contacts": result.plan.multi.tick_contacts,
                           "arc_reacquisitions": sum(len(ids)-1 for ids in parents.values()),
                           "contact_exclusions": list(avoid_contacts),
                           "pruned_items": result.plan.pruned_items,
-                          "policy": "score ticks first, then movement cost; bounded candidate search"}
+                          "policy": ("score ticks first, then red catches, then point judgements and movement cost; bounded candidate search"
+                                     if target_red else "score ticks first, then point judgements and movement cost; bounded candidate search")}
     output["preview"] = {
         "chart_start_ms": start_ms,
         "chart_end_ms": end_ms,
-        "audio_start_ms": start_ms + chart.audio_offset_ms,
+        "audio_start_ms": start_ms + source_offset_ms,
         "duration_ms": end_ms - start_ms,
     }
     return output
@@ -202,6 +331,10 @@ def main():
     parser.add_argument("--exclude-event", action="append", default=[])
     parser.add_argument("--avoid-contacts", type=Path)
     parser.add_argument("--progress", action="store_true", help="Stream machine-readable planning progress to stdout")
+    parser.add_argument('--no-plan-cache', action='store_true', help='Run the search without completed-plan disk reuse')
+    parser.add_argument('--plan-cache-dir', type=Path, default=Path(__file__).resolve().parent/'output/contact-plans')
+    parser.add_argument('--search-backend', choices=('auto','python','native'), default='auto')
+    parser.add_argument('--search-workers', type=int, default=0, help='Native worker count; 0 selects at most four CPUs')
     args = parser.parse_args()
     try:
         settings = json.loads(args.settings.read_text()) if args.settings else {'arc_path_mode':'score'}
@@ -210,7 +343,9 @@ def main():
         def progress(event):
             print('PLANNER_PROGRESS ' + json.dumps(event), flush=True)
         output = create_plan(args.chart, args.start_ms, args.end_ms, settings, args.prefer_same_hand, args.exclude_event, avoid,
-                             progress=progress if args.progress else None)
+                             progress=progress if args.progress else None,
+                             cache_dir=None if args.no_plan_cache else args.plan_cache_dir,
+                             search_backend=args.search_backend, search_workers=args.search_workers)
     except ValueError as error:
         parser.exit(1, f"error: {error}\n")
     args.output.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n")

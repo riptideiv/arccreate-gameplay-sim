@@ -9,8 +9,8 @@ const templates = Object.entries(zhCN).filter(([key]) => key.includes('{')).map(
     if (/^\{\w+\}$/.test(part)) {
       const name = part.slice(1,-1); names.push(name);
       // Numeric slots cannot swallow other chunks in a composed status line.
-      return ['error', 'title'].includes(name) ? '(.+?)'
-        : name === 'dimensions' ? '(\\d+ × \\d+)'
+      return ['error','features','title'].includes(name) ? '(.+?)'
+        : name === 'format' ? '(MP4|WEBM)' : name === 'dimensions' ? '(\\d+ × \\d+)'
         : '([\\d.,:+-]+)';
     }
     return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -31,7 +31,7 @@ export function translate(source, locale = language) {
     if (!match) continue;
     const captures = Object.fromEntries(entry.names.map((name, i) => [name, match[i+1]]));
     return entry.value.replace(/\{(\w+)\}/g, (_,name) =>
-      name === 'error' ? translate(captures[name], locale) : captures[name]);
+      name === 'error' ? translate(captures[name], locale) : name === 'features' ? captures[name].split(', ').map(part => translate(part, locale)).join('、') : captures[name]);
   }
   if (text.includes(' · ')) return text.split(' · ').map(part => translate(part, locale)).join(' · ');
   return text;

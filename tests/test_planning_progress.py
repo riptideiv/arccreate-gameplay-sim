@@ -43,6 +43,45 @@ def test_retry_is_identified_and_counts_individual_scoring_ticks(tmp_path):
     assert [e for e in events if e['phase'] == 'search'][-1]['completed'] == 4
 
 
+def test_far_retry_reuses_the_perfect_beam_and_retimes_the_lead_in(tmp_path, monkeypatch):
+    source = chart(
+        tmp_path, '(1000,1);arc(1800,2600,.5,.5,s,1,1,0,none,false);'
+        '(3200,1);(4200,2);arc(4600,5400,.5,.5,s,1,1,1,none,false);'
+        '(5200,3);(6000,1);(6017,4);(6033,1);(6050,4);(6700,4);',
+    )
+    events = []
+    plan = create_plan(source, 0, 7200, {'arc_path_mode': 'score', 'max_speed_m_s': 4,
+                                         'tap_interval_ms': 150, 'search_width': 128}, progress=events.append)
+    resumed = next(event for event in events if event.get('resumed_from'))
+    assert resumed['attempt'] == 2
+    assert resumed['completed'] == resumed['resumed_from'] == 3
+    assert resumed['chart_ms'] == 4200
+    assert resumed['blocked_ms'] == 6033
+    assert plan['misses'] == []
+    assert plan['planning']['planned_far_taps'] == 2
+    arc_parts = [part for touch in plan['touches'] for part in touch['parts'] if part['kind'] == 'chain']
+    assert sum(part.get('parent_occupation_id') is None for part in arc_parts) == 1
+    assert any(part.get('parent_occupation_id') for part in arc_parts)
+
+    from arc_hand_order import api
+    from arc_hand_order.planning.multi_finger import NoCandidatePath
+    plan_chart = api.plan_chart
+
+    def fail_local_retry(*args, **kwargs):
+        if kwargs.get('checkpoint') is not None:
+            raise NoCandidatePath('no candidate path from this checkpoint', None)
+        return plan_chart(*args, **kwargs)
+
+    monkeypatch.setattr(api, 'plan_chart', fail_local_retry)
+    events.clear()
+    fallback = create_plan(source, 0, 7200, {'arc_path_mode': 'score', 'max_speed_m_s': 4,
+                                             'tap_interval_ms': 150, 'search_width': 128}, progress=events.append)
+    retry_start = next(event for event in events if event['retry'] == 'split' and event['phase'] == 'search')
+    assert retry_start['attempt'] == 3
+    assert retry_start['completed'] == 0
+    assert fallback['misses'] == []
+
+
 def test_throttling_keeps_phase_boundaries_but_not_every_state(tmp_path, monkeypatch):
     now = [0.0]
     monkeypatch.setattr(progress_module.time, 'monotonic', lambda: now[0])
