@@ -611,15 +611,27 @@ impl CrossingGraph {
             travel,
         }))
     }
-    fn checkpoint(previous: &ArmState, paths: &[Arc<HandPath>; 2]) -> (i32, usize) {
+    fn checkpoint(
+        previous: &ArmState,
+        paths: &[Arc<HandPath>; 2],
+        changed_from: [usize; 2],
+    ) -> (i32, usize) {
         let through = paths.iter().map(|p| p.points.len()).min().unwrap() - 1;
         let shared = previous.through().min(through);
         let mut first = None;
-        for (old, new) in previous.paths.iter().zip(paths) {
+        for (hand, (old, new)) in previous.paths.iter().zip(paths).enumerate() {
             if Arc::ptr_eq(old, new) {
                 continue;
             }
-            if let Some(i) = (0..=shared).find(|&i| {
+            debug_assert!(
+                (0..changed_from[hand].min(shared + 1))
+                    .all(|i| old.points[i][..2] == new.points[i][..2]
+                        && old.locked[i] == new.locked[i])
+            );
+            if changed_from[hand] > shared {
+                continue;
+            }
+            if let Some(i) = (changed_from[hand]..=shared).find(|&i| {
                 old.points[i][..2] != new.points[i][..2] || old.locked[i] != new.locked[i]
             }) {
                 first = Some(first.map_or(i, |f: usize| f.min(i)));
@@ -627,8 +639,12 @@ impl CrossingGraph {
         }
         (first.map_or(shared as i32, |i| i as i32 - 1), through)
     }
-    fn advance(&self, previous: &ArmState, paths: &[Arc<HandPath>; 2]) -> Vec<ArmState> {
-        let (fixed, through) = Self::checkpoint(previous, paths);
+    fn advance(
+        &self,
+        previous: &ArmState,
+        paths: &[Arc<HandPath>; 2],
+        (fixed, through): (i32, usize),
+    ) -> Vec<ArmState> {
         let histories = if fixed < 0 {
             let points: [Vec<Point>; 2] = std::array::from_fn(|h| {
                 let mut p = vec![self.homes[h]];
@@ -673,8 +689,8 @@ impl CrossingGraph {
         &self,
         previous: &ArmState,
         paths: &[Arc<HandPath>; 2],
-    ) -> Vec<[Arc<HandPath>; 2]> {
-        let (fixed, through) = Self::checkpoint(previous, paths);
+        (fixed, through): (i32, usize),
+    ) -> Vec<([Arc<HandPath>; 2], usize, usize)> {
         let start = fixed.max(0) as usize;
         let crossed = if fixed < 0 {
             paths[0].points[0][0] > paths[1].points[0][0]
@@ -734,26 +750,34 @@ impl CrossingGraph {
                     }
                     let mut selected = paths.clone();
                     selected[h] = Arc::new(new);
-                    result.push(selected);
+                    result.push((selected, h, a));
                 }
                 break;
             }
         }
         result
     }
-    fn routes(&self, previous: &ArmState, paths: [Arc<HandPath>; 2]) -> Vec<ArmState> {
-        let mut pending = vec![paths];
+    fn routes(
+        &self,
+        previous: &ArmState,
+        paths: [Arc<HandPath>; 2],
+        changed_from: [usize; 2],
+    ) -> Vec<ArmState> {
+        // Contact projection and detours only edit suffixes. Reuse their first
+        // possible edit frame to avoid scanning the entire previously played chart.
+        let mut pending = vec![(paths, changed_from)];
         let mut seen = HashSet::from([vec![]]);
         let mut result = vec![];
         let mut i = 0;
         while i < pending.len() {
-            let paths = pending[i].clone();
+            let (paths, changed_from) = pending[i].clone();
             i += 1;
-            result.extend(self.advance(previous, &paths));
+            let checkpoint = Self::checkpoint(previous, &paths, changed_from);
+            result.extend(self.advance(previous, &paths, checkpoint));
             if pending.len() >= 8 {
                 continue;
             }
-            for alternative in self.alternatives(previous, &paths) {
+            for (alternative, hand, start) in self.alternatives(previous, &paths, checkpoint) {
                 let mut key = vec![];
                 for (h, p) in alternative.iter().enumerate() {
                     for g in p.travel.iter().filter(|g| g.curved) {
@@ -764,7 +788,9 @@ impl CrossingGraph {
                     }
                 }
                 if seen.insert(key) {
-                    pending.push(alternative);
+                    let mut changed = changed_from;
+                    changed[hand] = changed[hand].min(start);
+                    pending.push((alternative, changed));
                     if pending.len() == 8 {
                         break;
                     }
@@ -781,13 +807,15 @@ impl CrossingGraph {
         extension: bool,
     ) -> Vec<ArmState> {
         let mut paths = previous.paths.clone();
+        let mut changed_from = [usize::MAX; 2];
         if touch.up() > 0 {
             let Some(path) = self.project(&paths[hand], touch, !extension, hand) else {
                 return vec![];
             };
+            changed_from[hand] = path.anchor;
             paths[hand] = path;
         }
-        self.routes(previous, paths)
+        self.routes(previous, paths, changed_from)
     }
     // Validate only the pending asymmetric tail. Padding both stationary
     // endpoints through the rest of the chart cannot introduce another pass.
@@ -829,7 +857,7 @@ impl CrossingGraph {
             path.locked.resize(frame + 1, false);
             Arc::new(path)
         });
-        self.routes(state, paths)
+        self.routes(state, paths, [usize::MAX; 2])
     }
 }
 
