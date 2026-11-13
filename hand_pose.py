@@ -23,7 +23,7 @@ HAND_PARTS = (
 )
 
 
-VERSION = "pivot-beam-acceleration-1"
+VERSION = "pivot-beam-acceleration-2"
 NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
 # Fixed shoulder pivots and outward/downward elbow poles in tablet space.
 SHOULDERS = np.array([[-0.18, -0.38, 0.17], [0.18, -0.38, 0.17]])
@@ -36,6 +36,10 @@ ARM_WEIGHT = 0.25
 # equivalent linear acceleration at a representative distance from the pad.
 WRIST_LEVER_M = 0.065
 ACCELERATION_WEIGHT = 0.25
+# Optional avoidance has a lower acceleration budget than fixed contacts.
+AVOIDANCE_ACCEL_M_S2 = 25.
+MIN_AVOIDANCE_RAMP_FRAMES = 6
+TRAVEL_DISTANCE_WEIGHT = 1000.
 
 
 def accelerations(samples):
@@ -247,10 +251,14 @@ def _pose_penalty(margin, floor, gap, arm_weight, both_pinned):
 
 def air_paths(
     points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None, idle_speed=math.inf,
-    routes=None, swivels=None, *, progress=None,
+    routes=None, swivels=None, *, reference=None, progress=None,
 ):
-    """Lift only free portions of a hand path; preserve every contact sample."""
+    """Refine free travel while preserving every contact sample.
+
+    Use the same reference on each pass so candidates replace prior detours.
+    """
     result = points.copy()
+    reference = points if reference is None else reference
     changes = 0
     runs = []
     for h in range(2):
@@ -297,10 +305,10 @@ def air_paths(
         else 0
     )
 
-    def penalty_for(candidates, other, a, b, h, mandatory_layer):
+    def penalty_for(candidates, other, a, b, h, has_crossing):
         penalty = np.zeros(len(candidates))
         peak_layer_shortfall = np.zeros(len(candidates))
-        fractions = np.arange(8)/8 if mandatory_layer else (0, 0.25, 0.5, 0.75)
+        fractions = np.arange(8)/8 if has_crossing else (0, 0.25, 0.5, 0.75)
         for fraction in fractions:
             here = candidates[:, :-1] * (1 - fraction) + candidates[:, 1:] * fraction
             there = other[:-1] * (1 - fraction) + other[1:] * fraction
@@ -353,40 +361,37 @@ def air_paths(
         for completed, (a, b, h) in enumerate(runs):
             if progress:
                 progress("pose_travel", completed, len(runs), sweep=sweep)
-            base = points[a : b + 1, h]
+            base = reference[a : b + 1, h]
             other = result[a : b + 1, 1 - h]
-            mandatory_layer = bool(routes and layers_at(np.arange(a, b+1), routes).any())
+            has_crossing = bool(routes and layers_at(np.arange(a, b+1), routes).any())
             if poses is None:
                 if (
                     np.linalg.norm(result[a : b + 1, h] - other, axis=-1).min()
                     >= 2 * pad_radius + gap + 0.008
                 ):
                     continue
-            elif penalty_for(result[a : b + 1, h][None], other, a, b, h, mandatory_layer)[0] < 1e-7:
+            elif penalty_for(result[a : b + 1, h][None], other, a, b, h, has_crossing)[0] < 1e-7:
                 continue
-            t = np.linspace(0, 1, b - a + 1)
-            from_start = np.arange(b - a + 1)
-            to_end = from_start[::-1]
-            ramp = np.minimum(1, np.minimum(from_start, to_end) / 4)
-            ramp = ramp**3 * (10 - 15 * ramp + 6 * ramp**2)
-            shapes = [np.sin(t * np.pi) ** 2, ramp]
-            if mandatory_layer:
-                # A release can sit immediately before a pass. Consider a
-                # quick rise or descent, still bounded by the real speed cap.
-                shapes.extend(np.minimum(1, np.minimum(from_start/a_rate, to_end/b_rate))
-                              for a_rate, b_rate in ((1, 4), (4, 1), (2, 2)))
-            shapes = np.stack(shapes)
-            candidates = (
-                base[None, None, :, :]
-                + offsets[None, :, None, :] * shapes[:, None, :, None]
-            ).reshape(-1, b - a + 1, 3)
-            candidates = np.concatenate((result[a : b + 1, h][None], candidates))
+            elapsed = np.arange(b - a + 1)
+            edge_distance = np.minimum(elapsed, elapsed[::-1])
+            # Start preparing as soon as the finger is free. Try an arch over
+            # the whole interval and, when there is room, a smooth plateau.
+            ramps = [max((b-a) / 2, MIN_AVOIDANCE_RAMP_FRAMES)]
+            if b-a > 2 * MIN_AVOIDANCE_RAMP_FRAMES:
+                ramps.append(MIN_AVOIDANCE_RAMP_FRAMES)
+            u = np.minimum(1, edge_distance / np.asarray(ramps)[:, None])
+            shapes = u**3 * (10 - 15*u + 6*u**2)
+            offsets_by_frame = (offsets[None, :, None, :] * shapes[:, None, :, None]).reshape(-1, b-a+1, 3)
+            candidates = np.concatenate((result[a:b+1, h][None], base + offsets_by_frame))
+            # Include the change from and back to the unmodified path.
+            optional_accel = accelerations(np.pad(offsets_by_frame, ((0, 0), (1, 1), (0, 0))))
+            peak_optional = np.linalg.norm(optional_accel, axis=-1).max(axis=1)
             speed = np.linalg.norm(np.diff(candidates, axis=1), axis=-1) * 60
             # Optional avoidance must not spend the full contact-travel budget.
             # If the fixed contacts already demand faster travel, preserve that
             # baseline allowance rather than dropping a note to slow a detour.
             required = np.linalg.norm(np.diff(base, axis=0), axis=-1).max(initial=0) * 60
-            free_cap = max_speed if mandatory_layer else min(max_speed, max(idle_speed, required))
+            free_cap = min(max_speed, max(idle_speed, required))
             valid_translation = speed.max(axis=1) <= free_cap + 1e-5
             if poses is not None:
                 speed += (
@@ -397,7 +402,12 @@ def air_paths(
                     )[None, :]
                 )
             valid = valid_translation & (speed.max(axis=1) <= max_speed + 1e-5)
-            penalty = penalty_for(candidates, other, a, b, h, mandatory_layer)
+            valid[1:] &= peak_optional <= AVOIDANCE_ACCEL_M_S2
+            # The incumbent was generated on the same reference in the first
+            # pass. Its speed is still checked against the new wrist poses.
+            penalty = penalty_for(candidates, other, a, b, h, has_crossing)
+            travel = np.linalg.norm(np.diff(candidates, axis=1), axis=-1).sum(axis=1)
+            penalty += TRAVEL_DISTANCE_WEIGHT * travel
             penalty[~valid] = np.inf
             choice = int(np.argmin(penalty))
             if choice and penalty[choice] < penalty[0] - 1e-8:
@@ -650,7 +660,7 @@ def solve(
         swivels = solve_swivels(points, poses, parts, routes, gap, progress=progress)
     points, body_lifts = air_paths(
         points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed,
-        routes=routes, swivels=swivels, progress=progress,
+        routes=routes, swivels=swivels, reference=original, progress=progress,
     )
     lifts += body_lifts
     if routes is not None and body_lifts:

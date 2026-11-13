@@ -7,7 +7,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from hand_pose import (
-    HAND_PARTS, NEUTRAL, acceleration_diagnostics, arm_cost, bases, diagnostics, proxies, solve,
+    AVOIDANCE_ACCEL_M_S2, HAND_PARTS, NEUTRAL, acceleration_diagnostics,
+    accelerations, air_paths, arm_cost, bases, diagnostics, proxies, solve,
 )
 
 PARTS = [
@@ -108,3 +109,33 @@ def test_acceleration_report_distinguishes_rotation_from_pinned_translation():
     assert report["wrist_rotation_rad_s2"]["peak"] == pytest.approx(12)
     assert report["wrist_joint_m_s2"]["peak"] > 0
     assert report["elbow_m_s2"]["peak"] > 0
+
+
+
+def test_crossing_avoidance_is_smooth_and_second_pass_replaces_lift(monkeypatch):
+    import crossing_motion
+
+    # Model a crossing that would always benefit from raising the left pad.
+    def clearance(centres, angles, parts, layers, swivels):
+        return centres[0][..., 0, 2] - .2
+
+    monkeypatch.setattr(crossing_motion, "layer_margin", clearance)
+    count = 41
+    points = np.broadcast_to([[-.09, .02, .006], [.09, .02, .006]], (count, 2, 3))
+    poses = np.broadcast_to(NEUTRAL, (count, 2, 2))
+    active = np.ones((count, 2), dtype=bool)
+    active[1:-1, 0] = False
+    routes = [{"start_frame": 0, "end_frame": None, "top": "left"}]
+
+    def avoid(path):
+        return air_paths(path, active, 3., poses=poses, parts=PARTS,
+                         idle_speed=.7, routes=routes, reference=points)[0]
+
+    first = avoid(points)
+    second = avoid(first)
+    np.testing.assert_array_equal(first[active], points[active])
+    assert .006 < first[:, 0, 2].max() <= .086 + 1e-9
+    np.testing.assert_array_equal(first, second)
+    optional = np.pad((second-points)[:, 0], ((1, 1), (0, 0)))
+    assert np.linalg.norm(accelerations(optional), axis=-1).max() <= AVOIDANCE_ACCEL_M_S2
+    assert np.linalg.norm(np.diff(second[:, 0], axis=0), axis=-1).max() * 60 <= .70001
