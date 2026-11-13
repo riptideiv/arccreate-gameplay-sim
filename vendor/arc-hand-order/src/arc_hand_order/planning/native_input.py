@@ -177,6 +177,7 @@ class ArcInputGeometry:
         self.camera = camera_for(projection)
         self.regions = {}
         self.active_notes = {}
+        self.guard_targets = {}
         self.notes = {
             (o.colour, id(n)): n
             for o in occupations
@@ -231,16 +232,18 @@ class ArcInputGeometry:
             weight = self.guards.get(f, 0.0)
             if not weight:
                 continue
-            now = frame_ms(f, self.offset)
-            active = [
-                n for colour, n in self.active_notes.get(f, ()) if colour == item.colour
-            ]
-            if not active:
+            key = (f, item.colour)
+            if key not in self.guard_targets:
+                now = frame_ms(f, self.offset)
+                # Preserve active-note order, including nearest-target ties.
+                self.guard_targets[key] = tuple(
+                    self.projection.judgement_to_device(*n.position(now))
+                    for colour, n in self.active_notes.get(f, ()) if colour == item.colour
+                )
+            targets = self.guard_targets[key]
+            if not targets:
                 continue
             # A colour can branch. Retain the branch nearest the selected path.
-            targets = [
-                self.projection.judgement_to_device(*n.position(now)) for n in active
-            ]
             x, y = out[k]
             a, b = min(targets, key=lambda p: math.dist(p, (x, y)))
             out[k] = (x + (a - x) * weight, y + (b - y) * weight)

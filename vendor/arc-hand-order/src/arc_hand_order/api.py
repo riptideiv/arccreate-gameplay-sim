@@ -104,15 +104,17 @@ def options_for(preset: str = "on5", multi: dict | None = None, planner: dict | 
 
 def plan_chart(chart: LoadedChart, device_path=DEFAULT_DEVICE, preset: str = "on5", multi: dict | None = None,
                planner: dict | None = None, occupation_set: OccupationSet | None = None,
-               progress=None, *, keep_checkpoints=False, checkpoint=None) -> PlanResult:
+               progress=None, *, keep_checkpoints=False, checkpoint=None, search_backend='auto', search_workers=0) -> PlanResult:
     """Plan ``chart`` with the preset and overrides."""
+    from .planning.execution import validate_execution
+    validate_execution(search_backend, search_workers)
     device = load_device(device_path)
     projection = GameplayProjection(device)
     options, multi_options = options_for(preset, multi, planner)
     began = time.perf_counter()
     occupations = occupation_set if occupation_set is not None else occupations_from_chart(chart.chart)
     plan = mf.plan_multi_finger(occupations, projection, options, multi_options, progress=progress,
-                                keep_checkpoints=keep_checkpoints, checkpoint=checkpoint)
+                                keep_checkpoints=keep_checkpoints, checkpoint=checkpoint, search_backend=search_backend, search_workers=search_workers)
     return PlanResult(chart, str(device_path), device, preset, occupations, plan,
                       round(time.perf_counter() - began, 1))
 

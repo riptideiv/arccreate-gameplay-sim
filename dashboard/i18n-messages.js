@@ -200,6 +200,7 @@ export const zhCN = {
   "The local renderer could not complete the request.": "本机渲染服务未能完成请求。",
   "Stopping render…": "正在停止生成…",
   "Reading chart": "正在读取谱面",
+  "Verifying contact plan": "正在验证触点方案",
   "Preparing touchpoint search": "正在准备触点搜索",
   "Checking arc input regions": "正在检查蛇的判定区域",
   "Preparing snake paths": "正在准备蛇的路径",

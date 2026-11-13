@@ -45,3 +45,18 @@ def test_content_device_and_window_invalidate_key(chart,tmp_path,monkeypatch):
  device=tmp_path/'device.json';device.write_bytes(api.DEFAULT_DEVICE.read_bytes()+b'\n');monkeypatch.setattr(api,'DEFAULT_DEVICE',device)
  assert b!=cache.request_key(*args)[0]
  assert cache.request_key(chart,0,900,{},False,(),())[0]!=cache.request_key(*args)[0]
+
+
+def test_backend_identity_separates_reference_and_native_cache(chart):
+ args=(chart,0,1000,{},False,(),())
+ assert cache.request_key(*args,search_backend='python')[0]!=cache.request_key(*args,search_backend='native')[0]
+ assert 'workers' not in cache.execution_identity('python')
+
+
+def test_native_source_changes_invalidate_implementation(tmp_path):
+ root=tmp_path/'source';root.mkdir()
+ for name in ('plan_excerpt.py','plan_cache.py','contact_placement.py','hand_pose.py'):
+  (root/name).write_text('pass\n')
+ src=root/'native-search/src';src.mkdir(parents=True);f=src/'engine.rs';f.write_text('first')
+ before=cache.implementation_version(root);f.write_text('second')
+ assert cache.implementation_version(root)!=before

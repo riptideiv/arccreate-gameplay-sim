@@ -175,3 +175,5 @@ Preview recording supports 30/60 fps (default 60). New native touch-replay foota
 Completed chart takes can add ArcCreate's native results flow from saved judgements: triangle/decorative transition, animated results entrance, native ranks such as All Perfect, and the native results music. Older endings offer Update results flow. Export ending only records the short tail with the existing WebGL scene; `dashboard/ending.py --finalize ... --body ...` splices it onto a matching 60 fps body without rerendering that body. Results endings currently use the WebGL export path. See [results ending notes](docs/native-results-ending.md).
 
 The touchpoint planner chooses which arm passes over and keeps that order until the arms uncross. Motion generation follows the chosen route and reports crossings it cannot pose. See the [arm crossing design](docs/arm-winding.md).
+
+See [the native search port](docs/near-side-native-search.md) for installation, beam width 256, and measured results.

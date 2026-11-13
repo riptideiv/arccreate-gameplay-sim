@@ -315,9 +315,9 @@ class RenderQueue:
     def planner_update(self, event):
         """Store observed work counts separately from the overall build-stage bar."""
         phase = event['phase']
-        ranges = {'loading': (3, 3), 'preparing': (3, 3), 'geometry': (3, 4),
+        ranges = {'backend': (3, 3), 'loading': (3, 3), 'preparing': (3, 3), 'geometry': (3, 4),
                   'arc_profiles': (4, 6), 'candidates': (6, 9), 'graph': (9, 10),
-                  'search': (10, 19), 'finalizing': (19, 19), 'done': (19, 19), 'writing': (19, 19)}
+                  'search': (10, 19), 'finalizing': (19, 19), 'validation': (19, 19), 'done': (19, 19), 'writing': (19, 19)}
         low, high = ranges[phase]
         completed, total = event.get('completed'), event.get('total')
         fraction = max(0, min(1, completed / total)) if total else 0

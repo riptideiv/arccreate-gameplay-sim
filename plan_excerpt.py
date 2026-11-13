@@ -45,25 +45,29 @@ def point_windows(occupations, duration, timing_window):
 
 
 def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False,
-                excluded=(), avoid_contacts=(), progress=None, *, cache_dir=None):
+                excluded=(), avoid_contacts=(), progress=None, *, cache_dir=None,
+                search_backend='auto', search_workers=0):
     """Library calls default to uncached. CLI/dashboard opt into completed reuse."""
+    from arc_hand_order.planning.execution import validate_execution
+    validate_execution(search_backend, search_workers)
+    execution = dict(search_backend=search_backend, search_workers=search_workers)
     if cache_dir is None:
-        return _create_plan(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,progress)
+        return _create_plan(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,progress,**execution)
     from plan_cache import request_key, read, write
     began=time.monotonic()
     excluded,avoid_contacts=tuple(excluded),tuple(avoid_contacts)
-    key,request=request_key(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts)
+    key,request=request_key(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,search_backend=search_backend)
     cached=read(cache_dir,key,request)
     if cached is not None:
         if progress:progress({'phase':'done','completed':1,'total':1,'cache_hit':True,
                               'attempt':0,'elapsed_s':round(time.monotonic()-began,3)})
         return cached
-    result=_create_plan(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,progress)
+    result=_create_plan(chart_path,start_ms,end_ms,settings,prefer_same_hand,excluded,avoid_contacts,progress,**execution)
     write(cache_dir,key,request,result)
     return result
 
 
-def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False, excluded=(), avoid_contacts=(), progress=None):
+def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False, excluded=(), avoid_contacts=(), progress=None, *, search_backend='auto', search_workers=0):
     if not 0 <= start_ms < end_ms:
         raise ValueError("Expected 0 <= start_ms < end_ms")
     settings = settings or {}
@@ -74,6 +78,10 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         if progress:
             progress({**event, 'attempt': attempt, 'retry': retry,
                       'elapsed_s': round(time.monotonic() - began, 1)})
+        elif event.get('phase') == 'backend' and event.get('requested_backend') == 'native' and event.get('search_backend') == 'python':
+            import warnings
+            warnings.warn('Native search unavailable; using Python: ' + event.get('fallback_reason', 'unsupported configuration'),
+                          RuntimeWarning, stacklevel=2)
     report({'phase': 'loading', 'completed': None, 'total': None})
     loaded = api.load_chart(chart_path)
     chart = loaded.chart.model_copy(deep=True)
@@ -186,7 +194,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             result = api.plan_chart(
                 excerpt, multi=multi, planner=planner,
                 occupation_set=point_windows(occupations, duration, NATIVE_PERFECT_WINDOW_MS),
-                progress=report, keep_checkpoints=scoring,
+                progress=report, keep_checkpoints=scoring, search_backend=search_backend, search_workers=search_workers,
             )
         except ValueError as error:
             if "no candidate path" not in str(error):
@@ -214,7 +222,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             try:
                 resumed = api.plan_chart(
                     excerpt, multi={**multi, "allow_misses": False}, planner=planner,
-                    occupation_set=local_retry, progress=report, checkpoint=checkpoint,
+                    occupation_set=local_retry, progress=report, checkpoint=checkpoint, search_backend=search_backend, search_workers=search_workers,
                 )
             except NoCandidatePath:
                 pass
@@ -229,7 +237,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         if result is None:
             retry = 'split'
             try:
-                result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=split, progress=report)
+                result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=split, progress=report, search_backend=search_backend, search_workers=search_workers)
             except ValueError as error:
                 if not can_retry_intact or "no candidate path" not in str(error):
                     raise
@@ -243,7 +251,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             intact = point_windows(occupations, duration, NATIVE_FAR_WINDOW_MS)
             try:
                 result = api.plan_chart(excerpt, multi={**multi, "allow_misses": False}, planner=planner,
-                                        occupation_set=intact, progress=report)
+                                        occupation_set=intact, progress=report, search_backend=search_backend, search_workers=search_workers)
             except ValueError as error:
                 if "no candidate path" not in str(error):
                     raise
@@ -325,6 +333,8 @@ def main():
     parser.add_argument("--progress", action="store_true", help="Stream machine-readable planning progress to stdout")
     parser.add_argument('--no-plan-cache', action='store_true', help='Run the search without completed-plan disk reuse')
     parser.add_argument('--plan-cache-dir', type=Path, default=Path(__file__).resolve().parent/'output/contact-plans')
+    parser.add_argument('--search-backend', choices=('auto','python','native'), default='auto')
+    parser.add_argument('--search-workers', type=int, default=0, help='Native worker count; 0 selects at most four CPUs')
     args = parser.parse_args()
     try:
         settings = json.loads(args.settings.read_text()) if args.settings else {'arc_path_mode':'score'}
@@ -334,7 +344,8 @@ def main():
             print('PLANNER_PROGRESS ' + json.dumps(event), flush=True)
         output = create_plan(args.chart, args.start_ms, args.end_ms, settings, args.prefer_same_hand, args.exclude_event, avoid,
                              progress=progress if args.progress else None,
-                             cache_dir=None if args.no_plan_cache else args.plan_cache_dir)
+                             cache_dir=None if args.no_plan_cache else args.plan_cache_dir,
+                             search_backend=args.search_backend, search_workers=args.search_workers)
     except ValueError as error:
         parser.exit(1, f"error: {error}\n")
     args.output.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n")

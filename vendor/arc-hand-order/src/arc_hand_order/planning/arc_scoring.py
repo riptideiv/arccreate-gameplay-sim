@@ -87,17 +87,23 @@ class TracePreference:
             for key, item in items.items()
         }
         self.values = {}
+        self.jobs = {}
+
+    def _jobs(self, touch):
+        if touch.id not in self.jobs:
+            # Retain the original set construction and iteration order: it
+            # determines the floating-point accumulation order below.
+            self.jobs[touch.id] = {
+                p.candidate.occupation.occupation_id for p in touch.parts
+            } & self.cells.keys()
+        return self.jobs[touch.id]
 
     def distance(self, touch):
-        if touch is None or not any(
-            p.candidate.occupation.occupation_id in self.cells for p in touch.parts
-        ):
+        if touch is None or not self._jobs(touch):
             return 0.0
         if "_trace_distance" not in touch.__dict__:
             prefix = touch.__dict__.get("_native_prefix")
-            if prefix is not None and any(
-                p.candidate.occupation.occupation_id in self.cells for p in prefix.parts
-            ):
+            if prefix is not None and self._jobs(prefix):
                 value = self.distance(prefix)
                 path = touch.path[len(prefix.path) - 1 :]
             else:
@@ -112,12 +118,10 @@ class TracePreference:
             return 0.0
         if touch.id in self.values:
             return self.values[touch.id]
-        jobs = {
-            p.candidate.occupation.occupation_id for p in touch.parts
-        } & self.cells.keys()
+        jobs = self._jobs(touch)
         prefix = touch.__dict__.get("_native_prefix")
         old_jobs = (
-            ({p.candidate.occupation.occupation_id for p in prefix.parts} & jobs)
+            (self._jobs(prefix) & jobs)
             if prefix
             else set()
         )

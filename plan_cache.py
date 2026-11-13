@@ -19,17 +19,21 @@ def canonical(value):
 def implementation_version(root=None):
     root=Path(root or Path(__file__).resolve().parent)
     files=[root/'plan_excerpt.py',root/'plan_cache.py',*sorted((root/'vendor/arc-hand-order/src/arc_hand_order').rglob('*.py'))]
+    native=root/'native-search'
+    files += [p for name in ('Cargo.toml', 'Cargo.lock', 'pyproject.toml') if (p:=native/name).is_file()]
+    files += sorted((native/'src').rglob('*.rs'))
     digest=hashlib.sha256()
     for f in files:
         digest.update(str(f.relative_to(root)).encode());digest.update(b'\0');digest.update(f.read_bytes())
     return digest.hexdigest()
 
-def request_key(chart,start,end,settings,prefer_same_hand,excluded,avoid_contacts):
+def request_key(chart,start,end,settings,prefer_same_hand,excluded,avoid_contacts,*,search_backend='auto'):
     from arc_hand_order import api
     chart=Path(chart)
     request={'schema':SCHEMA,'chart_sha256':hashlib.sha256(chart.read_bytes()).hexdigest(),
         'chart_path':str(chart), 'device_sha256':hashlib.sha256(api.DEFAULT_DEVICE.read_bytes()).hexdigest(),
         'projection_version':implementation_version(),'window_ms':[start,end],
+        'execution':execution_identity(search_backend),
         'settings':{k:v for k,v in (settings or {}).items() if k not in PRESENTATION_SETTINGS},
         'prefer_same_hand':prefer_same_hand,'excluded':sorted(set(excluded)),
         'avoid_contacts':list(avoid_contacts)}
@@ -67,3 +71,25 @@ def write(directory,key,request,plan):
     except OSError:
         pass # An unavailable optional cache must not make planning fail.
     finally:temp.unlink(missing_ok=True)
+
+
+def execution_identity(backend):
+    """Workers are deliberately absent: scheduling must not affect the plan."""
+    from arc_hand_order.planning.execution import NATIVE_AUTO_ENABLED
+    identity = {'requested_backend': backend, 'native_auto_enabled': NATIVE_AUTO_ENABLED}
+    if backend == 'native' or (backend == 'auto' and NATIVE_AUTO_ENABLED):
+        import importlib.util
+        spec = importlib.util.find_spec('arc_hand_order_native')
+        if spec is not None and spec.origin and Path(spec.origin).is_file():
+            origin = Path(spec.origin)
+            files = [origin]
+            if spec.submodule_search_locations:
+                files += sorted(p for directory in spec.submodule_search_locations
+                                for p in Path(directory).rglob('*') if p.suffix in ('.so', '.pyd', '.dll'))
+            digest = hashlib.sha256()
+            for path in files:
+                digest.update(path.name.encode()); digest.update(path.read_bytes())
+            identity['native_binary_sha256'] = digest.hexdigest()
+        else:
+            identity['native_binary_sha256'] = None
+    return identity

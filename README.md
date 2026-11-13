@@ -138,3 +138,5 @@ node tests/check_webgl_alignment.mjs output/runs/TAKE
 [文档目录](docs/README.md) · [Git 分支与合并记录](docs/rhythm-git-workflow.md) · [中文化维护](docs/i18n.md) · [视频导出](docs/ipad-rhythm-webgl-export.md) · [Arghena 漏键调查](docs/arghena-end-miss-and-idle-motion.md)
 
 触点规划会决定双臂交叉时哪只手臂在上，保持该顺序直到双臂分开。动作求解按指定层次生成姿态，无法实现时会报告具体时间。详见[双臂交叉规划](docs/arm-winding.md)。
+
+原生多核搜索的安装、256 beam 设置及实测见[移植说明](docs/near-side-native-search.md)。

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def run(*args, **kwargs):
-    return subprocess.run(args, cwd=ROOT, check=True, **kwargs)
+    return subprocess.run(args, cwd=kwargs.pop("cwd", ROOT), check=True, **kwargs)
 
 
 def output(*args):
@@ -58,7 +58,7 @@ def wait_for_health(url, stage, expected):
             time.sleep(1)
 
 
-def deploy(config):
+def deploy(config, *, native_wheel=None, checks="full"):
     plist = Path(config['launchd_plist']).expanduser().resolve()
     with plist.open('rb') as file:
         agent = plistlib.load(file)
@@ -77,7 +77,13 @@ def deploy(config):
         raise RuntimeError('Commit tracked changes before testing and deploying.')
     revision = output('git', 'rev-parse', 'HEAD').decode().strip()
     python = ROOT / '.venv/bin/python'
-    run(python, '-m', 'pytest', '-q', 'vendor/arc-hand-order/tests', 'tests')
+    test_paths = ['vendor/arc-hand-order/tests', 'tests'] if checks == 'full' else [
+        'tests/test_arm_crossings.py', 'tests/test_near_side_travel.py',
+        'tests/test_search_memoization.py', 'tests/test_native_search.py',
+        'tests/test_native_cancellation.py', 'tests/test_search_execution.py',
+        'tests/test_plan_cache.py',
+    ]
+    run(python, '-m', 'pytest', '-q', *test_paths)
     run('node', '--test', 'tests/test_i18n.mjs', 'tests/test_preview_recorder.mjs')
     if (output('git', 'rev-parse', 'HEAD').decode().strip() != revision
             or output('git', 'status', '--porcelain', '--untracked-files=no')):
@@ -93,12 +99,12 @@ def deploy(config):
     lock = state_dir / '.dashboard-deployment-lock'
     lock.mkdir()
     try:
-        deploy_release(revision, live, manifest, job, domain, plist, loopback, tailnet, expected)
+        deploy_release(revision, live, manifest, job, domain, plist, loopback, tailnet, expected, native_wheel=native_wheel)
     finally:
         lock.rmdir()
 
 
-def deploy_release(revision, live, manifest, job, domain, plist, loopback, tailnet, expected):
+def deploy_release(revision, live, manifest, job, domain, plist, loopback, tailnet, expected, *, native_wheel=None):
     files = set(output('git', 'ls-tree', '-rz', '--name-only', revision).decode().rstrip('\0').split('\0'))
     previous = set(json.loads(manifest.read_text())['files']) if manifest.is_file() else set()
     affected = sorted(files | previous)
@@ -114,6 +120,17 @@ def deploy_release(revision, live, manifest, job, domain, plist, loopback, tailn
         run('git', 'archive', '--format=tar', '-o', archive, revision)
         run('tar', '-xf', archive, '-C', stage)
         copy_files(live, backup, affected)
+        python = live / '.venv/bin/python'
+        site = Path(output(python, '-c', 'import sysconfig; print(sysconfig.get_path("platlib"))').decode().strip())
+        extension_backup = temporary / 'native-extension'
+        if native_wheel is not None:
+            native_wheel = Path(native_wheel).resolve(strict=True)
+            extension_backup.mkdir()
+            for entry in site.glob('arc_hand_order_native*'):
+                if entry.is_dir():
+                    shutil.copytree(entry, extension_backup / entry.name)
+                else:
+                    shutil.copy2(entry, extension_backup / entry.name)
         active = json.loads(fetch(loopback, '/api/state')).get('active')
         if active and active['status'] not in ('complete', 'failed', 'cancelled'):
             raise RuntimeError('A dashboard job is active. Deploy when it completes.')
@@ -121,12 +138,27 @@ def deploy_release(revision, live, manifest, job, domain, plist, loopback, tailn
         run('launchctl', 'bootout', job)
         try:
             copy_files(stage, live, affected)
+            if native_wheel is not None:
+                run('uv', 'pip', 'install', '--python', python, '--no-deps', '--reinstall', native_wheel)
+                run(python, '-c', 'from arc_hand_order.planning.native_search import _load_extension; '
+                    'print(_load_extension().implementation_id())', cwd=live)
             run('launchctl', 'bootstrap', domain, plist)
             local = wait_for_health(loopback, stage, expected)
         except (Exception, KeyboardInterrupt):
             print('Restoring the previous dashboard files.', flush=True)
             subprocess.run(['launchctl', 'bootout', job], check=False)
             copy_files(backup, live, affected)
+            if native_wheel is not None:
+                for entry in site.glob('arc_hand_order_native*'):
+                    if entry.is_dir():
+                        shutil.rmtree(entry)
+                    else:
+                        entry.unlink()
+                for entry in extension_backup.iterdir():
+                    if entry.is_dir():
+                        shutil.copytree(entry, site / entry.name)
+                    else:
+                        shutil.copy2(entry, site / entry.name)
             run('launchctl', 'bootstrap', domain, plist)
             raise
 
@@ -140,4 +172,7 @@ def deploy_release(revision, live, manifest, job, domain, plist, loopback, tailn
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True, help='Path to the ignored local deployment JSON')
-    deploy(json.loads(parser.parse_args().config.read_text()))
+    parser.add_argument('--native-wheel', type=Path, help='Install a built native wheel with source rollback support')
+    parser.add_argument('--checks', choices=('full', 'focused'), default='full', help='Use focused planner/motion checks for the native port')
+    args = parser.parse_args()
+    deploy(json.loads(args.config.read_text()), native_wheel=args.native_wheel, checks=args.checks)

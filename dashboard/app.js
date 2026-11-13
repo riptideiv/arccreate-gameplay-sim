@@ -370,10 +370,10 @@ function displayJob(run) {
     const planning = run.planning_progress;
     $("planning-status").hidden = !planning;
     if (planning) {
-      const labels = {loading: 'Reading chart', preparing: 'Preparing touchpoint search',
+      const labels = {backend: 'Preparing touchpoint search', loading: 'Reading chart', preparing: 'Preparing touchpoint search',
         geometry: 'Checking arc input regions', arc_profiles: 'Preparing snake paths',
         candidates: 'Generating touchpoint candidates', graph: 'Preparing search constraints',
-        search: 'Searching touchpoint plans', finalizing: 'Reconstructing hand contacts',
+        validation: 'Verifying contact plan', search: 'Searching touchpoint plans', finalizing: 'Reconstructing hand contacts',
         done: 'Touchpoint search complete', writing: 'Saving contact plan'};
       const known = planning.total > 0;
       const percent = known ? Math.min(100, 100 * planning.completed / planning.total) : null;

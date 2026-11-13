@@ -11,3 +11,12 @@ __pycache__/
 .DS_Store
 charts/imported/
 charts/packages/
+
+# Optional Rust search extension build artifacts
+native-search/target/
+native-search/.venv/
+
+# Worktree-local Python environment (directory or symlink)
+.venv
+
+.tools

@@ -847,6 +847,11 @@ class _Graph:
         self.polygons = {}  # (occupation ids, frame) -> shared region with the margin
         self.composed = {}
         self.futures = {}
+        self.future_frame = None
+        self.prefix_matches = {}
+        self.clash_pairs = {}
+        self.steal_pairs = {}
+        self.lock_expiries = {}
         self.dense_cache = {}
         self.bindings = {}
         self.native_frame_regions = {}
@@ -883,6 +888,10 @@ class _Graph:
         # pair intersects. Grace clears an existing lock permanently.
         self.lock_grace = sorted(self.graced if self.graced is not None else self._grace_frames(groups)) if multi.tick_contacts else []
         self.arc_notes = {(o.colour,n.start,n.end,n.interval) for o in self.arc_occupations for n in o.notes}
+        self.arc_notes_by_colour = {
+            colour: tuple((a, b, interval) for col, a, b, interval in self.arc_notes if col == colour)
+            for colour in range(4)
+        }
         self.contested = self._contested(groups) if self.own is not None else frozenset()
         # The geometry features computed (MultiFingerOptions.computes); kinds: crossing seconds by kind, collision_s.
         self.wants_apart = multi.computes("apart_level_weight", "apart_near_weight", "apart_clear_weight")
@@ -1066,6 +1075,12 @@ class _Graph:
 
     def future(self, touch_id: int, f0: int):
         """What later moves can read of a touch, when no later press comes before frame ``f0``."""
+        # No later layer consults the previous frame's suffix keys. Keeping
+        # every layer's copied path suffixes makes whole-chart searches grow
+        # unnecessarily even though these entries can never hit again.
+        if self.__dict__.get('future_frame') != f0:
+            self.futures.clear()
+            self.future_frame = f0
         if touch_id < 0:
             return -1
         key = (touch_id, f0)
@@ -1830,13 +1845,16 @@ class _Graph:
     def clash(self, touch: Touch, others) -> bool:
         """Whether ``touch`` and another touch hold one arc colour on the same frame: a colour binds one touch and
         takes no other."""
-        mine = self.bound_frames(touch)
-        if not mine:
-            return False
         for other in others:
-            for colour, frames in self.bound_frames(other).items():
-                if colour in mine and not mine[colour].isdisjoint(frames):
-                    return True
+            key = (min(touch.id, other.id), max(touch.id, other.id))
+            if key not in self.clash_pairs:
+                mine = self.bound_frames(touch)
+                if len(self.clash_pairs) >= 65536:
+                    self.clash_pairs.clear()
+                self.clash_pairs[key] = any(colour in mine and not mine[colour].isdisjoint(frames)
+                    for colour, frames in self.bound_frames(other).items())
+            if self.clash_pairs[key]:
+                return True
         return False
 
     def steals(self, touch: Touch, others) -> bool:
@@ -1844,6 +1862,20 @@ class _Graph:
         the colour is free to bind: the first frame of each stretch ``touch`` holds the colour (its first frame on
         it, or after grace). Touches are taken in press order and the first one inside the hitbox binds the colour:
         that finger keeps it, and once it lifts the colour takes no other finger for a while."""
+        for other in others:
+            key = (touch.id, other.id)
+            if key not in self.steal_pairs:
+                if len(self.steal_pairs) >= 65536:
+                    self.steal_pairs.clear()
+                self.steal_pairs[key] = self._steals_from(touch, other)
+            if self.steal_pairs[key]:
+                return True
+        return False
+
+    def _steals_from(self, touch: Touch, other: Touch) -> bool:
+        """Directional pair predicate; the surrounding state's other slots are irrelevant."""
+        if other.down >= touch.down:
+            return False
         spans = self.arc_spans(touch)
         for colour, frames in self.bound_frames(touch).items():
             for f in sorted(g for g in frames if g - 1 not in frames):
@@ -1851,15 +1883,14 @@ class _Graph:
                 if span is None:
                     continue
                 region = self.regions.polygon(span[1], frame_ms(f, self.offset))
-                for other in others:
-                    # bound on this frame: to this colour it is a clash (refused before), and a touch bound to
-                    # another colour is not taken. A colour it takes only later does not protect it.
-                    if (other.down >= touch.down or not other.active(f)
-                            or any(f in frames for frames in self.bound_frames(other).values())):
-                        continue
-                    xy = other.xy(f)
-                    if _nearest(region, xy) == xy:
-                        return True
+                # A touch bound to another colour is not taken. A colour it
+                # takes only later does not protect it on this frame.
+                if (not other.active(f)
+                        or any(f in frames for frames in self.bound_frames(other).values())):
+                    continue
+                xy = other.xy(f)
+                if _nearest(region, xy) == xy:
+                    return True
         return False
 
     def dense(self, c: Candidate) -> bool:
@@ -2040,6 +2071,8 @@ class _Graph:
         return now
 
     def native_claims_valid(self,new):
+        if '_native_claims_valid' in new.__dict__:
+            return new.__dict__['_native_claims_valid']
         from .arc_scoring import source_note,world,hit
         validated=new.__dict__.setdefault('_native_validated',set())
         bindings=self.bound_frames(new)
@@ -2053,9 +2086,44 @@ class _Graph:
                 if not any((self.graced.get(f) or (f in bindings.get(o.colour,()) and sum(f in fs for fs in bindings.values())==1))
                            and hit(n,world(self.projection,new.xy(f)),frame_ms(f,self.offset),
                                    fractions=self.options.contact_offset_fractions) for f in range(first,last)):
+                    new.__dict__['_native_claims_valid'] = False
                     return False
             validated.add(o.occupation_id)
+        new.__dict__['_native_claims_valid'] = True
         return True
+
+    def _prefix_matches(self, new, old):
+        key = (new.id, old.id)
+        if key not in self.prefix_matches:
+            if len(self.prefix_matches) >= 65536:
+                self.prefix_matches.clear()
+            self.prefix_matches[key] = new.down == old.down and new.path[:len(old.path)] == old.path
+        return self.prefix_matches[key]
+
+    def lock_expiry(self, colour, up):
+        """Chart-only release lock; the current state's existing lock is applied separately."""
+        key = (colour, up)
+        if key not in self.lock_expiries:
+            now = frame_ms(up, self.offset)
+            notes = self.arc_notes_by_colour[colour]
+            active = [(a, b, interval) for a, b, interval in notes if a <= now <= b]
+            unlock = -1
+            if active:
+                interval = max(interval for _, _, interval in active)
+                duration = min(round(interval * 4), 1000) if math.isfinite(interval) else 1000
+                # ArcCreate clears the lock at the first gap in this colour.
+                end = max(b for _, b, _ in active)
+                while True:
+                    following = [b for a, b, _ in notes if a <= end + 1 and b > end]
+                    if not following:
+                        break
+                    end = max(following)
+                unlock = min(now + duration, end)
+                index = bisect_left(self.lock_grace, up)
+                if index < len(self.lock_grace):
+                    unlock = min(unlock, frame_ms(self.lock_grace[index], self.offset) - 1)
+            self.lock_expiries[key] = unlock
+        return self.lock_expiries[key]
 
     def _finish(self, state, h, k, mine, theirs, new, old, hand, base, *, share=False, second=False, bridge=False,
                 partner_new=None, features=None, second_free=False):
@@ -2076,9 +2144,16 @@ class _Graph:
                     if state[self.lock_index+o.colour] >= new.down_ms:
                         return None
         if self.options.scoring_arcs:
-            if old is not None and new.down==old.down and new.path[:len(old.path)]==old.path:
+            if old is not None and self._prefix_matches(new, old):
                 new.__dict__.setdefault('_native_prefix',old)
-                new.__dict__.setdefault('_native_validated',set()).update(old.__dict__.get('_native_validated',()))
+                if not new.__dict__.get('_native_claims_valid', False):
+                    validated = new.__dict__.setdefault('_native_validated', set())
+                    previous_count = len(validated)
+                    validated.update(old.__dict__.get('_native_validated', ()))
+                    if len(validated) != previous_count:
+                        # Preserve the existing inheritance semantics even if
+                        # a previously rejected interned touch is revisited.
+                        new.__dict__.pop('_native_claims_valid', None)
             if not self.native_claims_valid(new):return None
         steal = 0.0
         if self.graced is not None:
@@ -2133,22 +2208,7 @@ class _Graph:
         if self.lock_index is not None:
             for colour in (set(self.bound_frames(new)) if self.options.scoring_arcs else {p.candidate.occupation.colour for p in new.parts if p.candidate.occupation.kind == "chain"}):
                 if colour not in range(4): continue
-                active = [(a,b,interval) for col,a,b,interval in self.arc_notes if col == colour and a <= new.up_ms <= b]
-                unlock = -1
-                if active:
-                    interval = max(interval for _,_,interval in active)
-                    duration = min(round(interval*4),1000) if math.isfinite(interval) else 1000
-                    # ArcCreate clears this lock at the first frame with no arc
-                    # of the colour in range, even before its timer expires.
-                    end = max(b for _,b,_ in active)
-                    while True:
-                        following = [b for col,a,b,_ in self.arc_notes if col == colour and a <= end+1 and b > end]
-                        if not following: break
-                        end = max(following)
-                    unlock = min(new.up_ms+duration,end)
-                    index = bisect_left(self.lock_grace,new.up)
-                    if index < len(self.lock_grace):
-                        unlock = min(unlock,frame_ms(self.lock_grace[index],self.offset)-1)
+                unlock = self.lock_expiry(colour, new.up)
                 slots[self.lock_index+colour] = max(slots[self.lock_index+colour],unlock)
         return tuple(slots), increment, changes
 
@@ -2663,7 +2723,15 @@ def _unkept(plan: MultiPlan, occupations: OccupationSet, projection: GameplayPro
 def plan_multi_finger(occupations: OccupationSet, projection: GameplayProjection,
                       options: PlannerOptions = PlannerOptions(),
                       multi: MultiFingerOptions = MultiFingerOptions(), progress=None, *,
-                      keep_checkpoints=False, checkpoint=None) -> MultiPlan:
+                      search_backend='auto', search_workers=0, keep_checkpoints=False, checkpoint=None) -> MultiPlan:
+    from .execution import plan as execute_search, validate_execution
+    validate_execution(search_backend, search_workers)
+    return execute_search(occupations, projection, options, multi, progress,
+                          search_backend=search_backend, search_workers=search_workers, keep_checkpoints=keep_checkpoints, checkpoint=checkpoint)
+
+
+def _plan_python(occupations, projection, options, multi, progress=None, *, keep_checkpoints=False, checkpoint=None):
+    """Reference implementation after the public execution policy has reported its choice."""
     reporter = ProgressReporter(progress)
     if not (multi.covered_holds or multi.covered_arcs or multi.steady_arcs or multi.enveloped_arcs):
         return _plan_items(occupations, projection, options, multi, reporter,
