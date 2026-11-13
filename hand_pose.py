@@ -219,7 +219,7 @@ def _pose_penalty(margin, floor, gap, arm_weight, both_pinned):
 
 def air_paths(
     points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None, idle_speed=math.inf,
-    routes=None, swivels=None,
+    routes=None, swivels=None, *, progress=None,
 ):
     """Lift only free portions of a hand path; preserve every contact sample."""
     result = points.copy()
@@ -315,9 +315,11 @@ def air_paths(
         penalty += np.sum((candidates - points[a : b + 1, h]) ** 2, axis=(1, 2)) * 0.01
         return penalty
 
-    for _ in range(3):
+    for sweep in range(1, 4):
         improved = False
-        for a, b, h in runs:
+        for completed, (a, b, h) in enumerate(runs):
+            if progress:
+                progress("pose_travel", completed, len(runs), sweep=sweep)
             base = points[a : b + 1, h]
             other = result[a : b + 1, 1 - h]
             mandatory_layer = bool(routes and layers_at(np.arange(a, b+1), routes).any())
@@ -369,6 +371,8 @@ def air_paths(
                 result[a : b + 1, h] = candidates[choice]
                 changes += 1
                 improved = True
+        if progress and runs:
+            progress("pose_travel", len(runs), len(runs), sweep=sweep)
         if not improved:
             break
     result[active] = points[active]
@@ -387,6 +391,8 @@ def solve(
     idle_speed=math.inf,
     arm_weight=ARM_WEIGHT,
     routes=None,
+    *,
+    progress=None,
 ):
     points = np.asarray(points, dtype=float)
     active = np.asarray(active, dtype=bool)
@@ -407,12 +413,12 @@ def solve(
             solve_swivels, verify,
         )
         neutral_poses = np.broadcast_to(NEUTRAL, (count, 2, 2))
-        swivels = solve_swivels(points, neutral_poses, parts, routes, gap)
+        swivels = solve_swivels(points, neutral_poses, parts, routes, gap, progress=progress)
         points, lifts = air_paths(
             points, active, max_speed, gap=gap, poses=neutral_poses, parts=parts,
-            idle_speed=idle_speed, routes=routes, swivels=swivels,
+            idle_speed=idle_speed, routes=routes, swivels=swivels, progress=progress,
         )
-        swivels = solve_swivels(points, neutral_poses, parts, routes, gap)
+        swivels = solve_swivels(points, neutral_poses, parts, routes, gap, progress=progress)
         neutral_report = diagnostics(points, neutral_poses, parts, gap)
         if (not neutral_report["residual_proxy_overlap_samples"]
                 and (routes or not arm_diagnostics(points, neutral_poses, parts, swivels)["overlap_intervals"])):
@@ -428,7 +434,7 @@ def solve(
                 }
     else:
         points, lifts = air_paths(
-            points, active, max_speed, gap=gap, idle_speed=idle_speed, routes=routes,
+            points, active, max_speed, gap=gap, idle_speed=idle_speed, routes=routes, progress=progress,
         )
     # Each state is a pair of pitch/yaw choices. The pad centre is the pivot.
     pitches = (10, 25, 40, 55, 70, 85) if angular_limit < 200 else (10, 30, 50, 70, 85)
@@ -513,12 +519,14 @@ def solve(
             for d, w in ((6, 0.4), (12, 0.3), (24, 0.15), (36, 0.05))
         )
 
+    if progress:
+        progress("pose_wrists", 0, len(knots)-1)
     initial = cost(0) + neutral * 0.03
     chosen = np.argsort(initial + ahead(0), kind="stable")[:beam]
     previous = states[chosen]
     values = initial[chosen]
     history = [(chosen, np.full(len(chosen), -1, dtype=int))]
-    for a, b in zip(knots, knots[1:]):
+    for completed, (a, b) in enumerate(zip(knots, knots[1:]), 1):
         cap = cumulative[b] - cumulative[a]
         distance = np.linalg.norm(
             states[None, :, :, :] - previous[:, None, :, :], axis=-1
@@ -575,6 +583,8 @@ def solve(
         history.append((chosen, parents[chosen]))
         previous = states[chosen]
         values = adjusted[order]
+        if progress:
+            progress("pose_wrists", completed, len(knots)-1)
     row = int(np.argmin(values))
     route = []
     for ids, parents in reversed(history):
@@ -592,14 +602,14 @@ def solve(
         )
         poses[a : b + 1] = route[k] + (route[k + 1] - route[k]) * alpha[:, :, None]
     if routes is not None:
-        swivels = solve_swivels(points, poses, parts, routes, gap)
+        swivels = solve_swivels(points, poses, parts, routes, gap, progress=progress)
     points, body_lifts = air_paths(
         points, active, max_speed, gap=gap, poses=poses, parts=parts, idle_speed=idle_speed,
-        routes=routes, swivels=swivels,
+        routes=routes, swivels=swivels, progress=progress,
     )
     lifts += body_lifts
     if routes is not None and body_lifts:
-        swivels = solve_swivels(points, poses, parts, routes, gap)
+        swivels = solve_swivels(points, poses, parts, routes, gap, progress=progress)
     report = diagnostics(points, poses, parts, gap)
     report.update(
         solver=VERSION,

@@ -121,3 +121,20 @@ def test_cli_progress_reaches_dashboard_and_clears_for_next_stage(tmp_path, monk
     assert 'PLANNER_PROGRESS ' in (directory / 'render.log').read_text()
     queue.command([sys.executable, '-c', 'pass'], directory, 'Next stage', 20)
     assert queue.active['planning_progress'] is None
+
+
+def test_orientation_progress_reaches_dashboard_and_clears_for_next_stage(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, 'RUNS', tmp_path)
+    queue = server.RenderQueue()
+    directory = tmp_path / 'test'
+    directory.mkdir()
+    queue.active = {'id': 'test', 'status': 'running'}
+    event = {'phase': 'pose_wrists', 'completed': 4, 'total': 10, 'elapsed_s': 3}
+    script = f"print('POSE_PROGRESS invalid'); print({('POSE_PROGRESS ' + json.dumps(event))!r})"
+    queue.command([sys.executable, '-c', script], directory, 'Posing gloves around fixed touch points', 19)
+    pose = json.loads((directory / 'run.json').read_text())['pose_progress']
+    assert (pose['phase'], pose['completed'], pose['total'], pose['elapsed_s']) == ('pose_wrists', 4, 10, 3)
+    assert pose['updated_at'] > 0
+    assert queue.active['planning_progress'] is None
+    queue.command([sys.executable, '-c', 'pass'], directory, 'Next stage', 35)
+    assert queue.active['pose_progress'] is None

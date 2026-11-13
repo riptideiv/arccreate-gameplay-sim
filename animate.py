@@ -6,6 +6,7 @@ import math
 import os
 from pathlib import Path
 import sys
+import time
 
 import bpy
 from mathutils import Euler, Vector
@@ -23,6 +24,7 @@ from hand_pose import (
     solve as solve_hand_poses,
 )
 from motion_paths import positions as finger_positions, home_position, settle_frame
+from arc_hand_order.planning.progress import ProgressReporter
 import numpy as np
 
 
@@ -174,7 +176,7 @@ def motion_report(paths, poses, max_speed, angular_limit, gap):
 
 
 def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001,
-                  idle_speed=1.0, physical=None, instructions=None, *, allow_clipping=False):
+                  idle_speed=1.0, physical=None, instructions=None, *, allow_clipping=False, progress=None):
     """Pose around pinned contacts and check the touch planner's arm layers."""
     from crossing_motion import validate, verify
 
@@ -193,7 +195,7 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
     try:
         solved, angles, posing = solve_hand_poses(
             points, active, parts, max_speed, angular_limit, gap,
-            idle_speed=idle_speed, arm_weight=ARM_WEIGHT, routes=routes,
+            idle_speed=idle_speed, arm_weight=ARM_WEIGHT, routes=routes, progress=progress,
         )
         output = [[Vector(p) for p in solved[:, h]] for h in range(2)]
         report = motion_report(output, angles, max_speed, angular_limit, gap)
@@ -202,6 +204,8 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
         report = motion_report(output, angles, max_speed, angular_limit, gap)
         posing = diagnostics(solved, angles, parts, gap)
         posing.update(solver=POSE_VERSION, pose_solver_fallback_reason=str(error))
+    if progress:
+        progress("pose_validation")
     swivel_samples = posing.get("elbow_swivel_deg")
     swivels = np.asarray(swivel_samples) if swivel_samples is not None else None
     if routes is not None:
@@ -309,9 +313,19 @@ def main():
     parser.add_argument("--report", type=Path)
     parser.add_argument("--motion", type=Path)
     parser.add_argument("--motion-only", action="store_true")
+    parser.add_argument("--progress", action="store_true", help="Stream hand pose progress as JSON")
     parser.add_argument('--pose-cache-dir', type=Path, default=Path(__file__).resolve().parent/'output/hand-poses')
     parser.add_argument("--glb", type=Path)
     args = parser.parse_args(sys.argv[sys.argv.index("--")+1:])
+    began = time.monotonic()
+
+    def report_progress(event):
+        event["elapsed_s"] = round(time.monotonic() - began, 1)
+        print("POSE_PROGRESS " + json.dumps(event), flush=True)
+
+    progress = ProgressReporter(report_progress) if args.progress else None
+    if progress:
+        progress("pose_preparing")
     plan = json.loads(args.plan.read_text())
     contacts = validate_plan(plan)
     settings = json.loads(args.settings.read_text()) if args.settings else {}
@@ -364,7 +378,7 @@ def main():
             paths, poses, report = pose_sequence(paths, active_samples, max_speed, angular_limit,
                                                 settings.get("clearance_mm", 1)/1000, idle_speed,
                                                 physical=active, instructions=instructions,
-                                                allow_clipping=settings.get("allow_clipping", False))
+                                                allow_clipping=settings.get("allow_clipping", False), progress=progress)
             points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
             pose_cache.write(args.pose_cache_dir, signature, points, np.array(poses), report, base, active)
         report['pose_cache'] = {'hit': cached is not None, 'key': signature}
@@ -381,6 +395,8 @@ def main():
         args.report.write_text(json.dumps(report, indent=2))
     if args.motion:
         args.motion.write_text(json.dumps(webgl_motion(paths, poses, plan, settings, report), separators=(",", ":")))
+    if progress:
+        progress("pose_done", 1, 1)
     if args.motion_only:
         print("Verified motion for WebGL preview.")
         return

@@ -192,7 +192,7 @@ def boundary_subframes(routes):
     return np.array(sorted(frame + k/8 for frame in bounds for k in range(1, 8)))
 
 
-def solve_swivels(points, poses, parts, routes, gap):
+def solve_swivels(points, poses, parts, routes, gap, *, progress=None):
     """Blend bounded corrections around fixed elbow poles across the take."""
     from hand_pose import arm_metrics, arm_posture_cost, bases, proxies
 
@@ -215,7 +215,10 @@ def solve_swivels(points, poses, parts, routes, gap):
     boundaries = boundary_subframes(routes)
     indices = list(range(len(windows)))
     # Revisit the keys after their neighbours have been placed.
-    for index in indices + indices[::-1]:
+    sweep = indices + indices[::-1]
+    if progress:
+        progress("pose_elbows", 0, len(sweep))
+    for completed, index in enumerate(sweep, 1):
         start, stop, samples, weight = windows[index]
         weight = weight / coverage[start:stop]
         swivels[start:stop] -= weight[:, None] * selected[index]
@@ -244,6 +247,8 @@ def solve_swivels(points, poses, parts, routes, gap):
         chosen = catalogue[int(np.argmin(cost))]
         selected[index] = chosen
         swivels[start:stop] += weight[:, None] * chosen
+        if progress:
+            progress("pose_elbows", completed, len(sweep))
     return swivels
 
 

@@ -268,7 +268,7 @@ class RenderQueue:
                         export_only=False, export_error=str(error))
 
     def command(self, arguments, directory, stage, progress, frame_count=None):
-        self.update(stage=stage, progress=progress, planning_progress=None)
+        self.update(stage=stage, progress=progress, planning_progress=None, pose_progress=None)
         log_path = directory / "render.log"
         with log_path.open("a") as log:
             process = subprocess.Popen([str(a) for a in arguments], cwd=ROOT, stdout=subprocess.PIPE,
@@ -287,6 +287,14 @@ class RenderQueue:
                         self.planner_update(json.loads(line.removeprefix('PLANNER_PROGRESS ')))
                     except (ValueError, TypeError, KeyError):
                         pass  # A malformed observation must not abort an otherwise valid plan.
+                if line.startswith('POSE_PROGRESS '):
+                    try:
+                        event = json.loads(line.removeprefix('POSE_PROGRESS '))
+                        if event['phase'] in ('pose_preparing', 'pose_elbows', 'pose_travel', 'pose_wrists',
+                                              'pose_validation', 'pose_done'):
+                            self.update(pose_progress={**event, 'updated_at': time.time()})
+                    except (ValueError, TypeError, KeyError):
+                        pass  # Pose progress is optional telemetry.
                 if frame_count and (match := re.search(r"(?:Rendering frame |Saved: ['\"].*frame-)(\d+)", line)):
                     self.update(progress=min(98, 40 + 58*int(match[1])/frame_count))
             code = process.wait()
@@ -349,9 +357,9 @@ class RenderQueue:
                 plan = json.loads(plan_path.read_text())
                 try:
                     self.command([BLENDER, "--factory-startup", "-b", "--python-exit-code", "1", "-P", ROOT / "animate.py", "--",
-                                  plan_path, directory / "scene.blend", "--motion-only",
+                                  plan_path, directory / "scene.blend", "--motion-only", "--progress",
                                   "--motion", directory / "motion.json", "--settings", directory / "settings.json",
-                                  "--report", directory / "metrics.json"], directory, "Posing gloves around fixed touch points", 15)
+                                  "--report", directory / "metrics.json"], directory, "Posing gloves around fixed touch points", 19)
                     break
                 except ValueError as error:
                     where = re.search(r"at ([\d.]+) s", str(error))

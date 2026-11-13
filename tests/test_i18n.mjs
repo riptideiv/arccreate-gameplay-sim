@@ -10,6 +10,7 @@ const examples = [
  ['56.55–75.00 s · 18.45 s selected', '56.55–75.00 s · 已选 18.45 秒'],
  ['15 hits · 0 misses · score 1,234 · 3 planned arc reacquisitions', '命中 15 · 漏键 0 · 分数 1,234 · 规划续接蛇 3 次'],
  ['Searching touchpoint plans · 14.5% · 30 / 200 items', '正在搜索触点方案 · 14.5% · 30 / 200 个目标'],
+ ['Orienting hands · 45.0% · 18 / 40 pose intervals', '正在计算手部朝向 · 45.0% · 18 / 40 个姿态区间'],
  ['Recording preview · 3.2 / 10.0 s', '正在录制预览 · 3.2 / 10.0 s'],
  ['Live preview could not load: Tablet dimensions do not match the contact plan.', '无法加载实时预览：平板尺寸与触点规划不一致。'],
  ['76 / 76 planned arc catches confirmed by native replay. Also caught 2 additional arc ticks.', '原生回放已确认 76 / 76 个规划中的蛇计分点，另接住了 2 个计分点。'],

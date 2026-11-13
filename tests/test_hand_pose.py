@@ -36,9 +36,13 @@ def test_both_hands_pivot_around_fixed_contacts_to_clear_a_crossing(angular_limi
         points, np.broadcast_to(NEUTRAL, (count, 2, 2)), PARTS, 0.001
     )
     assert baseline["residual_proxy_overlap_samples"] > 0
+    events = []
     solved, poses, report = solve(
-        points, active, PARTS, max_speed=1.6, angular_limit=angular_limit
+        points, active, PARTS, max_speed=1.6, angular_limit=angular_limit,
+        progress=lambda phase, completed, total, **_: events.append((phase, completed, total)),
     )
+    wrists = [(completed, total) for phase, completed, total in events if phase == "pose_wrists"]
+    assert wrists and wrists == [(i, wrists[-1][1]) for i in range(wrists[-1][1] + 1)]
     np.testing.assert_array_equal(solved, points)
     assert report["maximum_contact_drift_m"] == 0
     assert report["residual_proxy_overlap_samples"] == 0

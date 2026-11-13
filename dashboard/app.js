@@ -367,22 +367,31 @@ function displayJob(run) {
     $("cancel").disabled = false;
     setText($("job-stage"), run.stage);
     $("progress").value = run.progress;
-    const planning = run.planning_progress;
+    const pose = run.pose_progress;
+    const planning = pose || run.planning_progress;
     $("planning-status").hidden = !planning;
     if (planning) {
       const labels = {backend: 'Preparing touchpoint search', loading: 'Reading chart', preparing: 'Preparing touchpoint search',
         geometry: 'Checking arc input regions', arc_profiles: 'Preparing snake paths',
         candidates: 'Generating touchpoint candidates', graph: 'Preparing search constraints',
         validation: 'Verifying contact plan', search: 'Searching touchpoint plans', finalizing: 'Reconstructing hand contacts',
-        done: 'Touchpoint search complete', writing: 'Saving contact plan'};
+        done: 'Touchpoint search complete', writing: 'Saving contact plan',
+        pose_preparing: 'Preparing hand poses', pose_elbows: 'Adjusting elbows',
+        pose_travel: 'Checking clearance along hand paths', pose_wrists: 'Orienting hands',
+        pose_validation: 'Verifying hand motion', pose_done: 'Hand orientation complete'};
       const known = planning.total > 0;
       const percent = known ? Math.min(100, 100 * planning.completed / planning.total) : null;
       const retry = {checkpoint: 'resuming near the failure with FAR timing',
         split: 'retry with individual scoring ticks', intact: 'retry with intact arcs and FAR timing'};
       const retryLabel = retry[planning.retry];
+      const units = {arc_profiles: 'snakes', pose_elbows: 'windows',
+        pose_travel: 'travel spans', pose_wrists: 'pose intervals'};
+      setAttributeText($("planning-progress"), 'aria-label',
+        pose ? 'Hand orientation progress' : 'Touchpoint planning progress');
       setText($("planning-label"), (labels[planning.phase] || planning.phase)
-        + (known ? ' · ' + percent.toFixed(1) + '% · ' + planning.completed.toLocaleString() + ' / '
-          + planning.total.toLocaleString() + (planning.phase === 'arc_profiles' ? ' snakes' : ' items') : '')
+        + (known ? ' · ' + percent.toFixed(1) + '%'
+          + (planning.phase === 'pose_done' ? '' : ' · ' + planning.completed.toLocaleString() + ' / '
+            + planning.total.toLocaleString() + ' ' + (units[planning.phase] || 'items')) : '')
         + (retryLabel ? ' · ' + retryLabel : ''));
       if (known) $("planning-progress").value = percent;
       else $("planning-progress").removeAttribute('value');
