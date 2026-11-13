@@ -343,6 +343,7 @@ export const zhCN = {
   "{count} items": "{count} 个目标",
   "resuming near the failure with FAR timing": "从失败段落附近继续搜索，允许 FAR 判定",
   "resuming near the failure with FAR timing and misses": "从卡住前继续搜索，允许 FAR 判定和漏键",
+  "retry with overlapping sky notes": "调整命中时间后重试相邻天键",
   "retry with individual scoring ticks": "改用逐计分点方案重试",
   "retry with intact arcs and FAR timing": "保留整条蛇并允许 FAR 判定后重试",
   "{time} elapsed": "已用时 {time}",

@@ -7,6 +7,7 @@ a press could take, or settled ticks.
 """
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass, asdict, replace
 from functools import lru_cache
 import math
@@ -63,6 +64,7 @@ class PlannerOptions:
     # Optional stricter point-note timing target, checked after frame rounding.
     # None keeps the occupation's window; 25 requests Max-PURE timing.
     point_window_ms: int | None = None
+    protect_sky_presses: bool = False  # FAR retry can avoid newer native sky-tap requests.
     full_point_window: bool = False  # Enumerate every frame in the occupation's bounded press window.
     distance_weight: float = 5.0  # cost per metre of straight-line transfer, even below comfort speed
     # Hold every arc chain from the frame it reaches the line
@@ -638,9 +640,56 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         groups, next_id = _add_partial_holds(groups, projection, options, next_id)
     if fractions is not None:
         groups = _offset_contacts(groups, projection, options, next_id)
+    if options.protect_sky_presses:
+        groups = _protect_sky_presses(groups, occupations.items, projection, next_id)
     if progress:
         progress('candidates', len(occupations.items), len(occupations.items))
     return prefix + tuple(groups)
+
+
+def _protect_sky_presses(groups, items, projection, next_id):
+    """Try pressing before a nearby newer request can receive the input.
+
+    ArcCreate gives the latest colliding sky request priority. Earlier
+    contacts can stay down to settle nearby arc ticks after taking the tap.
+    """
+    from .native_input import screen_hitbox
+
+    skies = {}
+    for item in items:
+        if item.kind == 'sky':
+            skies.setdefault(item.start_ms, []).append(target_xy(item, item.start_ms, projection))
+    times = sorted(skies)
+    half_x, down, up = screen_hitbox('sky', projection.width_m, projection.height_m)
+    window = rules.NATIVE_POINT_REQUEST_WINDOW_MS
+    next_id = max(next_id, max((c.id for group in groups for c in group), default=-1) + 1)
+    result = []
+    for group in groups:
+        if not group or group[0].occupation.kind != 'sky':
+            result.append(group)
+            continue
+        item = group[0].occupation
+        later = bisect_right(times, item.start_ms)
+        x, y = target_xy(item, item.start_ms, projection)
+        conflict = next((ms for ms in times[later:bisect_right(times, item.start_ms + window)]
+                         if any(abs(x - u) <= half_x / 2 and -down / 2 <= y - v <= up / 2
+                                for u, v in skies[ms])), None)
+        if conflict is None:
+            result.append(group)
+            continue
+        early = [c for c in group if c.down_ms < conflict - window]
+        if not early:
+            result.append(group)
+            continue
+        variants = early[:]
+        for c in early:
+            path = c.contact_path or (c.last_xy,) * (c.up_frame - c.down_frame)
+            for extra in (1, 2, 3, 4):
+                variants.append(replace(c, id=next_id, up_frame=c.up_frame + extra,
+                                        contact_path=path + (path[-1],) * extra))
+                next_id += 1
+        result.append(tuple(variants))
+    return result
 
 
 def _offset_contacts(groups, projection, options, next_id):

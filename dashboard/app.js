@@ -401,6 +401,7 @@ function displayJob(run) {
       const percent = known ? Math.min(100, 100 * planning.completed / planning.total) : null;
       const retry = {checkpoint: 'resuming near the failure with FAR timing',
         checkpoint_misses: 'resuming near the failure with FAR timing and misses',
+        sky_requests: 'retry with overlapping sky notes',
         split: 'retry with individual scoring ticks', intact: 'retry with intact arcs and FAR timing'};
       const retryLabel = retry[planning.retry];
       const units = {arc_profiles: 'snakes', pose_elbows: 'windows',

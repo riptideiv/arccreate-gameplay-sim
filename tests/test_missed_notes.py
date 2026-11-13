@@ -116,3 +116,26 @@ def test_far_timing_can_save_a_burst_at_the_strict_tap_interval(tmp_path):
     for hand in ('left', 'right'):
         a, b = sorted(t['down_frame'] for t in touches.values() if t['hand'] == hand)
         assert b - a >= 9
+
+
+def test_contested_sky_presses_look_before_native_request_and_offer_dwell(tmp_path):
+    from dataclasses import replace
+    from arc_hand_order.planning.projection import GameplayProjection
+    from arc_hand_order.planning.two_finger import PlannerOptions, build_candidates
+    from plan_excerpt import point_windows
+
+    source = chart(tmp_path,
+        'arc(1000,1000,.5,.5,s,1,1,0,none,true)[arctap(1000)];'
+        'arc(1087,1087,.5,.5,s,1,1,0,none,true)[arctap(1087)];'
+        'arc(1174,1174,1,1,s,1,1,0,none,true)[arctap(1174)];')
+    loaded = api.load_chart(source)
+    from arc_hand_order.planning.occupations import occupations_from_chart
+    occupations = point_windows(occupations_from_chart(loaded.chart), 2000, 100)
+    projection = GameplayProjection(api.load_device(api.DEFAULT_DEVICE))
+    options = PlannerOptions(scoring_arcs=True, full_point_window=True)
+    ordinary = build_candidates(occupations, projection, options)
+    protected = build_candidates(occupations, projection, replace(options, protect_sky_presses=True))
+    assert max(c.down_ms for c in ordinary[0]) > 1000
+    assert max(c.down_ms for c in protected[0]) < 1087 - 120
+    assert {c.up_frame - c.down_frame for c in protected[0]} == set(range(2, 7))
+    assert protected[1:] == ordinary[1:]

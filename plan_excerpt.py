@@ -204,6 +204,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
 
     if result is None:
         recovered = None
+        local_retry = None
         # Search the native FAR window before resorting to misses. Plan covered
         # contacts explicitly because a missing contact can invalidate a shortcut.
         split = point_windows(split_arc_ticks(occupations), duration, NATIVE_FAR_WINDOW_MS)
@@ -267,6 +268,27 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                 if result is None or rank(recovered) < rank(result):
                     result = recovered
                     split_error = None
+
+        if (scoring and multi["allow_misses"] and result is not None
+                and any(item.kind == "sky" for item in result.plan.skipped)):
+            # A geometric hit can still go to a newer overlapping request in
+            # ArcCreate. Try a different press window and keep early contacts
+            # down when they can settle a nearby arc tick on the same finger.
+            attempt += 1
+            retry = 'sky_requests'
+            safe_planner = {**planner, "protect_sky_presses": True}
+            try:
+                safe = api.plan_chart(
+                    excerpt, multi=multi, planner=safe_planner, occupation_set=local_retry or split,
+                    progress=report, checkpoint=checkpoint, search_backend=search_backend, search_workers=search_workers,
+                )
+            except NoCandidatePath:
+                pass
+            else:
+                safe_losses = safe.plan.cost.missed_ticks + 0.5 * safe.plan.cost.far_taps
+                current_losses = result.plan.cost.missed_ticks + 0.5 * result.plan.cost.far_taps
+                if safe_losses <= current_losses:
+                    result = safe
 
         if can_retry_intact and (result is None or result.plan.cost.missed_ticks):
             # A split-arc beam can discard the release schedules that an intact
