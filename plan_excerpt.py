@@ -203,6 +203,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                 checkpoint = error.checkpoint
 
     if result is None:
+        recovered = None
         # Search the native FAR window before resorting to misses. Plan covered
         # contacts explicitly because a missing contact can invalidate a shortcut.
         split = point_windows(split_arc_ticks(occupations), duration, NATIVE_FAR_WINDOW_MS)
@@ -229,9 +230,24 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             else:
                 if not resumed.plan.cost.missed_ticks:
                     result = resumed
-            checkpoint = None
             if result is None:
                 attempt += 1
+                if multi["allow_misses"] and can_retry_intact:
+                    # Keep the clean prefix even when the suffix needs a miss.
+                    # The global split retry can still beat it by retiming earlier.
+                    retry = 'checkpoint_misses'
+                    try:
+                        recovered = api.plan_chart(
+                            excerpt, multi=multi, planner=planner, occupation_set=local_retry,
+                            progress=report, checkpoint=checkpoint, search_backend=search_backend,
+                            search_workers=search_workers,
+                        )
+                    except NoCandidatePath:
+                        pass
+                    if recovered is not None and not recovered.plan.cost.missed_ticks:
+                        result, recovered = recovered, None
+                    else:
+                        attempt += 1
 
         split_error = None
         if result is None:
@@ -242,6 +258,15 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                 if not can_retry_intact or "no candidate path" not in str(error):
                     raise
                 split_error = error
+            if recovered is not None:
+                def rank(candidate):
+                    plan = candidate.plan
+                    cost = plan.cost
+                    return (cost.missed_ticks, cost.missed_red_notes, cost.far_taps,
+                            cost.non_max_taps, cost.weighted(plan.options, plan.multi))
+                if result is None or rank(recovered) < rank(result):
+                    result = recovered
+                    split_error = None
 
         if can_retry_intact and (result is None or result.plan.cost.missed_ticks):
             # A split-arc beam can discard the release schedules that an intact

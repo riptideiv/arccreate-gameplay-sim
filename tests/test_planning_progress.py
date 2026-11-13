@@ -77,9 +77,35 @@ def test_far_retry_reuses_the_perfect_beam_and_retimes_the_lead_in(tmp_path, mon
     fallback = create_plan(source, 0, 7200, {'arc_path_mode': 'score', 'max_speed_m_s': 4,
                                              'tap_interval_ms': 150, 'search_width': 128}, progress=events.append)
     retry_start = next(event for event in events if event['retry'] == 'split' and event['phase'] == 'search')
-    assert retry_start['attempt'] == 3
+    assert retry_start['attempt'] == 4
     assert retry_start['completed'] == 0
     assert fallback['misses'] == []
+
+
+def test_miss_retry_can_keep_a_better_checkpoint_prefix(tmp_path, monkeypatch):
+    from arc_hand_order import api
+
+    source = chart(tmp_path, '(1000,1);arc(1800,2600,.5,.5,s,1,1,0,none,false);'
+                   '(3200,1);(4200,2);(6000,1);(6000,2);(6000,3);(6700,4);')
+    events = []
+    plan_chart = api.plan_chart
+
+    def discard_a_contact_in_the_full_split(*args, **kwargs):
+        items = kwargs['occupation_set'].items
+        if not kwargs.get('checkpoint') and any(item.parent_occupation_id for item in items):
+            first = items[0]
+            kwargs['multi'] = {**kwargs['multi'], 'forced_misses': (first.occupation_id,)}
+        return plan_chart(*args, **kwargs)
+
+    monkeypatch.setattr(api, 'plan_chart', discard_a_contact_in_the_full_split)
+    plan = create_plan(source, 0, 7200, {'arc_path_mode': 'score', 'max_speed_m_s': 4,
+                                         'tap_interval_ms': 150, 'search_width': 64}, progress=events.append)
+    resumed = next(event for event in events if event['retry'] == 'checkpoint_misses' and event.get('resumed_from'))
+    assert resumed['completed'] == resumed['resumed_from'] > 0
+    assert any(event['retry'] == 'split' for event in events)
+    assert plan['planning']['skipped_ticks'] == 1
+    assert plan['misses'][0]['start_ms'] == 6000
+    assert any(note['start_ms'] == 6700 and note['hands'] for note in plan['notes'])
 
 
 def test_throttling_keeps_phase_boundaries_but_not_every_state(tmp_path, monkeypatch):
