@@ -13,6 +13,9 @@ const byName = name => fields.find(field => field.name === name);
 const $ = id => document.getElementById(id);
 let bootstrap, selected, lastHistory = "", lastTerminal = "", currentJob;
 let pollTimer;
+let generationSubmitting = false;
+let lastQueue = "";
+const cancelling = new Set();
 let exportSubmitting = false;
 let sceneSubmitting = false;
 const chartRange = new ChartRange(form, () => markDirty());
@@ -31,7 +34,7 @@ function lockRecording(locked) {
   for (const element of document.querySelectorAll('#live-transport button, #live-transport input, #playback-speed, #history button')) element.disabled = locked;
   $('cancel-webgl').hidden = !locked;
   $('webgl-export-progress').hidden = !locked;
-  setRenderDisabled(currentJob?.status === 'running');
+  setRenderDisabled();
   updateExportControls();
 }
 $('cancel-webgl').addEventListener('click', () => recorder.cancel());
@@ -82,9 +85,11 @@ function updateTransport() {
 }
 for (const event of ['timeupdate', 'loadedmetadata', 'play', 'pause', 'seeked']) video.addEventListener(event, updateTransport);
 
-function setRenderDisabled(disabled) {
-  renderButton.disabled = disabled || !!recorder?.active;
-  $("mobile-render").disabled = disabled || !!recorder?.active;
+function setRenderDisabled() {
+  renderButton.disabled = $("mobile-render").disabled = generationSubmitting || !!recorder?.active;
+  const busy = currentJob?.status === "running";
+  setText($("render-label"), busy ? "Add to generation queue" : "Build live preview");
+  setText($("mobile-render"), busy ? "Queue build" : "Generate");
 }
 
 for (const field of fields.filter(field => field.type === "number")) {
@@ -96,7 +101,7 @@ function normalizeRun(run) {
   const saved = run.settings;
   const oldRepeat = saved.prefer_same_hand ? 0 : 5;
   const oldJack = saved.prefer_same_hand ? 0 : 20;
-  return { ...run, legacyArcTrace: !("prefer_arc_trace" in saved), legacyArcPaths: !("arc_path_mode" in saved), legacyReleasePolicy: !("full_arc_hold" in saved),
+  return { ...run, savedSettings: saved, legacyArcTrace: !("prefer_arc_trace" in saved), legacyArcPaths: !("arc_path_mode" in saved), legacyReleasePolicy: !("full_arc_hold" in saved),
     legacyContactOffsets: !("contact_offset_x_percent" in saved) || !("contact_offset_y_percent" in saved),
     settings: { ...bootstrap.defaults, ...saved,
     arc_path_mode: saved.arc_path_mode ?? run.planning?.arc_path_mode ?? 'trace',
@@ -298,32 +303,45 @@ function showError(message, log) {
 
 form.addEventListener("submit", async event => {
   event.preventDefault();
+  if (generationSubmitting || recorder?.active) return;
   $("error").hidden = true;
-  setRenderDisabled(true);
+  generationSubmitting = true;
+  setRenderDisabled();
   try {
-    if (selected?.live && !selected.legacyContactOffsets && sameSettings(settings(), selected.settings)) {
-      live?.setCamera(settings()); setRenderDisabled(false); return;
-    }
     const run = await api("/api/render", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings())
     });
-    displayJob(normalizeRun(run));
-    if (matchMedia("(max-width: 700px)").matches) $("preview").scrollIntoView({ block: "start" });
-    schedulePoll(300);
+    if (run.status === "running") displayJob(normalizeRun(run));
+    setText($("queue-count"), run.status === "queued" ? "Added to queue" : "Generation started");
+    if (matchMedia("(max-width: 700px)").matches) $("generation").scrollIntoView({ block: "start" });
+    schedulePoll(100);
   } catch (error) {
     showError(error.message);
-    setRenderDisabled(false);
+  } finally {
+    generationSubmitting = false;
+    setRenderDisabled();
   }
 });
-$("cancel").addEventListener("click", async () => {
-  if (!currentJob) return;
-  $("cancel").disabled = true;
+
+async function cancelRun(id, button, queuedOnly = false) {
+  if (cancelling.has(id)) return;
+  cancelling.add(id);
+  button.disabled = true;
   try {
     await api("/api/cancel", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: currentJob.id })
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, queued_only: queuedOnly })
     });
-    setText($("job-stage"), "Stopping render…");
-  } catch (error) { showError(error.message); }
+    if (currentJob?.id === id) setText($("job-stage"), "Stopping render…");
+    schedulePoll(100);
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    cancelling.delete(id);
+    button.disabled = false;
+  }
+}
+$("cancel").addEventListener("click", () => {
+  if (currentJob) cancelRun(currentJob.id, $("cancel"));
 });
 $("playback-speed").addEventListener("change", () => { video.playbackRate = Number($("playback-speed").value); });
 $("export-video").addEventListener('click', async () => {
@@ -359,12 +377,12 @@ video.addEventListener("timeupdate", () => {
 function displayJob(run) {
   currentJob = run;
   const running = run?.status === "running";
-  setRenderDisabled(running);
+  setRenderDisabled();
   updateExportControls();
   $("job").hidden = !running;
   if (!run) return;
   if (running) {
-    $("cancel").disabled = false;
+    $("cancel").disabled = cancelling.has(run.id);
     setText($("job-stage"), run.stage);
     $("progress").value = run.progress;
     const pose = run.pose_progress;
@@ -512,38 +530,181 @@ function showTake(run, restoreControls = false) {
   lastHistory = "";
 }
 
+const cardSettings = [
+  ["Planning and timing", [
+    ["search_width", "Search width"], ["tap_interval_ms", "Minimum tap interval", "ms"],
+    ["repeat_comfort_ms", "Comfortable repeat gap", "ms"], ["repeat_weight", "Fast-repeat cost"],
+    ["jack_gap_ms", "Fast-run gap", "ms"], ["jack_free", "Unpenalized taps per run"], ["jack_weight", "Extra cost per tap"],
+    ["point_contact_frames", "Tap duration", "frames"], ["min_air_frames", "Minimum release gap", "frames"],
+    ["held_release_air_frames", "Release gap after a hold or arc", "frames"],
+    ["contact_offset_x_percent", "Horizontal offset limit", "%"], ["contact_offset_y_percent", "Vertical offset limit", "%"],
+    ["allow_misses", "Allow misses"], ["enable_red_notes", "Enable red notes"], ["target_all_red_notes", "Target every red note"],
+  ]],
+  ["Arcs and holds", [
+    ["arc_path_mode", "Arc path mode"], ["prefer_arc_trace", "Prefer tracing arc geometry"], ["arc_trace_weight", "Geometry deviation cost"],
+    ["full_arc_hold", "Prefer holding arcs to the visual end"], ["partial_hold_weight", "Early arc-release cost"],
+    ["full_ground_hold", "Prefer holding ground holds to the visual end"], ["partial_ground_hold_weight", "Early ground-release cost"],
+  ]],
+  ["Motion and playback", [
+    ["max_speed_m_s", "Max move speed", "m/s"], ["idle_speed_m_s", "Idle / detour speed", "m/s"],
+    ["comfort_speed_m_s", "Comfort speed", "m/s"], ["planner_accel_m_s2", "Acceleration preference", "m/s²"],
+    ["crossing_weight", "Crossing cost per second"], ["angular_limit_deg_s", "Max wrist turn", "°/s"],
+    ["lift_mm", "Finger lift", "mm"], ["clearance_mm", "Preferred hand clearance", "mm"], ["allow_clipping", "Allow 3D clipping"],
+    ["scroll_speed", "Chart scroll speed", "×"], ["song_delay_ms", "Song audio delay", "ms"], ["hit_sounds", "Hit sounds"],
+    ["quality", "Preview quality"], ["camera_elevation_deg", "View angle", "°"],
+    ["camera_yaw_deg", "Horizontal angle", "°"], ["camera_distance_m", "Distance", "m"], ["camera_lens_mm", "Lens", "mm"],
+  ]],
+];
+const cardValues = {score: "Score-aware", trace: "Trace", draft: "Draft", final: "High"};
+
+function cardText(tag, value, className) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  setText(element, value);
+  return element;
+}
+
+function runCard(run, listName, status, action) {
+  const saved = run.savedSettings || run.settings;
+  const card = document.createElement("details");
+  card.className = "take-card" + (run.id === selected?.id ? " selected" : "");
+  card.name = listName;
+  card.dataset.runId = run.id;
+  const summary = document.createElement("summary");
+  summary.className = "take";
+  const info = document.createElement("span");
+  info.className = "take-info";
+  const title = document.createElement("strong");
+  title.textContent = bootstrap.charts[saved.chart]?.title || saved.chart;
+  const quick = [saved.start_s + "–" + saved.end_s + " s"];
+  if (saved.search_width != null) quick.push("Width " + saved.search_width);
+  if (saved.tap_interval_ms != null) quick.push("Tap ≥ " + saved.tap_interval_ms + " ms");
+  if (saved.max_speed_m_s != null) quick.push(saved.max_speed_m_s + " m/s");
+  info.append(title, cardText("small", quick.join(" · ")));
+  const meta = document.createElement("span");
+  meta.className = "take-meta";
+  if (status) meta.append(cardText("span", status, "take-status"));
+  else meta.append(cardText("time", new Date(run.created * 1000).toLocaleString([], {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  }), "take-time"));
+  const chevron = document.createElement("span");
+  chevron.className = "take-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  summary.append(info, meta, chevron);
+  card.append(summary);
+
+  const details = document.createElement("div");
+  details.className = "take-details";
+  const toolbar = document.createElement("div");
+  toolbar.className = "take-actions";
+  if (action) toolbar.append(action);
+  if (run.judgements) toolbar.append(cardText("span",
+    run.judgements.hits + " hits · " + run.judgements.misses + " misses", "take-time"));
+  if (status) {
+    const formatTime = seconds => new Date(seconds * 1000).toLocaleTimeString([], {
+      hour: "2-digit", minute: "2-digit",
+    });
+    toolbar.append(cardText("time", "Added " + formatTime(run.created), "take-time"));
+    if (run.started) toolbar.append(cardText("time", "Started " + formatTime(run.started), "take-time"));
+  }
+  if (run.source_revision || run.metrics?.solver) {
+    toolbar.append(cardText("span", run.source_revision || run.metrics.solver, "take-id"));
+  }
+  toolbar.append(cardText("span", run.id, "take-id"));
+  details.append(toolbar);
+  if (run.status === "running") details.append($("job"));
+  const groups = document.createElement("div");
+  groups.className = "take-settings";
+  for (const [heading, settings] of cardSettings) {
+    const section = document.createElement("div");
+    const values = document.createElement("dl");
+    for (const [key, label, unit] of settings) {
+      const value = saved[key];
+      if (value == null) continue;
+      values.append(cardText("dt", label), cardText("dd",
+        typeof value === "boolean" ? (value ? "On" : "Off") : unit ? value + " " + unit : cardValues[value] ?? value));
+    }
+    if (values.childElementCount) section.append(cardText("h3", heading), values);
+    if (section.childElementCount) groups.append(section);
+  }
+  details.append(groups);
+  card.append(details);
+  return card;
+}
+
+function replaceCards(container, cards, defaultOpen) {
+  const open = container.querySelector(".take-card[open]")?.dataset.runId;
+  const focus = container.contains(document.activeElement) ? document.activeElement.closest(".take-card")?.dataset.runId : null;
+  container.replaceChildren(...cards);
+  const expanded = cards.find(card => card.dataset.runId === open) ||
+    (defaultOpen ? cards.find(card => card.dataset.runId === defaultOpen) : null);
+  if (expanded) expanded.open = true;
+  if (focus) cards.find(card => card.dataset.runId === focus)?.querySelector("summary")?.focus();
+}
+
 function history(runs) {
-  const identity = JSON.stringify(runs.map(run => [run.id, run.status])) + selected?.id;
+  const takes = runs.filter(run => run.status === "complete" || run.status === "failed");
+  const identity = JSON.stringify(takes.map(run => [run.id, run.status])) + selected?.id;
   if (identity === lastHistory) return;
   lastHistory = identity;
   const container = $("history");
-  const takes = runs.filter(run => run.status === "complete");
-  setText($("take-count"), takes.length ? takes.length + " saved locally" : "Saved locally");
-  if (!takes.length) return;
-  container.replaceChildren();
-  for (const run of takes.slice(0, 8)) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.disabled = !!recorder?.active;
-    button.className = "take" + (run.id === selected?.id ? " selected" : "");
-    button.setAttribute("aria-pressed", String(run.id === selected?.id));
-    const mark = document.createElement("span");
-    mark.className = "take-mark";
-    setText(mark, "▷");
-    const info = document.createElement("span");
-    info.className = "take-info";
-    const title = document.createElement("strong");
-    title.textContent = bootstrap.charts[run.settings.chart].title;
-    const description = document.createElement("small");
-    setText(description, run.settings.start_s + "–" + run.settings.end_s + " s · " +
-      run.settings.max_speed_m_s + " m/s · lift " + run.settings.lift_mm + " mm");
-    info.append(title, description);
-    const timestamp = document.createElement("span");
-    timestamp.className = "take-time";
-    setText(timestamp, new Date(run.created * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-    button.append(mark, info, timestamp);
-    button.addEventListener("click", () => { showTake(run, true); history(runs); });
-    container.append(button);
+  const savedCount = takes.filter(run => run.status === "complete").length;
+  setText($("take-count"), savedCount ? savedCount + " saved locally" : "Saved locally");
+  const cards = takes.slice(0, 8).map(run => {
+    if (run.status === "failed") {
+      const card = runCard(run, "recent-takes", "Generation failed");
+      const details = card.querySelector(".take-details");
+      if (run.error) details.prepend(cardText("p", run.error, "hint"));
+      if (run.log) {
+        const log = cardText("a", "View build log");
+        log.href = run.log;
+        log.target = "_blank";
+        log.rel = "noopener";
+        details.querySelector(".take-actions").prepend(log);
+      }
+      return card;
+    }
+    const play = cardText("button", "Open replay", "take-action");
+    play.type = "button";
+    play.disabled = !!recorder?.active;
+    play.addEventListener("click", () => {
+      showTake(run, true);
+      history(runs);
+    });
+    return runCard(run, "recent-takes", null, play);
+  });
+  replaceCards(container, cards);
+  if (!cards.length) container.append(cardText("p", "Completed previews will appear here for comparison.", "hint"));
+}
+
+function generationQueue(state) {
+  const waiting = state.queue || [];
+  const active = state.active?.status === "running" ? state.active : null;
+  const identity = JSON.stringify([active?.id, active?.kind, waiting.map(run => run.id)]);
+  const container = $("queue");
+  if (identity !== lastQueue) {
+    const previousActive = container.querySelector(".take-card[data-active]")?.dataset.runId;
+    lastQueue = identity;
+    const job = $("job");
+    if (!active) $("generation").append(job);
+    const cards = waiting.map((run, index) => {
+      const remove = cardText("button", "Remove from queue", "take-action");
+      remove.type = "button";
+      remove.addEventListener("click", () => cancelRun(run.id, remove, true));
+      return runCard(run, "generation-jobs", "Waiting · Position " + (index + 1), remove);
+    });
+    if (active) {
+      const card = runCard(active, "generation-jobs", active.stage);
+      card.dataset.active = "";
+      cards.unshift(card);
+    }
+    replaceCards(container, cards, active?.id !== previousActive && active?.id);
+    if (!cards.length) container.append(cardText("p", "No generation tasks queued.", "hint"));
+  }
+  setText($("queue-count"), waiting.length + " waiting" + (active ? " · 1 running" : ""));
+  if (active) {
+    const status = container.querySelector(".take-card .take-status");
+    setText(status, active.stage + " · " + Math.round(active.progress || 0) + "%");
   }
 }
 
@@ -556,6 +717,7 @@ async function poll() {
   try {
     const state = await api("/api/state");
     displayJob(normalizeRun(state.active));
+    generationQueue(state);
     history(state.history.map(normalizeRun));
     schedulePoll(state.active?.status === "running" ? 1000 : 3000);
   } catch (error) {
@@ -579,6 +741,7 @@ async function start() {
         ...Object.fromEntries(bootstrap.startup_preferences.map(name => [name, bootstrap.defaults[name]])) });
     }
     displayJob(normalizeRun(bootstrap.active));
+    generationQueue(bootstrap);
     history(bootstrap.history);
     schedulePoll(1000);
   } catch (error) {

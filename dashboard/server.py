@@ -111,43 +111,104 @@ class RenderQueue:
         RUNS.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
         self.active = None
+        self.pending = []
+        self.worker = None
+        self.closing = False
         self.process = None
         self.cancelled = threading.Event()
+
+    def resume(self):
+        """Reload waiting generations after a server restart."""
+        with self.lock:
+            for path in RUNS.glob("*/run.json"):
+                try:
+                    run = json.loads(path.read_text())
+                    if run["status"] == "queued":
+                        self.pending.append(run)
+                    elif run["status"] == "running":
+                        if run.get("live"):
+                            run.update(status="complete", stage="Previous preview ready", progress=100,
+                                       scene_only=False, export_only=False, ending_only=False)
+                        else:
+                            run.update(status="failed", stage="Generation interrupted", progress=0,
+                                       error="The server stopped during generation.")
+                        write_json(path, run)
+                except (OSError, ValueError, KeyError):
+                    continue
+            self.pending.sort(key=lambda run: (run["created"], run["id"]))
+            self.start_next()
 
     def state(self):
         with self.lock:
             history = []
-            for path in sorted(RUNS.glob("*/run.json"), reverse=True)[:30]:
+            for path in sorted(RUNS.glob("*/run.json"), reverse=True):
                 try:
                     run = json.loads(path.read_text())
                     if run["status"] in ("complete", "failed", "cancelled"):
                         history.append(run)
-                except (OSError, ValueError):
+                        if len(history) == 30:
+                            break
+                except (OSError, ValueError, KeyError):
                     continue
-            return {"active": self.active.copy() if self.active else None, "history": history}
+            return {"active": self.active.copy() if self.active else None,
+                    "queue": [run.copy() for run in self.pending], "history": history}
 
     def update(self, **changes):
         with self.lock:
             self.active.update(changes)
             write_json(RUNS / self.active["id"] / "run.json", self.active)
 
+    def start_worker(self, work, *args):
+        self.cancelled.clear()
+
+        def run():
+            try:
+                work(*args)
+            finally:
+                with self.lock:
+                    self.worker = None
+                    self.start_next()
+
+        self.worker = threading.Thread(target=run, daemon=True)
+        self.worker.start()
+
+    def start_next(self):
+        if self.worker or self.closing:
+            return
+        while self.pending:
+            self.active = self.pending.pop(0)
+            try:
+                settings = Settings.model_validate(self.active["settings"])
+            except ValidationError:
+                self.update(status="failed", stage="Settings need adjustment",
+                            error="The queued chart or settings are no longer available.")
+                continue
+            self.update(status="running", stage="Planning contacts", started=time.time())
+            self.start_worker(self.work, settings)
+            return
+
     def submit(self, settings):
         with self.lock:
-            if self.active and self.active["status"] == "running":
-                raise RuntimeError("A render is already running.")
-            self.cancelled.clear()
             run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6]
-            run = {"id": run_id, "status": "running", "stage": "Planning contacts",
+            run = {"id": run_id, "status": "queued", "stage": "Waiting to generate",
                    "progress": 0, "created": time.time(), "settings": settings.model_dump(),
-                   "defaults_revision": DEFAULTS_REVISION}
+                   "defaults_revision": DEFAULTS_REVISION, "kind": "generation"}
             (RUNS / run_id).mkdir()
             write_json(RUNS / run_id / "run.json", run)
-            self.active = run
-            threading.Thread(target=self.work, args=(settings,), daemon=True).start()
+            self.pending.append(run)
+            self.start_next()
             return run.copy()
 
-    def cancel(self, run_id):
+    def cancel(self, run_id, *, queued_only=False):
         with self.lock:
+            for index, run in enumerate(self.pending):
+                if run["id"] == run_id:
+                    write_json(RUNS / run_id / "run.json",
+                               {**run, "status": "cancelled", "stage": "Removed from queue"})
+                    self.pending.pop(index)
+                    return
+            if queued_only:
+                raise ValueError("This task is no longer waiting.")
             if not self.active or self.active["id"] != run_id or self.active["status"] != "running":
                 raise ValueError("This render is no longer running.")
             self.cancelled.set()
@@ -159,7 +220,7 @@ class RenderQueue:
 
     def refresh_scene(self, run_id):
         with self.lock:
-            if self.active and self.active["status"] == "running":
+            if self.worker:
                 raise RuntimeError("A build or export is already running.")
             if not re.fullmatch(r"\d{8}-\d{6}-[a-f0-9]{6}", run_id):
                 raise ValueError("Unknown take.")
@@ -171,10 +232,9 @@ class RenderQueue:
             run = json.loads((directory / "run.json").read_text())
             if run["status"] != "complete" or not run.get("live"):
                 raise ValueError("Choose a completed live preview.")
-            self.cancelled.clear()
             self.active = run
             self.update(status="running", stage="Updating presentation only", progress=10, scene_only=True, scene_error=None)
-            threading.Thread(target=self.work_scene, args=(directory,), daemon=True).start()
+            self.start_worker(self.work_scene, directory)
             return self.active.copy()
 
     def work_scene(self, directory):
@@ -195,7 +255,7 @@ class RenderQueue:
 
     def add_ending(self, run_id):
         with self.lock:
-            if self.active and self.active["status"] == "running":
+            if self.worker:
                 raise RuntimeError("A build or export is already running.")
             if not re.fullmatch(r"\d{8}-\d{6}-[a-f0-9]{6}", run_id):
                 raise ValueError("Unknown take.")
@@ -203,10 +263,9 @@ class RenderQueue:
             run = json.loads((directory / "run.json").read_text())
             if run["status"] != "complete" or not run.get("live"):
                 raise ValueError("Choose a completed live preview.")
-            self.cancelled.clear()
             self.active = run
             self.update(status="running", stage="Rendering results ending only", progress=20, ending_only=True, ending_error=None)
-            threading.Thread(target=self.work_ending, args=(directory,), daemon=True).start()
+            self.start_worker(self.work_ending, directory)
             return self.active.copy()
 
     def work_ending(self, directory):
@@ -220,7 +279,7 @@ class RenderQueue:
 
     def export_video(self, run_id, view=None):
         with self.lock:
-            if self.active and self.active["status"] == "running":
+            if self.worker:
                 raise RuntimeError("A build or export is already running.")
             if not re.fullmatch(r"\d{8}-\d{6}-[a-f0-9]{6}", run_id):
                 raise ValueError("Unknown take.")
@@ -235,10 +294,9 @@ class RenderQueue:
                 raise ValueError("Only camera and display detail can change during MP4 export.")
             saved_settings = {name: value for name, value in run["settings"].items() if name in Settings.model_fields}
             config = Settings.model_validate({**saved_settings, **view}).model_dump()
-            self.cancelled.clear()
             self.active = run
             self.update(status="running", stage="Exporting 3D MP4", progress=40, export_only=True, export_error=None)
-            threading.Thread(target=self.work_export, args=(directory, config), daemon=True).start()
+            self.start_worker(self.work_export, directory, config)
             return self.active.copy()
 
     def work_export(self, directory, config=None):
@@ -525,7 +583,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/render":
                 self.json(QUEUE.submit(Settings.model_validate(data)), 202)
             elif path == "/api/cancel":
-                QUEUE.cancel(data["id"])
+                QUEUE.cancel(data["id"], queued_only=data.get("queued_only") is True)
                 self.json({"cancelled": True})
             elif path == "/api/presentation":
                 self.json(QUEUE.refresh_scene(data["id"]), 202)
@@ -596,8 +654,11 @@ if __name__ == "__main__":
     server = ThreadingHTTPServer(("127.0.0.1", options.port), Handler)
     print(f"Rhythm workbench is ready at http://127.0.0.1:{options.port}", flush=True)
     try:
+        QUEUE.resume()
         server.serve_forever()
     except KeyboardInterrupt:
-        if QUEUE.active and QUEUE.active["status"] == "running":
-            QUEUE.cancel(QUEUE.active["id"])
+        with QUEUE.lock:
+            QUEUE.closing = True
+            if QUEUE.active and QUEUE.active["status"] == "running":
+                QUEUE.cancel(QUEUE.active["id"])
         server.server_close()

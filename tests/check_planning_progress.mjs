@@ -17,7 +17,7 @@ const context = vm.createContext({$, Date, Math, String,
   bootstrap: {charts: {bibideba: {title: 'BIBBIDIBA'}}},
   setText(element, text) { element.textContent = text; },
   setAttributeText(element, name, value) { element[name] = value; },
-  setRenderDisabled() {}, updateExportControls() {}, currentJob: null,
+  setRenderDisabled() {}, updateExportControls() {}, currentJob: null, cancelling: new Set(),
 });
 vm.runInContext(functionSource, context);
 const run = {status: 'running', stage: 'Planning contacts', progress: 12,
