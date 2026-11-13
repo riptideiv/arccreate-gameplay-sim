@@ -23,7 +23,7 @@ HAND_PARTS = (
 )
 
 
-VERSION = "pivot-beam-arms-4"
+VERSION = "pivot-beam-acceleration-1"
 NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
 # Fixed shoulder pivots and outward/downward elbow poles in tablet space.
 SHOULDERS = np.array([[-0.18, -0.38, 0.17], [0.18, -0.38, 0.17]])
@@ -32,6 +32,34 @@ UPPER_ARM_LENGTH = 0.29
 FOREARM_LENGTH = 0.26
 ARM_RADIUS = 0.020
 ARM_WEIGHT = 0.25
+# Squared acceleration is an effort proxy. Rotation is expressed as the
+# equivalent linear acceleration at a representative distance from the pad.
+WRIST_LEVER_M = 0.065
+ACCELERATION_WEIGHT = 0.25
+
+
+def accelerations(samples):
+    """Second differences at 60 Hz, with time on the penultimate axis."""
+    return np.diff(samples, n=2, axis=-2) * 60**2
+
+
+def acceleration_diagnostics(points, poses, parts, swivels):
+    centres = [proxies(poses[:, h], parts[h])[0] + points[:, h, None] for h in range(2)]
+    wrists, elbows = arm_geometry(centres, bases(poses)[..., 1], parts, swivels)
+    signals = {
+        "pad_m_s2": points,
+        "wrist_joint_m_s2": wrists,
+        "elbow_m_s2": elbows,
+        "wrist_rotation_rad_s2": np.radians(poses),
+    }
+    report = {}
+    for name, samples in signals.items():
+        magnitude = np.linalg.norm(accelerations(samples.swapaxes(0, 1)), axis=-1)
+        report[name] = {
+            "rms": float(np.sqrt(np.mean(magnitude**2))) if magnitude.size else 0.,
+            "peak": float(magnitude.max(initial=0)),
+        }
+    return report
 
 
 def bases(angles):
@@ -312,7 +340,12 @@ def air_paths(
                     peak_layer_shortfall = np.maximum(peak_layer_shortfall, shortfall.max(axis=1))
             penalty += np.sum(np.maximum(0, -margin) ** 2, axis=1) * 1e8
         penalty += 8e10 * peak_layer_shortfall
-        penalty += np.sum((candidates - points[a : b + 1, h]) ** 2, axis=(1, 2)) * 0.01
+        # Score the actual velocity changes, including at the adjoining
+        # contact/idle samples. A lift can cost effort in any direction.
+        before = np.broadcast_to(result[max(0, a-1), h], (len(candidates), 1, 3))
+        after = np.broadcast_to(result[min(len(points)-1, b+1), h], (len(candidates), 1, 3))
+        accel = accelerations(np.concatenate((before, candidates, after), axis=1))
+        penalty += ACCELERATION_WEIGHT * np.sum(accel**2, axis=(1, 2))
         return penalty
 
     for sweep in range(1, 4):
@@ -525,14 +558,25 @@ def solve(
     chosen = np.argsort(initial + ahead(0), kind="stable")[:beam]
     previous = states[chosen]
     values = initial[chosen]
+    arrival_velocity = np.zeros_like(previous)
     history = [(chosen, np.full(len(chosen), -1, dtype=int))]
     for completed, (a, b) in enumerate(zip(knots, knots[1:]), 1):
         cap = cumulative[b] - cumulative[a]
-        distance = np.linalg.norm(
-            states[None, :, :, :] - previous[:, None, :, :], axis=-1
-        )
+        turn = states[None] - previous[:, None]
+        distance = np.linalg.norm(turn, axis=-1)
         feasible = np.all(distance <= cap[None, None, :] + 1e-6, axis=-1)
-        edge = np.sum(distance**2, axis=-1) / 10000 * 0.2
+        # Carry angular velocity in each beam history. Budget-weighted
+        # interpolation determines both the boundary and interior accelerations.
+        fractions = np.divide(budgets[a:b], cap, out=np.zeros_like(budgets[a:b]), where=cap > 1e-9)
+        velocity_scale = fractions * (60 * math.pi / 180) * WRIST_LEVER_M
+        incoming = turn * velocity_scale[0, :, None] - arrival_velocity[:, None]
+        internal = np.sum(np.diff(velocity_scale, axis=0)**2, axis=0)
+        if b == count - 1:
+            internal += velocity_scale[-1]**2
+        edge = ACCELERATION_WEIGHT * 60**2 * (
+            np.sum(incoming**2, axis=(-2, -1))
+            + np.sum(turn**2 * internal[:, None], axis=(-2, -1))
+        )
         scores = values[:, None] + edge + cost(b)[None, :] + neutral[None, :] * 0.03
         scores[~feasible] = np.inf
         parents = np.argmin(scores, axis=0)
@@ -581,6 +625,7 @@ def solve(
         order = np.argsort(adjusted + ahead(b)[shortlist], kind="stable")[:beam]
         chosen = shortlist[order]
         history.append((chosen, parents[chosen]))
+        arrival_velocity = turn[parents[chosen], chosen] * velocity_scale[-1, :, None]
         previous = states[chosen]
         values = adjusted[order]
         if progress:

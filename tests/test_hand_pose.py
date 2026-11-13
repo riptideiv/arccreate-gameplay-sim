@@ -6,7 +6,9 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from hand_pose import HAND_PARTS, NEUTRAL, arm_cost, bases, diagnostics, proxies, solve
+from hand_pose import (
+    HAND_PARTS, NEUTRAL, acceleration_diagnostics, arm_cost, bases, diagnostics, proxies, solve,
+)
 
 PARTS = [
     [(name, (sign * x, y, z), r) for name, (x, y, z), r in HAND_PARTS]
@@ -90,3 +92,19 @@ def test_arm_model_prefers_downward_tap_flex_to_sideways_bend():
         return arm_cost(centres, bases(angles)[..., 1], PARTS, 0.001)
 
     assert cost(NEUTRAL) <= cost(tap) < cost(sideways) < cost(reversed_wrist)
+
+
+
+def test_acceleration_report_distinguishes_rotation_from_pinned_translation():
+    count = 9
+    points = np.broadcast_to([[-.09, .02, .006], [.09, .02, .006]], (count, 2, 3))
+    poses = np.broadcast_to(NEUTRAL, (count, 2, 2)).copy()
+    time = np.arange(count) / 60
+    poses[:, 0, 1] += np.degrees(0.5 * 12 * time**2)
+
+    report = acceleration_diagnostics(points, poses, PARTS, None)
+
+    assert report["pad_m_s2"]["peak"] == 0
+    assert report["wrist_rotation_rad_s2"]["peak"] == pytest.approx(12)
+    assert report["wrist_joint_m_s2"]["peak"] > 0
+    assert report["elbow_m_s2"]["peak"] > 0

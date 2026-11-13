@@ -20,7 +20,7 @@ FPS = 30
 # Shared geometry and pose model; the index-pad centre is the root pivot.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hand_pose import (
-    ARM_WEIGHT, HAND_PARTS, VERSION as POSE_VERSION, arm_diagnostics, diagnostics,
+    ARM_WEIGHT, HAND_PARTS, VERSION as POSE_VERSION, acceleration_diagnostics, arm_diagnostics, diagnostics,
     solve as solve_hand_poses,
 )
 from motion_paths import positions as finger_positions, home_position, settle_frame
@@ -216,6 +216,7 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
     report["maximum_contact_drift_m"] = float(
         np.linalg.norm((solved - points)[physical], axis=-1).max(initial=0))
     report["arm_model"] = arm_diagnostics(solved, angles, parts, swivels)
+    report["acceleration"] = acceleration_diagnostics(solved, angles, parts, swivels)
     report["idle_speed_m_s"] = min(idle_speed, max_speed)
     return output, poses, report
 

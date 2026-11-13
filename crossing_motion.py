@@ -194,7 +194,9 @@ def boundary_subframes(routes):
 
 def solve_swivels(points, poses, parts, routes, gap, *, progress=None):
     """Blend bounded corrections around fixed elbow poles across the take."""
-    from hand_pose import arm_metrics, arm_posture_cost, bases, proxies
+    from hand_pose import (
+        ACCELERATION_WEIGHT, accelerations, arm_geometry, arm_metrics, arm_posture_cost, bases, proxies,
+    )
 
     stride, radius = 24, 32
     windows = []
@@ -243,6 +245,17 @@ def solve_swivels(points, poses, parts, routes, gap, *, progress=None):
         overlap = np.maximum(0, gap-metrics[0]) * 1000
         cost += overlap.max(axis=1)**2 * 50 + np.mean(overlap**2, axis=1) * 100
         cost += arm_posture_cost(metrics, gap).mean(axis=1)
+        # The shoulder pivot is fixed. Elbow acceleration measures motion of
+        # the upper arm and the effects of the swivel on the forearm.
+        motion_frames = np.arange(max(0, start-1), min(len(points), stop+1))
+        motion_poses = poses[motion_frames]
+        motion_centres = [proxies(motion_poses[:, h], parts[h])[0] + points[motion_frames, h, None]
+                          for h in range(2)]
+        motion_weight = np.interp(motion_frames, samples, weight, left=0., right=0.)
+        motion_swivels = swivels[motion_frames] + motion_weight[:, None] * catalogue[:, None, :]
+        _, elbows = arm_geometry(motion_centres, None, parts, motion_swivels)
+        accel = accelerations(elbows.swapaxes(1, 2))
+        cost += ACCELERATION_WEIGHT * np.sum(accel**2, axis=(1, 2, 3)) / len(motion_frames)
         cost += .03 * np.sum(catalogue**2, axis=1)
         chosen = catalogue[int(np.argmin(cost))]
         selected[index] = chosen
