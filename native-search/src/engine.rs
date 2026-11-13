@@ -2172,7 +2172,35 @@ impl Engine {
                 );
                 following = distinct;
             }
-            following.truncate(max);
+            if self.crossing.is_some() && b(&self.input.multi, "allow_misses") && max >= 4 {
+                // Preserve ranked branches that can keep playing if the next
+                // target is skipped. Pending routes may still become legal
+                // when the other hand moves, so they keep most of the beam.
+                let reserve = max / 4;
+                let ready: Vec<_> = following
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| {
+                        crate::arms::CrossingGraph::can_stop_in_place(s.arms.as_ref().unwrap())
+                    })
+                    .map(|(i, _)| i)
+                    .take(reserve)
+                    .collect();
+                let mut chosen: HashSet<_> = ready.into_iter().collect();
+                for i in 0..following.len() {
+                    if chosen.len() == max {
+                        break;
+                    }
+                    chosen.insert(i);
+                }
+                following = following
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(i, state)| chosen.contains(&i).then_some(state))
+                    .collect();
+            } else {
+                following.truncate(max);
+            }
         }
         // Nothing from an interrupted layer becomes the next frontier.
         if self.cancellation.load(Ordering::Relaxed) {

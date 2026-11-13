@@ -789,6 +789,35 @@ impl CrossingGraph {
         }
         self.routes(previous, paths)
     }
+    // Validate only the pending asymmetric tail. Padding both stationary
+    // endpoints through the rest of the chart cannot introduce another pass.
+    pub fn can_stop_in_place(state: &ArmState) -> bool {
+        let through = state.through();
+        let end = state.paths.iter().map(|p| p.points.len()).max().unwrap();
+        if through + 1 == end {
+            return true;
+        }
+        let points: [Vec<Point>; 2] = std::array::from_fn(|h| {
+            let mut tail = state.paths[h].points[through..].to_vec();
+            tail.resize(end - through, *tail.last().unwrap());
+            tail
+        });
+        let locks: [Vec<bool>; 2] = std::array::from_fn(|h| {
+            let mut tail = state.paths[h].locked[through..].to_vec();
+            tail.resize(end - through, false);
+            tail
+        });
+        // Extend needs the active layer; completed routes have no effect.
+        let active = state
+            .routes
+            .last()
+            .filter(|route| route.end_frame.is_none())
+            .cloned()
+            .into_iter()
+            .collect();
+        !extend(active, &points[0], &points[1], 0, [&locks[0], &locks[1]]).is_empty()
+    }
+
     pub fn finish(&self, state: &ArmState) -> Vec<ArmState> {
         let frame = self
             .requested

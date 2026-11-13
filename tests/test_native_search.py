@@ -115,9 +115,21 @@ def test_native_segmented_snake_matches_an_independently_prepared_python_graph(t
     # This reference must be built before native preparation on a separate
     # graph. Replaying both engines on a prewarmed graph hides source aliasing.
     reference = create_plan(path, 0, 3500, settings, excluded=excluded, search_backend='python')
+    expected = comparable(reference)
+    expected_cost = expected.pop('cost')
+    native_reference = None
     for workers in (1, 4):
-        actual = native_plan(path, settings, workers=workers, excluded=excluded)
-        assert comparable(actual) == comparable(reference)
+        actual = comparable(native_plan(path, settings, workers=workers, excluded=excluded))
+        cost = actual.pop('cost')
+        # Equivalent curve lengths can differ by one floating-point step
+        # between engines. Worker count must still give the same native cost.
+        assert cost['components'] == pytest.approx(expected_cost['components'], rel=1e-10, abs=1e-9)
+        assert cost['weighted'] == pytest.approx(expected_cost['weighted'], rel=1e-10, abs=1e-9)
+        assert actual == expected
+        if native_reference is None:
+            native_reference = cost
+        else:
+            assert cost == native_reference
 
 
 def test_selected_route_validation_restores_all_branch_point_choices(tmp_path, monkeypatch):

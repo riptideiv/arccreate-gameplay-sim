@@ -2981,7 +2981,22 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                 distinct = list(schedules.values())
                 selected = {id(entry) for entry in distinct}
                 kept = distinct + [entry for entry in kept if id(entry) not in selected]
-            kept = kept[:multi.max_states]
+            if can_stop and multi.max_states >= 4:
+                reserve = multi.max_states // 4
+                ready = []
+                for index, entry in enumerate(kept):
+                    if crossing.can_stop_in_place(entry[4]):
+                        ready.append(index)
+                        if len(ready) == reserve:
+                            break
+                chosen = set(ready)
+                for index in range(len(kept)):
+                    if len(chosen) == multi.max_states:
+                        break
+                    chosen.add(index)
+                kept = [kept[index] for index in sorted(chosen)]
+            else:
+                kept = kept[:multi.max_states]
             pruned += 1
         if can_stop and k + 1 < len(groups):
             # A pending travel span can be legal with a future contact but

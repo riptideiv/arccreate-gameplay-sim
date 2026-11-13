@@ -103,6 +103,22 @@ def test_excerpt_can_end_with_an_open_crossing():
         validate(points, {**data, "routes": [{**data["routes"][0], "end_frame": 6}]})
 
 
+def test_pending_uncrossing_can_fail_with_the_other_hand_still():
+    graph = CrossingGraph(lift=.008, speed=3., idle_speed=1., requested=8)
+    # Left crosses over, then stops. Right's pending tail goes back across
+    # from the far side, which would require a switch to right over left.
+    left = path([-1, 1], .02)
+    right = path([0, 0, 2], .04)
+    paths = (HandPath(left, 0, np.zeros(2, dtype=bool)),
+             HandPath(right, 0, np.zeros(3, dtype=bool)))
+    state = next(s for s in graph._advance(graph.initial, paths) if order(s.routes) == "left")
+    assert not graph.can_stop_in_place(state)
+    assert graph.finish(state) == ()
+    stopped = replace(state, paths=(paths[0], replace(paths[1], points=right[:2], locked=np.zeros(2, bool))))
+    assert graph.can_stop_in_place(stopped)
+    assert graph.finish(stopped)
+
+
 def test_uncross_and_recross_are_seen_between_scoring_ticks():
     left = path([-1, 1, -1, 1], [-.01, -.01, .01, .01])
     right = path([0] * len(left), 0)

@@ -386,6 +386,20 @@ class CrossingGraph:
             paths[hand] = projected
         return self._routes(previous, tuple(paths))
 
+    @staticmethod
+    def can_stop_in_place(state):
+        """Validate the pending asymmetric tail with the other hand still."""
+        start = state.through
+        stop = max(len(path.points) for path in state.paths)
+        if stop == start + 1:
+            return True
+        points = tuple(np.concatenate((path.points[start:],
+                       np.repeat(path.points[-1:], stop - len(path.points), axis=0)))
+                       for path in state.paths)
+        locks = tuple(np.pad(path.locked[start:], (0, stop - len(path.points))) for path in state.paths)
+        active = state.routes[-1:] if order(state.routes) != "uncrossed" else ()
+        return bool(extend(active, *points, 0, locks))
+
     def finish(self, state):
         """Extend each hand in place through the end of the excerpt."""
         frame = max(self.requested, *(len(path.points) for path in state.paths))
