@@ -77,6 +77,22 @@ def test_render_translation_preserves_original_and_normal_notes(tmp_path):
     assert p.read_text() == original
 
 
+def test_replay_without_red_notes_still_uses_private_chart_files(tmp_path):
+    aff = tmp_path / '0.aff'
+    original = b'AudioOffset:0\r\n-\r\ntiming(0,120,4);\r\n(1000,1);\r\n'
+    aff.write_bytes(original)
+    other = tmp_path / '1.aff'
+    other.write_bytes(original)
+    project = tmp_path / 'project.arcproj'
+    project.write_text('lastOpenedChartPath: 0.aff\n')
+    directory, copy, arcproj = prepare_project(tmp_path, aff, project, tmp_path / 'run', False)
+    assert copy.read_bytes() == original
+    copy.write_text('saved by ArcCreate')
+    (directory / other.name).write_text('also saved')
+    assert aff.read_bytes() == other.read_bytes() == original
+    assert arcproj.parent == directory
+
+
 def test_negative_source_offset_keeps_early_excerpt_contacts_cacheable(tmp_path):
     p = tmp_path/'negative.aff'
     p.write_text('AudioOffset:-1297\n-\ntiming(0,120,4);\n(4250,1);\n(4500,4);\n')

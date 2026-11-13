@@ -6,6 +6,8 @@ recognize non-scoring red sky taps while keeping ordinary touch judgement.
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 
 from arc_hand_order.chart.parser import parse_aff
 
@@ -44,21 +46,27 @@ def render_chart(text, enabled=True):
 
 
 def prepare_project(chart, aff, project, run, enabled=True):
-    text = aff.read_text(encoding='utf-8-sig')
-    converted, count = render_chart(text, enabled)
-    if not count:
-        return chart, aff, project
+    original = aff.read_bytes()
+    converted, count = render_chart(original.decode('utf-8-sig'), enabled)
+    # ArcCreate may save the open chart on exit. Keep every AFF private,
+    # including other difficulties named by the project.
     folder = run / 'arccreate'
-    folder.mkdir(exist_ok=True)
+    folder.mkdir(parents=True, exist_ok=True)
     for asset in chart.iterdir():
         if asset.name in (aff.name, 'project.arcproj', '.rendering') or not asset.is_file():
             continue
         target = folder / asset.name
-        if not target.exists() and not target.is_symlink():
+        if asset.suffix.lower() == '.aff':
+            if target.is_symlink():
+                target.unlink()
+            shutil.copyfile(asset, target)
+        elif not target.exists() and not target.is_symlink():
             target.symlink_to(os.path.relpath(asset, folder))
-    (folder / aff.name).write_text(converted)
-    import re
+    local_chart = folder / aff.name
+    if local_chart.is_symlink():
+        local_chart.unlink()
+    local_chart.write_bytes(converted.encode('utf-8') if count else original)
     source = project.read_text()
     source = re.sub(r'(?m)^\s*lastOpenedChartPath:.*\n', '', source)
     (folder / 'project.arcproj').write_text('lastOpenedChartPath: ' + json.dumps(aff.name) + '\n' + source)
-    return folder, folder / aff.name, folder / 'project.arcproj'
+    return folder, local_chart, folder / 'project.arcproj'
