@@ -8,6 +8,7 @@ use std::sync::{
     Arc, Mutex,
 };
 const PEAK: f64 = 5.773502691896258;
+type TouchTable = HashMap<Vec<u64>, Arc<Touch>>;
 
 #[cfg(test)]
 #[path = "pricing_tests.rs"]
@@ -43,7 +44,7 @@ pub struct Engine {
     next_id: AtomicUsize,
     // Worker-assigned IDs identify equality classes only, never ordering.
     // Geometry is immutable; cost/prefix OnceLocks are written by apply_event.
-    interned: Mutex<HashMap<Vec<u64>, Arc<Touch>>>,
+    interned: Vec<Mutex<TouchTable>>,
     wrist: Option<crate::wrist::WristEstimate>,
     earliest: Vec<i32>,
     lock_expiry: HashMap<(i32, i32), i64>,
@@ -205,6 +206,9 @@ impl Engine {
             )
         });
         let initial_arms = crossing.as_ref().map(|g| Arc::new(g.initial()));
+        let interned = (0..input.items.len())
+            .map(|_| Mutex::new(HashMap::new()))
+            .collect();
         let mut e = Self {
             input,
             states: vec![State {
@@ -229,7 +233,7 @@ impl Engine {
             shares: Mutex::new(HashMap::new()),
             pairs: Mutex::new(HashMap::new()),
             next_id: AtomicUsize::new(0),
-            interned: Mutex::new(HashMap::new()),
+            interned,
             wrist,
             earliest,
             lock_expiry,
@@ -293,6 +297,9 @@ impl Engine {
                 s
             })
             .collect();
+        for cache in &mut self.interned[..layer] {
+            *cache.get_mut().unwrap() = HashMap::new();
+        }
         self.layer = layer;
         self.visited = visited;
         self.pruned = pruned;
@@ -357,6 +364,12 @@ impl Engine {
         arrival: Option<Arrival>,
         _prefix: Option<&Touch>,
     ) -> Arc<Touch> {
+        let layer = parts
+            .iter()
+            .map(|p| self.input.candidates[p.candidate].item)
+            .max()
+            .unwrap();
+        let interned = &self.interned[layer];
         let mut key = vec![parts.len() as u64];
         for p in &parts {
             key.extend([p.candidate as u64, p.start as u64, p.stop as u64]);
@@ -377,7 +390,7 @@ impl Engine {
         } else {
             key.push(0);
         }
-        if let Some(t) = self.interned.lock().unwrap().get(&key) {
+        if let Some(t) = interned.lock().unwrap().get(&key) {
             return t.clone();
         }
         let arrival_base = arrival.as_ref().map(|_| {
@@ -417,7 +430,7 @@ impl Engine {
             &self.input.trace_order,
         );
         let result = Arc::new(t);
-        self.interned
+        interned
             .lock()
             .unwrap()
             .entry(key)
@@ -2305,6 +2318,15 @@ impl Engine {
             };
             self.final_alternatives = vec![best];
         }
+        // Every newly constructed touch includes a candidate from the
+        // current layer. Older touches survive through their Arc owners
+        // (the beam, backpointers and single-candidate table).
+        *self.interned[k].get_mut().unwrap() = HashMap::new();
+        // Extension and share keys include the current candidate, and
+        // pair prices can be recomputed from immutable touch geometry.
+        self.extensions.get_mut().unwrap().clear();
+        self.shares.get_mut().unwrap().clear();
+        self.pairs.get_mut().unwrap().clear();
         self.pruned += usize::from(pruned);
         self.visited += following.len();
         self.states = following;
