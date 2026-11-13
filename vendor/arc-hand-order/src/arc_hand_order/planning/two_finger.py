@@ -438,12 +438,16 @@ def crossing_pass(previous: "Candidate", following: "Candidate", other: "Candida
 
 
 def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
-                     options: PlannerOptions, progress=None) -> tuple[tuple[Candidate, ...], ...]:
+                     options: PlannerOptions, progress=None, *,
+                     prefix: tuple[tuple[Candidate, ...], ...] = ()) -> tuple[tuple[Candidate, ...], ...]:
     """Finite graph; nominal ordering is retained even when ±33 ms overlaps."""
     if options.point_window_ms is not None and (
             type(options.point_window_ms) is not int or options.point_window_ms < 0):
         raise ValueError("point_window_ms must be a nonnegative integer or None")
-    groups, next_id = [], 0
+    groups = []
+    next_id = max((c.id for group in prefix for c in group), default=-1) + 1
+    start = len(prefix)
+    items = occupations.items[start:]
     offset = occupations.audio_offset_ms
     fractions = options.contact_offset_fractions
     profiles = {}
@@ -453,9 +457,9 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         from .arc_scoring import profile, anchors, source_note, covers, hit, world, trace_cells, trace_position
         from .native_input import geometry_for
         native_geometry = geometry_for(occupations.items, projection, offset)
-        cells = trace_cells([o for o in occupations.items if o.kind == 'chain'], offset)
+        cells = trace_cells([o for o in items if o.kind == 'chain'], offset)
         parents = {}
-        for o in occupations.items:
+        for o in items:
             if o.kind == 'chain':
                 key = o.parent_occupation_id or o.occupation_id
                 if key not in parents: parents[key] = o
@@ -465,7 +469,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                 progress('arc_profiles', index, len(parents))
             o = replace(o, parent_occupation_id=None, score_points=tuple(sorted(set(o.score_points),key=lambda p:p.time_ms)))
             profiles[key] = (profile(o,projection,options.speed_max_m_s,offset,fractions=fractions), anchors(o,projection))
-    for k, item in enumerate(occupations.items):
+    for k, item in enumerate(items, start):
         if progress:
             progress('candidates', k, len(occupations.items), chart_ms=item.start_ms)
         if options.scoring_arcs and item.kind == 'chain':
@@ -621,7 +625,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
             candidates.append(Candidate(next_id, k, item, down, up, points[0], points[-1], offset, speed))
             next_id += 1
         groups.append(tuple(candidates))
-    if options.full_arc_hold and not any(o.parent_occupation_id for o in occupations.items):
+    if not prefix and options.full_arc_hold and not any(o.parent_occupation_id for o in items):
         # A full hold presses before the chain's first tick, so process items in press order.
         order = sorted(range(len(groups)), key=lambda i: (min((c.down_frame for c in groups[i]), default=0), i))
         groups = [tuple(replace(c, item_index=n) for c in groups[i]) for n, i in enumerate(order)]
@@ -636,7 +640,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         groups = _offset_contacts(groups, projection, options, next_id)
     if progress:
         progress('candidates', len(occupations.items), len(occupations.items))
-    return tuple(groups)
+    return prefix + tuple(groups)
 
 
 def _offset_contacts(groups, projection, options, next_id):

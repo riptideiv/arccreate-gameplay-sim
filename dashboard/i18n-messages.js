@@ -296,6 +296,7 @@ export const zhCN = {
   "Point taps require at least {gap} ms between presses, at most {rate} taps/s per hand before movement is considered.": "暂不考虑移动时，每只手相邻两次点按至少间隔 {gap} ms，最多每秒 {rate} 次。",
   "{count} snakes": "{count} 条蛇",
   "{count} items": "{count} 个目标",
+  "resuming near the failure with FAR timing": "从失败段落附近继续搜索，允许 FAR 判定",
   "retry with individual scoring ticks": "改用逐计分点方案重试",
   "retry with intact arcs and FAR timing": "保留整条蛇并允许 FAR 判定后重试",
   "{time} elapsed": "已用时 {time}",

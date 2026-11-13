@@ -13,6 +13,7 @@ from arc_hand_order.chart.arc_connections import connect_arcs
 from arc_hand_order.planning.native_input import DEFAULT_CONTACT_OFFSET_X_PERCENT, DEFAULT_CONTACT_OFFSET_Y_PERCENT
 from arc_hand_order.planning.rules import NATIVE_FAR_WINDOW_MS, NATIVE_PERFECT_WINDOW_MS
 from arc_hand_order.planning.occupations import occupations_from_chart, TimeWindow
+from arc_hand_order.planning.multi_finger import NoCandidatePath
 
 
 def split_arc_ticks(occupations):
@@ -68,9 +69,11 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     settings = settings or {}
     began = time.monotonic()
     attempt = 1
+    retry = None
     def report(event):
         if progress:
-            progress({**event, 'attempt': attempt, 'elapsed_s': round(time.monotonic() - began, 1)})
+            progress({**event, 'attempt': attempt, 'retry': retry,
+                      'elapsed_s': round(time.monotonic() - began, 1)})
     report({'phase': 'loading', 'completed': None, 'total': None})
     loaded = api.load_chart(chart_path)
     chart = loaded.chart.model_copy(deep=True)
@@ -176,15 +179,22 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     elif prefer_same_hand:
         multi["jack_weight"] = 0
         planner["repeat_weight"] = 0
-    try:
-        if excluded or avoid_contacts:
-            raise ValueError("no candidate path: retrying verified motion")
-        result = api.plan_chart(excerpt, multi=multi, planner=planner,
-                                occupation_set=point_windows(occupations, duration, NATIVE_PERFECT_WINDOW_MS),
-                                progress=report)
-    except ValueError as error:
-        if "no candidate path" not in str(error):
-            raise
+    result = None
+    checkpoint = None
+    if not (excluded or avoid_contacts):
+        try:
+            result = api.plan_chart(
+                excerpt, multi=multi, planner=planner,
+                occupation_set=point_windows(occupations, duration, NATIVE_PERFECT_WINDOW_MS),
+                progress=report, keep_checkpoints=scoring,
+            )
+        except ValueError as error:
+            if "no candidate path" not in str(error):
+                raise
+            if isinstance(error, NoCandidatePath):
+                checkpoint = error.checkpoint
+
+    if result is None:
         # Search the native FAR window before resorting to misses. Plan covered
         # contacts explicitly because a missing contact can invalidate a shortcut.
         split = point_windows(split_arc_ticks(occupations), duration, NATIVE_FAR_WINDOW_MS)
@@ -195,19 +205,41 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         can_retry_intact = (scoring and not (excluded or avoid_contacts)
                             and any(item.kind == "chain" for item in native_items)
                             and any(not item.continuous_contact for item in native_items))
+        if checkpoint is not None:
+            retry = 'checkpoint'
+            kept = {item.occupation_id for item in checkpoint.items}
+            tail = tuple(item for item in split.items
+                         if (item.parent_occupation_id or item.occupation_id) not in kept)
+            local_retry = replace(split, items=checkpoint.items + tail)
+            try:
+                resumed = api.plan_chart(
+                    excerpt, multi={**multi, "allow_misses": False}, planner=planner,
+                    occupation_set=local_retry, progress=report, checkpoint=checkpoint,
+                )
+            except NoCandidatePath:
+                pass
+            else:
+                if not resumed.plan.cost.missed_ticks:
+                    result = resumed
+            checkpoint = None
+            if result is None:
+                attempt += 1
+
         split_error = None
-        try:
-            result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=split, progress=report)
-        except ValueError as error:
-            if not can_retry_intact or "no candidate path" not in str(error):
-                raise
-            split_error = error
-            result = None
+        if result is None:
+            retry = 'split'
+            try:
+                result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=split, progress=report)
+            except ValueError as error:
+                if not can_retry_intact or "no candidate path" not in str(error):
+                    raise
+                split_error = error
 
         if can_retry_intact and (result is None or result.plan.cost.missed_ticks):
             # A split-arc beam can discard the release schedules that an intact
             # arc fit keeps. Check that route with FAR timing before returning misses.
-            attempt = 3
+            attempt += 1
+            retry = 'intact'
             intact = point_windows(occupations, duration, NATIVE_FAR_WINDOW_MS)
             try:
                 result = api.plan_chart(excerpt, multi={**multi, "allow_misses": False}, planner=planner,

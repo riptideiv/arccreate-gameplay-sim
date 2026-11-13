@@ -48,6 +48,7 @@ As there, optimality is over the finite candidates only.
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
+from collections import deque
 from dataclasses import asdict, dataclass, field, fields, replace
 from functools import cached_property, lru_cache
 import math
@@ -2661,10 +2662,12 @@ def _unkept(plan: MultiPlan, occupations: OccupationSet, projection: GameplayPro
 
 def plan_multi_finger(occupations: OccupationSet, projection: GameplayProjection,
                       options: PlannerOptions = PlannerOptions(),
-                      multi: MultiFingerOptions = MultiFingerOptions(), progress=None) -> MultiPlan:
+                      multi: MultiFingerOptions = MultiFingerOptions(), progress=None, *,
+                      keep_checkpoints=False, checkpoint=None) -> MultiPlan:
     reporter = ProgressReporter(progress)
     if not (multi.covered_holds or multi.covered_arcs or multi.steady_arcs or multi.enveloped_arcs):
-        return _plan_items(occupations, projection, options, multi, reporter)
+        return _plan_items(occupations, projection, options, multi, reporter,
+                           keep_checkpoints=keep_checkpoints, checkpoint=checkpoint)
     enveloped = enveloped_arcs(occupations, projection, multi) if multi.enveloped_arcs else ()
     plan = _plan_covered(occupations, projection, options, multi, enveloped, reporter)
     if plan is None:  # a piece left to another colour's finger was not kept: plan the chart without any
@@ -2721,12 +2724,66 @@ def _plan_covered(occupations, projection, options, multi, enveloped, progress=N
 PATH_TRACE: list | None = None
 
 
+# Leave several tap intervals for retiming before the first blocked contact.
+RETRY_REWIND_MS = 2000
+
+
+@dataclass(frozen=True)
+class BeamCheckpoint:
+    items: tuple[Occupation, ...]
+    groups: tuple
+    states: list[tuple]
+    touches: dict[int, Touch]
+    visited: int
+    pruned: int
+    blocked_ms: int
+
+
+class NoCandidatePath(ValueError):
+    def __init__(self, message, checkpoint):
+        super().__init__(message)
+        self.checkpoint = checkpoint
+
+
+def _checkpoint_states(checkpoint, graph):
+    """Import the frontier's touches; earlier contacts live in its ancestry."""
+    imported = {}
+
+    def restore(touch):
+        if touch.id not in imported:
+            copy = graph._intern(touch.parts, touch.bridges, touch.path)
+            if graph.jumps_over(touch):
+                copy.__dict__['_over'] = graph.jumps_over(touch)
+            prefix = touch.__dict__.get('_native_prefix')
+            if prefix is not None:
+                copy.__dict__['_native_prefix'] = restore(prefix)
+            imported[touch.id] = copy
+        return imported[touch.id]
+
+    # Only the contact and takeover slots hold touch IDs. The remaining slots
+    # hold repeat counts and native colour lock expiry times.
+    slots = (0, 1, 2, 3) if graph.own is None else (0, 1, 2, 3, graph.own, graph.own + 1)
+    result = []
+    for state, cost, node, arms in checkpoint.states:
+        state = list(state)
+        for slot in slots:
+            if state[slot] >= 0:
+                state[slot] = restore(checkpoint.touches[state[slot]]).id
+        result.append((tuple(state), cost, node, arms))
+    return result
+
+
 def _plan_items(occupations: OccupationSet, projection: GameplayProjection, options: PlannerOptions,
-                multi: MultiFingerOptions, progress=None) -> MultiPlan:
+                multi: MultiFingerOptions, progress=None, *,
+                keep_checkpoints=False, checkpoint=None) -> MultiPlan:
     progress = progress or ProgressReporter()
     progress('preparing')
     options = replace(options, audio_offset_ms=occupations.audio_offset_ms)
-    groups = build_candidates(occupations, projection, options, progress=progress)
+    start = len(checkpoint.items) if checkpoint is not None else 0
+    if checkpoint is not None and occupations.items[:start] != checkpoint.items:
+        raise ValueError("The retry occupations do not match the beam checkpoint")
+    groups = build_candidates(occupations, projection, options, progress=progress,
+                              prefix=checkpoint.groups if checkpoint is not None else ())
     meetings = None
     if multi.meeting_swaps:
         groups, meetings = meeting_candidates(groups, projection, options)
@@ -2743,6 +2800,10 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
         crossing = CrossingGraph(lift, options.speed_max_m_s, idle_speed, requested)
     states = [(initial, MultiCost(), None, crossing.initial if crossing else None)]
     visited, pruned = 1, 0
+    if checkpoint is not None:
+        states = _checkpoint_states(checkpoint, graph)
+        visited, pruned = checkpoint.visited, checkpoint.pruned
+
     def rank(cost):
         return (cost.missed_ticks, cost.missed_red_notes, cost.far_taps, cost.non_max_taps,
                 cost.weighted(options, multi))
@@ -2762,14 +2823,34 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
             yield rank(finished), finished, route
 
     can_stop = crossing is not None and multi.allow_misses
-    remaining_ticks = sum(item.score_weight for item in items)
-    remaining_red = sum(item.is_red for item in items)
+    remaining_ticks = sum(item.score_weight for item in items[start:])
+    remaining_red = sum(item.is_red for item in items[start:])
     completed_prefix = None
     final_alternatives = ()
     earliest = [min((c.down_frame for c in group),default=math.inf) for group in groups]
     if multi.tick_contacts:
         for index in range(len(earliest)-2,-1,-1): earliest[index] = min(earliest[index],earliest[index+1])
-    for k, (item, group) in enumerate(zip(items, groups)):
+    checkpoints = deque(maxlen=3)
+    last_checkpoint_ms = items[0].start_ms if items else 0
+    prefix_end_ms = last_checkpoint_ms
+
+    def blocked(message, blocked_ms):
+        for cut_ms, cut, frontier, work, drops in reversed(checkpoints):
+            if cut >= len(items) or cut_ms > blocked_ms - RETRY_REWIND_MS:
+                continue
+            touch_slots = (0, 1, 2, 3) if graph.own is None else (0, 1, 2, 3, graph.own, graph.own + 1)
+            touches = {state[slot]: graph.touches[state[slot]]
+                       for state, _, _, _ in frontier for slot in touch_slots if state[slot] >= 0}
+            resume = BeamCheckpoint(tuple(items[:cut]), groups[:cut], frontier, touches, work, drops, blocked_ms)
+            return NoCandidatePath(message, resume)
+        return NoCandidatePath(message, None)
+
+    if checkpoint is not None:
+        progress('search', start, len(groups), chart_ms=items[start].first_tick.time_ms,
+                 states=len(states), states_completed=0, candidates=len(groups[start]), visited=visited,
+                 resumed_from=start, blocked_ms=checkpoint.blocked_ms)
+    for k, (item, group) in enumerate(zip(items[start:], groups[start:]), start):
+        item_ms = item.first_tick.time_ms if item.kind == "chain" else item.start_ms
         following = {}
         f0 = int(earliest[k]) if math.isfinite(earliest[k]) else 0
         remaining_ticks -= item.score_weight
@@ -2805,7 +2886,10 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                             retain(new, total, step, route)
         if not following:
             item = group[0].occupation if group else occupations.items[k]
-            raise ValueError(f"no candidate path at item {k}: {item.occupation_id} ({item.kind} at {item.start_ms} ms)")
+            raise blocked(
+                f"no candidate path at item {k}: {item.occupation_id} ({item.kind} at {item.start_ms} ms)",
+                item_ms,
+            )
         kept = list(following.values())
         if crossing and k == len(groups) - 1:
             final_alternatives = kept
@@ -2848,6 +2932,11 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                     break
         states = [(new, total, node, arms) for total, _, node, new, arms in kept]
         visited += len(states)
+        if keep_checkpoints:
+            prefix_end_ms = max(prefix_end_ms, item_ms)
+            if prefix_end_ms >= last_checkpoint_ms + RETRY_REWIND_MS:
+                checkpoints.append((prefix_end_ms, k + 1, states, visited, pruned))
+                last_checkpoint_ms = prefix_end_ms
         progress('search', k + 1, len(groups), chart_ms=item.last_tick.time_ms,
                  states=len(states), states_completed=len(states), candidates=len(group), visited=visited)
     progress('finalizing')
@@ -2874,7 +2963,7 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
                 node = (node, (), miss_cost(item), item.start_ms, None, None, item)
             best = (score, finished, node, route)
         if best is None:
-            raise ValueError("no candidate path through the final contacts")
+            raise blocked("no candidate path through the final contacts", items[-1].last_tick.time_ms)
         _, cost, node, arms = best
     else:
         _, cost, node, arms = min(states, key=lambda entry: rank(entry[1]))
