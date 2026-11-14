@@ -479,7 +479,7 @@ impl Engine {
                             (dist(p, o.centre) - self.opt("note_center_free_mm") / 1000.).max(0.)
                                 / 0.020,
                             2.,
-                        )
+                        ) * o.note_center_scale
                     };
                     if o.kind == "hold" {
                         let mut frames = vec![];

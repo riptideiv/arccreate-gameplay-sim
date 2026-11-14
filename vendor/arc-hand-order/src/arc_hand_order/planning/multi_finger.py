@@ -447,6 +447,7 @@ class MultiCost:
     missed_red_notes: int = 0
     far_taps: int = 0
     non_max_taps: int = 0
+    note_center_deviation: float = 0.0
 
     def __add__(self, other):
         return MultiCost(self.base + other.base, self.shares + other.shares,
@@ -463,7 +464,8 @@ class MultiCost:
                          self.crossing_depth + other.crossing_depth, self.missed_ticks + other.missed_ticks,
                          self.arc_trace_deviation_s + other.arc_trace_deviation_s,
                          self.missed_red_notes + other.missed_red_notes,
-                         self.far_taps + other.far_taps, self.non_max_taps + other.non_max_taps)
+                         self.far_taps + other.far_taps, self.non_max_taps + other.non_max_taps,
+                         self.note_center_deviation + other.note_center_deviation)
 
     def weighted(self, options: PlannerOptions, multi: MultiFingerOptions):
         extra = (self.shares * multi.share_weight + self.second_touches * multi.second_finger_weight
@@ -482,6 +484,7 @@ class MultiCost:
                       + self.arc_takeovers * multi.arc_takeover_weight)
         if options.scoring_arcs and options.prefer_arc_trace:
             extra += self.arc_trace_deviation_s * options.arc_trace_weight
+        extra += self.note_center_deviation * options.note_center_weight
         return self.base.weighted(options) + extra if extra else self.base.weighted(options)
 
 
@@ -838,6 +841,14 @@ class _Graph:
         self.scoring_extensions = {}  # (old touch, candidate) -> ordered physical variants, including failures
         self.extension_prefix_speed = {}
         self.trace_preference = None
+        self.note_center = None
+        if options.note_center_weight:
+            from .note_center import NoteCenterPreference
+            items = occupations.items if occupations is not None else (g[0].occupation for g in groups if g)
+            self.note_center = NoteCenterPreference(
+                projection, options.note_center_free_mm / 1000, items,
+                (multi.repeat_comfort_s or options.repeat_comfort_s) * 1000,
+            )
         if options.scoring_arcs and options.prefer_arc_trace and options.arc_trace_weight:
             from .arc_scoring import TracePreference
             self.trace_preference = TracePreference(
@@ -2168,6 +2179,11 @@ class _Graph:
         if partner_new is not None:
             crossing += self._crossing_delta(hand, theirs, partner_new, mine[1 - k])
         features = dict(features or {})
+        if self.note_center is not None:
+            measure = self.note_center.measure
+            features["note_center_deviation"] = measure(new) - measure(old)
+            if partner_new is not None:
+                features["note_center_deviation"] += measure(partner_new) - measure(mine[1-k])
         trace_distance = 0.0
         if self.trace_preference is not None:
             deviation = self.trace_preference.deviation
@@ -2242,6 +2258,10 @@ class _Graph:
         base = Cost(part.colour, crossing, move, part.handover, self.apart(new, other, hand), self.repeat(giver_new, new),
                     math.dist(giver_new.last_xy, new.first_xy), part.untouched_arc_s, part.untouched_hold_s)
         features = {}
+        if self.note_center is not None:
+            measure = self.note_center.measure
+            features["note_center_deviation"] = (measure(new) + measure(receiver_new) - measure(receiver)
+                                                 + measure(giver_new) - measure(giver))
         if self.trace_preference is not None:
             deviation = self.trace_preference.deviation
             features['arc_trace_deviation_s'] = (deviation(new) + deviation(receiver_new) - deviation(receiver)

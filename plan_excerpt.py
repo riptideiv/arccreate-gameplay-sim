@@ -159,6 +159,8 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         ),
         'point_window_ms': None,
         'full_point_window': True,
+        'note_center_weight': settings.get('note_center_weight', 0),
+        'note_center_free_mm': settings.get('note_center_free_mm', 5),
         'speed_max_m_s': settings.get('max_speed_m_s', 3.0),
         'prefer_arc_trace': settings.get('prefer_arc_trace', False),
         'arc_trace_weight': settings.get('arc_trace_weight', 1000),

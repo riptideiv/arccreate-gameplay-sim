@@ -115,6 +115,9 @@
       <label for="contact-offset-x">Horizontal offset limit <span class="input-unit"><input id="contact-offset-x" name="contact_offset_x_percent" type="number" min="0" max="100" step="1" required><span>%</span></span></label>
       <label for="contact-offset-y">Vertical offset limit <span class="input-unit"><input id="contact-offset-y" name="contact_offset_y_percent" type="number" min="0" max="100" step="1" required><span>%</span></span></label>
       <p class="hint">Percent of ArcCreate’s maximum offset from the note center, in each direction. Zero centers that axis. Applies to all note types.</p>
+      <label for="note-center-cost">Note center cost <input id="note-center-cost" name="note_center_weight" type="number" min="0" max="10000" step="any" required></label>
+      <label for="note-center-free">Free center radius <span class="input-unit"><input id="note-center-free" name="note_center_free_mm" type="number" min="0" max="15" step="any" required><span>mm</span></span></label>
+      <p class="hint">Prefer centered taps and ground holds. Nearby taps inside the comfortable repeat gap can move farther from center. A cost of zero turns off this preference.</p>
     </section>
     <section id="arc-release">
       <h2>Arc paths and release</h2>

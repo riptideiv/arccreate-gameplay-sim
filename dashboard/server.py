@@ -19,7 +19,6 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from typing import Literal
-from arc_hand_order.planning.native_input import DEFAULT_CONTACT_OFFSET_X_PERCENT, DEFAULT_CONTACT_OFFSET_Y_PERCENT
 
 if __package__:
     from .chart_library import load_catalog, chart_paths
@@ -33,8 +32,9 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "output/runs"
 BLENDER = Path(os.environ.get("BLENDER_BIN") or shutil.which("blender") or ROOT / ".tools/Blender.app/Contents/MacOS/Blender")
 CHARTS = load_catalog(ROOT)
-DEFAULTS_REVISION = '20261111-strict-tap-interval'
-STARTUP_PREFERENCES = ('repeat_comfort_ms', 'tap_interval_ms')
+DEFAULTS_REVISION = '20261114-note-center'
+STARTUP_PREFERENCES = ('repeat_comfort_ms', 'tap_interval_ms', 'contact_offset_x_percent',
+                       'contact_offset_y_percent', 'note_center_weight', 'note_center_free_mm')
 
 
 class Settings(BaseModel):
@@ -72,8 +72,10 @@ class Settings(BaseModel):
     enable_red_notes: bool = True
     target_all_red_notes: bool = False
     search_width: int = Field(default=256, ge=32, le=2048)
-    contact_offset_x_percent: int = Field(default=DEFAULT_CONTACT_OFFSET_X_PERCENT, ge=0, le=100)
-    contact_offset_y_percent: int = Field(default=DEFAULT_CONTACT_OFFSET_Y_PERCENT, ge=0, le=100)
+    contact_offset_x_percent: int = Field(default=60, ge=0, le=100)
+    contact_offset_y_percent: int = Field(default=30, ge=0, le=100)
+    note_center_weight: float = Field(default=0.4, ge=0, le=10000)
+    note_center_free_mm: float = Field(default=3, ge=0, le=15)
     camera_distance_m: float = Field(default=0.29, ge=0.22, le=0.5)
     camera_elevation_deg: float = Field(default=70, ge=25, le=80)
     camera_yaw_deg: float = Field(default=0, ge=-35, le=35)

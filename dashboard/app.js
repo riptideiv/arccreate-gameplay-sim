@@ -106,6 +106,8 @@ function normalizeRun(run) {
     settings: { ...bootstrap.defaults, ...saved,
     arc_path_mode: saved.arc_path_mode ?? run.planning?.arc_path_mode ?? 'trace',
     prefer_arc_trace: saved.prefer_arc_trace ?? false,
+    note_center_weight: saved.note_center_weight ?? 0,
+    note_center_free_mm: saved.note_center_free_mm ?? 5,
     full_arc_hold: saved.full_arc_hold ?? true,
     full_ground_hold: saved.full_ground_hold ?? true,
     allow_clipping: saved.allow_clipping ?? false,
@@ -540,6 +542,7 @@ const cardSettings = [
     ["point_contact_frames", "Tap duration", "frames"], ["min_air_frames", "Minimum release gap", "frames"],
     ["held_release_air_frames", "Release gap after a hold or arc", "frames"],
     ["contact_offset_x_percent", "Horizontal offset limit", "%"], ["contact_offset_y_percent", "Vertical offset limit", "%"],
+    ["note_center_weight", "Note center cost"], ["note_center_free_mm", "Free center radius", "mm"],
     ["allow_misses", "Allow misses"], ["enable_red_notes", "Enable red notes"], ["target_all_red_notes", "Target every red note"],
   ]],
   ["Arcs and holds", [

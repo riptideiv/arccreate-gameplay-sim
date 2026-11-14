@@ -45,6 +45,8 @@ pub struct Item {
     pub polygons: Vec<Vec<XY>>,
     pub region_centres: Vec<XY>,
     pub centre: XY,
+    #[serde(default = "full_note_center_scale")]
+    pub note_center_scale: f64,
     pub trace_start: i32,
     pub trace: Vec<XY>,
     #[serde(default)]
@@ -54,6 +56,9 @@ pub struct Item {
     pub guides_start: i32,
     pub guides: Vec<Vec<XY>>,
     pub contested: bool,
+}
+fn full_note_center_scale() -> f64 {
+    1.
 }
 impl Item {
     pub fn point(&self, f: i32) -> XY {

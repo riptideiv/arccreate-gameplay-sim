@@ -66,7 +66,7 @@ def test_workbench_passes_contact_axis_limits_to_the_planner(tmp_path):
     chart = tmp_path / "tap.aff"
     chart.write_text("AudioOffset:0\n-\ntiming(0,120,4);(1000,1);")
     defaults = Settings()
-    assert (defaults.contact_offset_x_percent, defaults.contact_offset_y_percent) == (48, 24)
+    assert (defaults.contact_offset_x_percent, defaults.contact_offset_y_percent) == (60, 30)
     settings = Settings(contact_offset_x_percent=0, contact_offset_y_percent=73)
     plan = create_plan(chart, 0, 2000, settings.model_dump())
     assert plan["planner_options"]["contact_offset_fractions"] == [0., .73]

@@ -46,7 +46,7 @@ def _load_extension():
     if (
         not isinstance(identity, str)
         or not identity.startswith("arc-hand-order-native/")
-        or identity.rsplit(";", 1)[-1] != "schema=4"
+        or identity.rsplit(";", 1)[-1] != "schema=5"
     ):
         raise NativeUnsupported(
             "native extension has an incompatible input schema; rebuild native-search"
@@ -224,6 +224,7 @@ def _prepared(occupations, projection, options, multi, reporter, checkpoint=None
                 if o.kind == "chain"
                 else points,
                 centre=target_xy(o, o.start_ms, projection),
+                note_center_scale=graph.note_center.scale(o) if graph.note_center is not None else 1.0,
                 trace_start=trace_start,
                 trace=trace,
                 trace_hash=hash(o.occupation_id),
@@ -293,7 +294,7 @@ def _cost(values):
     rest = dict(
         zip(
             (f.name for f in fields(MultiCost)[1:]),
-            list(values[9:35]) + list(values[38:40]),
+            list(values[9:35]) + list(values[38:40]) + [values[36]],
         )
     )
     rest["missed_ticks"] = int(rest["missed_ticks"])

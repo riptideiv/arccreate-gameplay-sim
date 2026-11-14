@@ -327,6 +327,33 @@ def test_native_checkpoint_retry_preserves_the_perfect_prefix(tmp_path):
         first=comparable(actual)
 
 
+def test_center_cost_preserves_room_for_close_repeats(tmp_path):
+    from arc_hand_order.api import GameplayProjection, load_device
+
+    rows = [(500, 1), (900, 4), (1300, 2), (1700, 3), (2100, 1), (2500, 4),
+            *( (3100 + 83*i, 2) for i in range(6)),
+            (4200, 3), (4600, 1), (5000, 4), (5400, 1), (5800, 3)]
+    path = chart(tmp_path, ''.join(f'({time},{lane});' for time, lane in rows))
+    settings = {**BASE, 'note_center_weight': 0.4, 'note_center_free_mm': 3,
+                'contact_offset_x_percent': 60, 'contact_offset_y_percent': 30,
+                'tap_interval_ms': 100, 'point_contact_frames': 1,
+                'crossing_weight': 0.5, 'repeat_weight': 3,
+                'repeat_comfort_ms': 180, 'full_ground_hold': True}
+    plan = native_plan(path, settings, end=6400, workers=3)
+    assert not plan['misses']
+    assert not plan['planning']['planned_far_taps']
+    assert plan['cost']['components']['note_center_deviation'] > 0
+    projection = GameplayProjection(load_device())
+    touches = {t['id']: t for t in plan['touches']}
+    for note, (time, lane) in zip(plan['notes'], rows, strict=True):
+        centre_x = projection.lane_center_to_device(lane)[0] * 1000
+        x = touches[note['touches'][0]]['path_mm'][0][0]
+        if 3100 <= time <= 3515:
+            assert abs(x - centre_x) >= 11
+        else:
+            assert abs(x - centre_x) <= 3
+
+
 def test_native_empty_window_has_a_finished_arm_route(tmp_path):
     path=chart(tmp_path,'(5000,1);')
     reference=create_plan(path,0,1500,BASE,search_backend='python')

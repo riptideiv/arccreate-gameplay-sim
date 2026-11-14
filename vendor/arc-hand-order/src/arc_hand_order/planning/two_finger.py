@@ -120,8 +120,13 @@ class PlannerOptions:
     prefer_arc_trace: bool = False
     arc_trace_weight: float = 1000.0
     contact_offset_fractions: tuple[float, float] | None = None
+    note_center_weight: float = 0.0
+    note_center_free_mm: float = 5.0
 
     def __post_init__(self):
+        for value in (self.note_center_weight, self.note_center_free_mm):
+            if not math.isfinite(value) or value < 0:
+                raise ValueError("Note center cost and free radius must be finite and nonnegative")
         if self.contact_offset_fractions is not None and (
             len(self.contact_offset_fractions) != 2
             or not all(0 <= value <= 1 for value in self.contact_offset_fractions)
