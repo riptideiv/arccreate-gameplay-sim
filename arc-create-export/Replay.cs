@@ -209,7 +209,8 @@ public static class Replay
             {
                 int destination = (at + f) * channels;
                 if (destination < 0 || destination + 1 >= mixed.Length) continue;
-                int source = Mathf.Min(sound.clip.samples - 1, f * sound.clip.frequency / rate) * sound.clip.channels;
+                int sourceFrame = (int)((long)f * sound.clip.frequency / rate);
+                int source = Mathf.Min(sound.clip.samples - 1, sourceFrame) * sound.clip.channels;
                 for (int c = 0; c < channels; c++) mixed[destination + c] += samples[source + Math.Min(c, sound.clip.channels - 1)] * .16f;
             }
         }
