@@ -331,12 +331,12 @@ def test_center_cost_preserves_room_for_close_repeats(tmp_path):
     from arc_hand_order.api import GameplayProjection, load_device
 
     rows = [(500, 1), (900, 4), (1300, 2), (1700, 3), (2100, 1), (2500, 4),
-            *( (3100 + 83*i, 2) for i in range(6)),
+            *((3100 + 83 * i, 2) for i in range(6)),
             (4200, 3), (4600, 1), (5000, 4), (5400, 1), (5800, 3)]
     path = chart(tmp_path, ''.join(f'({time},{lane});' for time, lane in rows))
-    settings = {**BASE, 'note_center_weight': 0.4, 'note_center_free_mm': 3,
+    settings = {**BASE, 'note_center_weight': 1.5, 'note_center_free_mm': 3,
                 'contact_offset_x_percent': 60, 'contact_offset_y_percent': 30,
-                'tap_interval_ms': 100, 'point_contact_frames': 1,
+                'tap_interval_ms': 150, 'point_contact_frames': 1,
                 'crossing_weight': 0.5, 'repeat_weight': 3,
                 'repeat_comfort_ms': 180, 'full_ground_hold': True}
     plan = native_plan(path, settings, end=6400, workers=3)

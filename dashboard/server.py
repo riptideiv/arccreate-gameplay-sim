@@ -74,7 +74,7 @@ class Settings(BaseModel):
     search_width: int = Field(default=256, ge=32, le=2048)
     contact_offset_x_percent: int = Field(default=60, ge=0, le=100)
     contact_offset_y_percent: int = Field(default=30, ge=0, le=100)
-    note_center_weight: float = Field(default=0.4, ge=0, le=10000)
+    note_center_weight: float = Field(default=1.5, ge=0, le=10000)
     note_center_free_mm: float = Field(default=3, ge=0, le=15)
     camera_distance_m: float = Field(default=0.29, ge=0.22, le=0.5)
     camera_elevation_deg: float = Field(default=70, ge=25, le=80)
