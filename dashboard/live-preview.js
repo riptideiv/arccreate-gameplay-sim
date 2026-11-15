@@ -87,13 +87,30 @@ export class RhythmPreview {
     this.scene = gltf.scene;
     this.motion = motion;
     this.roots = {};
+    this.thumbParts = {left: [], right: []};
+    const thumbNames = ['thumb proximal', 'thumb distal', 'thumb pad'];
     let screen;
     this.scene.traverse(object => {
       const name = object.name.replaceAll('_', ' ');
-      for (const side of ['left', 'right']) if (name.toLowerCase() === side + ' index target') this.roots[side] = object;
+      for (const side of ['left', 'right']) {
+        const part = name.toLowerCase();
+        if (part === side + ' index target') this.roots[side] = object;
+        const index = thumbNames.indexOf(part.slice(side.length + 1));
+        if (part.startsWith(side + ' ') && index !== -1) this.thumbParts[side][index] = object;
+      }
       if (object.isMesh && name.startsWith('Tablet display')) screen = object;
     });
     if (!screen || !this.roots.left || !this.roots.right) throw new Error('The exported scene is missing the tablet or hand pivots.');
+    if (motion.thumbs) {
+      for (const side of ['left', 'right']) {
+        if (thumbNames.some((_, i) => !this.thumbParts[side][i]) || motion.thumbs[side]?.length !== motion.hands[side].length) {
+          throw new Error('The exported scene is missing the thumb joints.');
+        }
+      }
+      this.thumbJoints = Array.from({length: 3}, () => new THREE.Vector3());
+      this.thumbAxis = new THREE.Vector3();
+      this.thumbUp = new THREE.Vector3(0, 1, 0);
+    }
     this.scene.updateMatrixWorld(true);
     const size = new THREE.Box3().setFromObject(screen).getSize(new THREE.Vector3());
     const error = Math.max(Math.abs(size.x - motion.screen_mm[0] / 1000), Math.abs(size.z - motion.screen_mm[1] / 1000));
@@ -150,6 +167,22 @@ export class RhythmPreview {
       // Blender XYZ uses the multiplication order Three calls ZYX.
       this.nativeQ.setFromEuler(this.nativeEuler.set(-THREE.MathUtils.degToRad(pitch), 0, THREE.MathUtils.degToRad(yaw), 'ZYX'));
       root.quaternion.set(this.nativeQ.x, this.nativeQ.z, -this.nativeQ.y, this.nativeQ.w);
+      if (this.motion.thumbs) {
+        const joints = this.motion.thumbs[side];
+        const pieces = this.thumbParts[side];
+        this.thumbJoints.forEach((joint, i) => {
+          joint.set(...joints[a][i].map((v, k) => THREE.MathUtils.lerp(v, joints[b][i][k], t)));
+        });
+        for (let i = 0; i < 2; i++) {
+          const start = this.thumbJoints[i], end = this.thumbJoints[i + 1];
+          const axis = this.thumbAxis.subVectors(end, start);
+          const length = axis.length();
+          pieces[i].position.copy(start).lerp(end, .5);
+          if (length > 1e-8) pieces[i].quaternion.setFromUnitVectors(this.thumbUp, axis.multiplyScalar(1 / length));
+          pieces[i].scale.set(1, length / 2 + .004, 1);
+        }
+        pieces[2].position.copy(this.thumbJoints[2]);
+      }
     }
     this.canvas.dataset.mediaTime = String(time);
   }

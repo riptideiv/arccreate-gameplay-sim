@@ -55,7 +55,7 @@ def test_backend_identity_separates_reference_and_native_cache(chart):
 
 def test_native_source_changes_invalidate_implementation(tmp_path):
  root=tmp_path/'source';root.mkdir()
- for name in ('plan_excerpt.py','plan_cache.py','contact_placement.py','hand_pose.py'):
+ for name in ('plan_excerpt.py','plan_cache.py','contact_placement.py','hand_pose.py','multifinger.py'):
   (root/name).write_text('pass\n')
  src=root/'native-search/src';src.mkdir(parents=True);f=src/'engine.rs';f.write_text('first')
  before=cache.implementation_version(root);f.write_text('second')

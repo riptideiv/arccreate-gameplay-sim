@@ -18,7 +18,8 @@ def canonical(value):
 
 def implementation_version(root=None):
     root=Path(root or Path(__file__).resolve().parent)
-    files=[root/'plan_excerpt.py',root/'plan_cache.py',*sorted((root/'vendor/arc-hand-order/src/arc_hand_order').rglob('*.py'))]
+    files=[root/'plan_excerpt.py',root/'plan_cache.py',root/'multifinger.py',
+           *sorted((root/'vendor/arc-hand-order/src/arc_hand_order').rglob('*.py'))]
     native=root/'native-search'
     files += [p for name in ('Cargo.toml', 'Cargo.lock', 'pyproject.toml') if (p:=native/name).is_file()]
     files += sorted((native/'src').rglob('*.rs'))
@@ -43,11 +44,13 @@ def valid_plan(plan,request):
     try:
         if plan['format']!='arc-hand-order.plan/1' or plan['chart']['sha256']!=request['chart_sha256']:return False
         if [plan['preview']['chart_start_ms'],plan['preview']['chart_end_ms']]!=request['window_ms']:return False
+        multifinger = request['settings'].get('multifinger', False)
         for touch in plan['touches']:
-            if touch['finger']!=1 or touch['hand'] not in ('left','right'):return False
+            if touch['finger'] not in ((1, 2) if multifinger else (1,)) or touch['hand'] not in ('left','right'):return False
             if not 0<=touch['down_frame']<touch['up_frame'] or len(touch['path_mm'])!=touch['up_frame']-touch['down_frame']:return False
             if not all(len(xy)==2 and all(math.isfinite(v) for v in xy) for xy in touch['path_mm']):return False
-        return all(key in plan for key in ('misses','cost','planning','device','stats','arm_crossings'))
+        return all(key in plan for key in ('misses','cost','planning','device','stats')) and (
+            multifinger or 'arm_crossings' in plan)
     except (KeyError,TypeError,ValueError):return False
 
 def read(directory,key,request):

@@ -82,6 +82,8 @@ export const zhCN = {
   "The planner runs at 60 Hz. One frame is 16.7 ms. These durations are required.": "规划以 60 Hz 运行，每帧约 16.7 ms。这些时长是硬性要求。",
   "Arc paths and release": "蛇的路径与松手",
   "Contact position": "触点位置",
+  "Experimental index and thumb": "试验性食指与拇指规划",
+  "Index and thumb per hand": "每只手可用食指和拇指",
   "Horizontal offset limit": "水平偏移上限",
   "Vertical offset limit": "垂直偏移上限",
   "Note center cost": "偏离音符中心的代价",

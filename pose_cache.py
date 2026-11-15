@@ -10,7 +10,7 @@ import numpy as np
 
 SCHEMA = 'rhythm-hand-poses/2'
 POSE_SOURCE_FILES = (
-    'animate.py', 'hand_pose.py', 'motion_paths.py', 'pose_cache.py', 'crossing_motion.py',
+    'animate.py', 'hand_pose.py', 'motion_paths.py', 'pose_cache.py', 'crossing_motion.py', 'multifinger.py',
     'vendor/arc-hand-order/src/arc_hand_order/planning/hand_travel.py',
     'vendor/arc-hand-order/src/arc_hand_order/planning/arm_crossings.py',
 )
@@ -22,13 +22,15 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
-def request_key(points, active, settings, root=None, *, crossings=None):
+def request_key(points, active, settings, root=None, *, crossings=None, fixed=None):
     root = Path(root or Path(__file__).resolve().parent)
     digest = hashlib.sha256(SCHEMA.encode())
     options = {k: float(settings.get(k, v)) for k, v in POSE_DEFAULTS.items()}
     options['allow_clipping'] = bool(settings.get('allow_clipping', False))
     digest.update(canonical(options).encode())
     digest.update(canonical(crossings).encode())
+    if fixed is not None:
+        digest.update(canonical([sorted(int(f) for f in frames) for frames in fixed]).encode())
     for value, dtype in ((points, '<f8'), (active, '?')):
         array = np.asarray(value, dtype=dtype)
         digest.update(str(array.shape).encode()); digest.update(array.tobytes())

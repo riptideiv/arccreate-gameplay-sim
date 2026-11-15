@@ -512,6 +512,7 @@ function showTake(run, restoreControls = false) {
   setText($("gap"), fitted || !collisionsOff ? metrics.minimum_clearance_mm.toFixed(1) + " mm" : "Disabled");
   setText($("gap-note"), fitted ? (metrics.minimum_clearance_mm < 0 ? "Residual overlap · playback continues" : "Contact pivots · quarter-step samples") : collisionsOff ? "Touch points preserved" : "Sampled at quarter steps");
   setText($("contacts"), metrics.contacts);
+  setText($("contact-digits"), metrics.multifinger ? "Index and thumb per hand" : "Single index per hand");
   $("blend-link").href = run.blend;
   $("video-link").href = run.video;
   setText($("video-link"), 'Download gameplay only');
@@ -546,6 +547,7 @@ const cardSettings = [
     ["allow_misses", "Allow misses"], ["enable_red_notes", "Enable red notes"], ["target_all_red_notes", "Target every red note"],
   ]],
   ["Arcs and holds", [
+    ["multifinger", "Experimental index and thumb"],
     ["arc_path_mode", "Arc path mode"], ["prefer_arc_trace", "Prefer tracing arc geometry"], ["arc_trace_weight", "Geometry deviation cost"],
     ["full_arc_hold", "Prefer holding arcs to the visual end"], ["partial_hold_weight", "Early arc-release cost"],
     ["full_ground_hold", "Prefer holding ground holds to the visual end"], ["partial_ground_hold_weight", "Early ground-release cost"],

@@ -1,4 +1,4 @@
-"""Plan an AFF window with one index per hand."""
+"""Plan an AFF window with an index, or an index and thumb, per hand."""
 
 import argparse
 from dataclasses import replace
@@ -150,13 +150,18 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                              if item.continuous_contact else item.up_window))
     occupations = replace(occupations, items=tuple(items))
     native_items = occupations.items
+    multifinger = settings.get("multifinger", False)
     multi = {
-        "second_finger": False, "second_finger_again": False,
+        "second_finger": multifinger, "second_finger_again": multifinger,
         "max_states": settings.get("search_width", 256),
         "arm_crossing_travel": (settings.get("lift_mm", 8) / 1000,
                                 settings.get("idle_speed_m_s", 1),
                                 math.ceil((duration + chart.audio_offset_ms) * 60 / 1000)),
     }
+    if multifinger:
+        # The upstream two-finger search does not yet represent arm crossing
+        # routes. Let auto select its Python backend for this mode.
+        multi.pop("arm_crossing_travel")
     if scoring:
         multi.update(tick_contacts=True, max_states=settings.get('search_width',256), meeting_swaps=False,
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
@@ -350,6 +355,10 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             for part in touch["parts"]:
                 part["from_frame"] = max(0, part["from_frame"])
                 part["from_ms"] = max(-chart.audio_offset_ms, part["from_ms"])
+    if multifinger:
+        from multifinger import assign_digits
+        assign_digits(output["touches"], multi.get("tap_interval_ms", 0),
+                      planner.get("min_air_frames", 1), planner["speed_max_m_s"])
     output["misses"] = [{"events": list(o.source_event_ids), "kind": "red_sky" if o.is_red else "arc_tick" if o.parent_occupation_id else o.kind,
                          "tick_id": o.occupation_id if o.parent_occupation_id else None,
                          "parent_occupation_id": o.parent_occupation_id,
@@ -378,6 +387,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                     'time_ms':p.time_ms+start_ms,'x_start':e.start_aff_xy[0],'x_end':e.end_aff_xy[0],
                     'y_start':e.start_aff_xy[1],'y_end':e.end_aff_xy[1],'planned_hit':token in kept})
     output["planning"] = {"arc_path_mode": 'score' if scoring else 'trace',
+                          "multifinger": multifinger,
                           "input_model": 'native-screen-world-camera-envelope' if scoring else 'legacy-trace',
                           "skipped_ticks": result.plan.cost.missed_ticks,
                           "planned_far_taps": result.plan.cost.far_taps,
@@ -406,6 +416,7 @@ def main():
     parser.add_argument("end_ms", type=int)
     parser.add_argument("output", type=Path)
     parser.add_argument("--prefer-same-hand", action="store_true")
+    parser.add_argument("--multifinger", action="store_true", help="Allow an index and thumb per hand")
     parser.add_argument("--settings", type=Path)
     parser.add_argument("--arc-path-mode", choices=('score','trace'), help='Default for new CLI plans: score; old settings files retain tracing')
     parser.add_argument("--exclude-event", action="append", default=[])
@@ -418,6 +429,8 @@ def main():
     args = parser.parse_args()
     try:
         settings = json.loads(args.settings.read_text()) if args.settings else {'arc_path_mode':'score'}
+        if args.multifinger:
+            settings['multifinger'] = True
         if args.arc_path_mode:settings['arc_path_mode']=args.arc_path_mode
         avoid = json.loads(args.avoid_contacts.read_text()) if args.avoid_contacts else []
         def progress(event):

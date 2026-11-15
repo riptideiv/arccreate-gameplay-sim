@@ -62,6 +62,7 @@ class Settings(BaseModel):
     min_air_frames: int = Field(default=1, ge=0, le=30)
     held_release_air_frames: int = Field(default=4, ge=0, le=30)
     arc_path_mode: Literal["score", "trace"] = "score"
+    multifinger: bool = False
     prefer_arc_trace: bool = True
     arc_trace_weight: float = Field(default=1000, ge=0, le=10000)
     full_arc_hold: bool = True
@@ -376,7 +377,7 @@ class RenderQueue:
                     if match:
                         seconds = self.active["settings"]["start_s"] + int(match[2])/1000
                         note = f"a {match[1]} note at {seconds:.2f} s"
-                    raise ValueError(f"The planner could not find a one-index path for {note}. "
+                        raise ValueError(f"The planner could not find a contact path for {note}. "
                                      "Enable missed notes, adjust the timing limits, or choose a different window.")
                 raise ValueError(errors[-1] if errors else "The render failed. Details are in the run log.")
 
