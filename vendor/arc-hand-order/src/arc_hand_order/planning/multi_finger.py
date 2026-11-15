@@ -1718,7 +1718,7 @@ class _Graph:
                     bridged.add(k)  # a finger that can slide on does not lift and press again
                     yield step
         # A fresh press.
-        if not active:
+        if not active and not c.share_only:
             if self.options.scoring_arcs and c.occupation.parent_occupation_id:
                 from .arc_scoring import source_note
                 if c.down_ms > source_note(c.occupation).end: return
@@ -1983,9 +1983,8 @@ class _Graph:
         kinds = {p.candidate.occupation.kind for p in t.parts}
         if c.down_frame >= t.up:
             return False
-        if kinds & {"tap", "sky"}:
-            # Only an arc, straight on from the point note the touch began with (its press took that note).
-            return c.occupation.kind == "chain" and len(t.parts) == 1
+        if kinds & {"tap", "sky"} and c.occupation.kind != "chain":
+            return False
         if c.occupation.kind == "chain":
             # Another colour only where grace lets both colours take any touch: the two arcs stay within
             # its distance on every frame they share the touch (a switched chain by the colour of each stretch).

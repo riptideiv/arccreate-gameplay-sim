@@ -90,6 +90,8 @@ pub struct Candidate {
     pub part_base: [[f64; 9]; 2],
     pub nominal: [i64; 2],
     pub fixed: Option<usize>,
+    #[serde(default)]
+    pub share_only: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Part {

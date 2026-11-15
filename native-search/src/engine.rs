@@ -1042,11 +1042,12 @@ impl Engine {
         if c.down >= t.up() {
             return false;
         }
-        if t.parts
-            .iter()
-            .any(|p| matches!(self.item(p).kind.as_str(), "tap" | "sky"))
+        if o.kind != "chain"
+            && t.parts
+                .iter()
+                .any(|p| matches!(self.item(p).kind.as_str(), "tap" | "sky"))
         {
-            return o.kind == "chain" && t.parts.len() == 1;
+            return false;
         }
         if o.kind == "chain" {
             for p in &t.parts {
@@ -1727,6 +1728,7 @@ impl Engine {
                     }
                 }
                 if !old.is_some_and(|t| t.active(c.down))
+                    && !c.share_only
                     && !bridged
                     && press_ok
                     && !(item.parent.is_some() && self.ms(c.down) > item.source_end)

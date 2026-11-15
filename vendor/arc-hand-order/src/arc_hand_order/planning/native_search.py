@@ -46,7 +46,7 @@ def _load_extension():
     if (
         not isinstance(identity, str)
         or not identity.startswith("arc-hand-order-native/")
-        or identity.rsplit(";", 1)[-1] != "schema=5"
+        or identity.rsplit(";", 1)[-1] != "schema=6"
     ):
         raise NativeUnsupported(
             "native extension has an incompatible input schema; rebuild native-search"
@@ -252,6 +252,7 @@ def _prepared(occupations, projection, options, multi, reporter, checkpoint=None
                 first=c.first_xy,
                 held_to_end=c.held_to_end,
                 held_release=graph.held_release(t),
+                share_only=c.share_only,
                 untouched=c.untouched_s,
                 part_base=[
                     list(asdict(graph.part_cost(c, h)).values()) for h in mf.HANDS

@@ -108,6 +108,38 @@ def test_native_preparation_preserves_raw_source_segments_and_cold_parent_cache(
     assert checked
 
 
+def test_point_press_can_serve_both_overlapping_snake_ticks(tmp_path):
+    from arc_hand_order import api
+    from arc_hand_order.planning.arc_scoring import native_occupations
+    from arc_hand_order.planning.occupations import occupations_from_chart
+    from plan_excerpt import split_arc_ticks
+
+    path = chart(tmp_path, 'timing(0,172,4);'
+                 'arc(1000,1087,.42,.42,s,0,0,0,none,false);'
+                 'arc(1000,1087,.58,.58,s,0,0,1,none,false);'
+                 'arc(1033,1034,.5,.5,s,0,0,0,none,true)[arctap(1033)];')
+    loaded = api.load_chart(path)
+    items = split_arc_ticks(native_occupations(occupations_from_chart(loaded.chart),
+                                             chart_events=loaded.chart.events))
+    multi = dict(second_finger=False, second_finger_again=False, meeting_swaps=False,
+                 covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False,
+                 tick_contacts=True, share_weight=0, arm_crossing_travel=(.012, .7, 100))
+    planner = dict(scoring_arcs=True, point_contact_frames=1, point_window_ms=0,
+                   contact_offset_fractions=(.6, .3), colour_weight=0, repeat_weight=100)
+
+    def plan(backend):
+        return api.plan_to_dict(api.plan_chart(loaded, multi=multi, planner=planner,
+                                             occupation_set=items, search_backend=backend))
+
+    reference = plan('python')
+    actual = plan('native')
+    assert_equivalent(reference, actual)
+    assert len(actual['touches']) == 1
+    touch = actual['touches'][0]
+    assert touch['down_frame'] == 62
+    assert [part['kind'] for part in touch['parts']] == ['sky', 'chain', 'chain']
+
+
 def test_native_segmented_snake_matches_an_independently_prepared_python_graph(tmp_path):
     path = chart(tmp_path, SEGMENTED_SNAKE)
     settings = {**BASE, 'prefer_arc_trace': True, 'arc_trace_weight': 100}

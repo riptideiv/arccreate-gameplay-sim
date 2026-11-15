@@ -182,6 +182,7 @@ class Candidate:
     max_contact_sample_speed_m_s: float = 0.0
     untouched_s: float = 0.0  # arc or hold time a full-hold fallback leaves without contact
     contact_path: tuple[tuple[float,float], ...] | None = None
+    share_only: bool = False
 
     @property
     def held_to_end(self) -> bool:
@@ -647,16 +648,62 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         groups = _offset_contacts(groups, projection, options, next_id)
     if options.protect_sky_presses:
         groups = _protect_sky_presses(groups, occupations.items, projection, next_id)
+    if options.scoring_arcs and any(item.parent_occupation_id for item in items):
+        groups = _shareable_tick_candidates(prefix, groups, projection, options)
     if progress:
         progress('candidates', len(occupations.items), len(occupations.items))
     return prefix + tuple(groups)
 
 
+def _shareable_tick_candidates(prefix, groups, projection, options):
+    """Offer arc catches on the sampled frames of preceding point contacts."""
+    from .arc_scoring import hit, source_note, world
+
+    next_id = max((c.id for group in (*prefix, *groups) for c in group), default=-1) + 1
+    recent = []
+    result = []
+    for group in (*prefix, *groups):
+        if not group:
+            result.append(group)
+            continue
+        first = group[0]
+        item = first.occupation
+        if item.kind in ("tap", "sky"):
+            recent.append(group)
+        if len(result) >= len(prefix) and item.parent_occupation_id and item.kind == "chain":
+            point = item.first_tick
+            earliest = frame_at_or_after(point.contact_window.earliest_ms, first.audio_offset_ms)
+            latest = frame_at_or_after(point.contact_window.latest_ms + 1, first.audio_offset_ms)
+            recent = [row for row in recent if max(c.up_frame for c in row) > earliest]
+            note = source_note(item, point)
+            seen = {(c.down_frame, c.contact_path) for c in group}
+            extra = []
+            for row in recent:
+                for tap in row:
+                    # A catch can be served by the point press itself.
+                    f = max(earliest, tap.down_frame)
+                    if f >= min(latest, tap.up_frame):
+                        continue
+                    path = (tap.first_xy,)
+                    if (f, path) in seen or not hit(note, world(projection, path[0]),
+                                                    frame_ms(f, first.audio_offset_ms),
+                                                    fractions=options.contact_offset_fractions):
+                        continue
+                    extra.append(replace(first, id=next_id, down_frame=f, up_frame=f + 1,
+                                         first_xy=path[0], last_xy=path[0], contact_path=path,
+                                         max_contact_sample_speed_m_s=0, share_only=True))
+                    seen.add((f, path))
+                    next_id += 1
+            group = group + tuple(extra)
+        result.append(group)
+    return result[len(prefix):]
+
+
 def _protect_sky_presses(groups, items, projection, next_id):
     """Try pressing before a nearby newer request can receive the input.
 
-    ArcCreate gives the latest colliding sky request priority. Earlier
-    contacts can stay down to settle nearby arc ticks after taking the tap.
+    Avoid opening the later window before the earlier press. Earlier contacts
+    can stay down to settle nearby arc ticks after taking the tap.
     """
     from .native_input import screen_hitbox
 
