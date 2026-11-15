@@ -78,11 +78,15 @@ def layers_at(frames, routes):
     return layers
 
 
-def _hand_over_margin(centres, radii, start, stop, arm_radius):
-    """Signed clearance of the glove spheres above the lower arm capsules."""
+def _hand_over_margin(centres, radii, rotations, start, stop, arm_radius):
+    """Signed clearance of the glove ellipsoids above the lower arm capsules."""
+    from hand_pose import ellipsoid_extent
+
     axis = (stop - start)[..., None, :, :]
     delta = centres[..., :, None, :] - start[..., None, :, :]
-    size = np.asarray(radii)[..., None] + arm_radius
+    # Bound the horizontal footprint for the layer check. Use the directional
+    # ellipsoid radius for the 3D separation below.
+    size = radii.max(axis=-1)[:, None] + arm_radius
     u = axis[..., :2]
     w = delta[..., :2]
     length2 = np.sum(u*u, axis=-1)
@@ -100,7 +104,10 @@ def _hand_over_margin(centres, radii, start, stop, arm_radius):
     dz = axis[..., 2]
     height = delta[..., 2] - np.maximum(first*dz, last*dz)
     t = np.clip(np.sum(delta*axis, axis=-1) / np.maximum(np.sum(axis**2, axis=-1), 1e-16), 0, 1)
-    clearance = np.linalg.norm(delta - t[..., None]*axis, axis=-1) - size
+    offset_3d = delta - t[..., None]*axis
+    distance = np.linalg.norm(offset_3d, axis=-1)
+    radius = ellipsoid_extent(offset_3d, distance, rotations[..., None, None, :, :], radii[:, None, :])
+    clearance = distance - radius - arm_radius
     return np.where(overlaps, np.minimum(height, clearance), np.inf).min(axis=(-2,-1))
 
 
@@ -145,9 +152,10 @@ def _link_margin(start, stop, layers, arm_radius):
 
 
 def layer_clearances(centres, angles, parts, layers, swivels=None):
-    from hand_pose import ARM_RADIUS, SHOULDERS, arm_geometry, bases, clearance_spheres
+    from hand_pose import ARM_RADIUS, SHOULDERS, arm_geometry, bases, clearance_ellipsoids
 
-    wrists, elbows = arm_geometry(centres, bases(angles)[..., 1], parts, swivels)
+    rotations = bases(angles)
+    wrists, elbows = arm_geometry(centres, rotations[..., 1], parts, swivels)
     shoulders = np.broadcast_to(SHOULDERS, wrists.shape)
     start = np.stack((shoulders, elbows), axis=-2)
     stop = np.stack((elbows, wrists), axis=-2)
@@ -156,10 +164,11 @@ def layer_clearances(centres, angles, parts, layers, swivels=None):
     if parts is not None:
         for h in range(2):
             top = np.asarray(layers) == (1 if h == 0 else -1)
-            indices, radii = clearance_spheres(parts[h])
+            indices, radii = clearance_ellipsoids(parts[h])
             if top.any() and indices:
                 lower = 1-h
                 margin = _hand_over_margin(centres[h][..., indices, :], radii,
+                                           rotations[..., h, :, :],
                                            start[..., lower, :, :], stop[..., lower, :, :],
                                            ARM_RADIUS)
                 hand = np.where(top, margin, hand)
@@ -233,7 +242,7 @@ def solve_swivels(points, poses, parts, routes, gap, *, progress=None):
         margin = layer_margin(expanded, q, parts, layers, candidates)
         shortfall = np.maximum(0, gap-margin) * 1000
         cost = shortfall.max(axis=1)**2 * 300 + np.mean(shortfall**2, axis=1) * 100
-        metrics = arm_metrics(expanded, bases(q)[..., 1], parts, candidates)
+        metrics = arm_metrics(expanded, bases(q), parts, candidates)
         # Keep the arms apart even when their projected touch order is uncrossed.
         overlap = np.maximum(0, gap-metrics[0]) * 1000
         cost += overlap.max(axis=1)**2 * 50 + np.mean(overlap**2, axis=1) * 100

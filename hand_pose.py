@@ -1,6 +1,6 @@
 """Offline, contact-preserving glove posing. Collision costs never alter a chart.
 
-The search uses small palm and cuff spheres for hand clearance. Its fixed budget
+The search uses flattened palm and cuff ellipsoids for hand clearance. Its fixed budget
 returns the best pose corridor found, with residual overlaps reported, never a
 request for the contact planner to skip notes.
 """
@@ -23,7 +23,7 @@ HAND_PARTS = (
 )
 
 
-VERSION = "pivot-beam-acceleration-3"
+VERSION = "pivot-beam-acceleration-4"
 NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
 # Fixed shoulder pivots and outward/downward elbow poles in tablet space.
 SHOULDERS = np.array([[-0.18, -0.38, 0.17], [0.18, -0.38, 0.17]])
@@ -91,10 +91,28 @@ def proxies(angles, parts):
     )
 
 
-def clearance_spheres(parts):
+def clearance_ellipsoids(parts):
+    """Keep 90% of the old sphere radius in-plane and 50% along the palm normal."""
     indices = [i for i, part in enumerate(parts) if part[0] in ("palm", "cuff")]
-    radii = np.array([max(parts[i][2]) * 0.5 for i in indices])
+    radii = np.array([max(parts[i][2]) for i in indices])[:, None] * (.9, .9, .5)
     return indices, radii
+
+
+def ellipsoid_extent(delta, distance, rotation, radii):
+    """Support radius in the direction of delta, with coincident centres treated as overlapping."""
+    local = np.einsum("...ji,...j->...i", rotation, delta)
+    support = np.linalg.norm(local * radii, axis=-1) / np.maximum(distance, 1e-12)
+    return np.where(distance > 1e-12, support, radii.max(axis=-1))
+
+
+def glove_gap(delta, rotations, radii):
+    # Use the centre line as the test axis. Separation on it certifies a gap.
+    distance = np.linalg.norm(delta, axis=-1)
+    left = ellipsoid_extent(delta, distance, rotations[0][..., None, None, :, :],
+                            radii[0][:, None, :])
+    right = ellipsoid_extent(delta, distance, rotations[1][..., None, None, :, :],
+                             radii[1][None, :, :])
+    return (distance - left - right).min(axis=(-2, -1), initial=np.inf)
 
 
 def arm_elbows(wrists, forward, swivels=None):
@@ -115,11 +133,15 @@ def arm_elbows(wrists, forward, swivels=None):
     return SHOULDERS + axis * along[..., None] + pole * away[..., None]
 
 
-def _point_segment(point, start, end):
+def segment_offset(point, start, end):
     axis = end - start
     delta = point - start
     t = np.sum(delta * axis, axis=-1) / np.maximum(np.sum(axis**2, axis=-1), 1e-12)
-    return np.linalg.norm(delta - np.clip(t, 0, 1)[..., None] * axis, axis=-1)
+    return delta - np.clip(t, 0, 1)[..., None] * axis
+
+
+def _point_segment(point, start, end):
+    return np.linalg.norm(segment_offset(point, start, end), axis=-1)
 
 
 def _segment_gap(a, b, c, d):
@@ -147,8 +169,9 @@ def arm_geometry(centres, forward, parts, swivels=None):
     return wrists, arm_elbows(wrists, forward, swivels)
 
 
-def arm_metrics(centres, forward, parts, swivels=None):
+def arm_metrics(centres, rotations, parts, swivels=None):
     """Arm clearance and wrist alignment for posed glove centres in tablet space."""
+    forward = rotations[..., 1]
     wrists, elbows = arm_geometry(centres, forward, parts, swivels)
     forearm = wrists - elbows
     arm_distance = _segment_gap(
@@ -164,11 +187,12 @@ def arm_metrics(centres, forward, parts, swivels=None):
         margin = np.minimum(margin, _segment_gap(
             shoulder, elbow, elbows[..., other, :], wrists[..., other, :]
         ) - 2 * ARM_RADIUS)
-        indices, radius = clearance_spheres(parts[other])
+        indices, radii = clearance_ellipsoids(parts[other])
         glove = centres[other][..., indices, :]
-        margin = np.minimum(margin, (_point_segment(
-            glove, elbow[..., None, :], wrist[..., None, :]
-        ) - radius - ARM_RADIUS).min(axis=-1, initial=np.inf))
+        delta = segment_offset(glove, elbow[..., None, :], wrist[..., None, :])
+        distance = np.linalg.norm(delta, axis=-1)
+        radius = ellipsoid_extent(delta, distance, rotations[..., other, None, :, :], radii)
+        margin = np.minimum(margin, (distance - radius - ARM_RADIUS).min(axis=-1, initial=np.inf))
     forearm_xy = forearm[..., :2]
     forward_xy = forward[..., :2]
     yaw_cos = (forearm_xy * forward_xy).sum(axis=-1) / np.maximum(
@@ -181,12 +205,13 @@ def arm_metrics(centres, forward, parts, swivels=None):
     return margin, np.clip(yaw_cos, -1, 1), flexion, reach
 
 
-def arm_cost(centres, forward, parts, gap, swivels=None, *, yaw_preference=1.):
+def arm_cost(centres, rotations, parts, gap, swivels=None, *, yaw_preference=1.):
     # Prefer spending the wrist's range on tap flexion. A fixed elbow pole can
     # otherwise make a sideways turn cheaper just by aligning it to the forearm.
+    forward = rotations[..., 1]
     yaw = np.arctan2(-forward[..., 0], forward[..., 1])
     sideways = 3500 * yaw_preference * np.sum(1 - np.cos(yaw - np.radians(NEUTRAL[:, 1])), axis=-1)
-    return arm_posture_cost(arm_metrics(centres, forward, parts, swivels), gap) + sideways
+    return arm_posture_cost(arm_metrics(centres, rotations, parts, swivels), gap) + sideways
 
 
 def arm_posture_cost(metrics, gap):
@@ -213,7 +238,7 @@ def arm_diagnostics(points, poses, parts, swivels=None):
         q = poses[:-1] * (1 - fraction) + poses[1:] * fraction
         centres = [proxies(q[:, h], parts[h])[0] + p[:, h, None, :] for h in range(2)]
         swivel = None if swivels is None else swivels[:-1]*(1-fraction) + swivels[1:]*fraction
-        margin, yaw, _, reach = arm_metrics(centres, bases(q)[..., 1], parts, swivel)
+        margin, yaw, _, reach = arm_metrics(centres, bases(q), parts, swivel)
         overlaps |= margin < -1e-5
         min_margin = min(min_margin, margin.min(initial=math.inf))
         min_yaw = min(min_yaw, yaw.min(initial=1))
@@ -229,14 +254,13 @@ def arm_diagnostics(points, poses, parts, swivels=None):
 def margins(points, angles, parts):
     a, za = proxies(angles[..., 0, :], parts[0])
     b, zb = proxies(angles[..., 1, :], parts[1])
-    ia, ra = clearance_spheres(parts[0])
-    ib, rb = clearance_spheres(parts[1])
+    ia, ra = clearance_ellipsoids(parts[0])
+    ib, rb = clearance_ellipsoids(parts[1])
     a = a + points[..., 0, None, :]
     b = b + points[..., 1, None, :]
     delta = a[..., ia, None, :] - b[..., None, ib, :]
-    gap = (np.linalg.norm(delta, axis=-1) - ra[:, None] - rb[None, :]).min(
-        axis=(-2, -1), initial=np.inf
-    )
+    rotations = bases(angles)
+    gap = glove_gap(delta, (rotations[..., 0, :, :], rotations[..., 1, :, :]), (ra, rb))
     floor = np.minimum((a[..., 2] - za).min(axis=-1), (b[..., 2] - zb).min(axis=-1))
     return gap, floor
 
@@ -270,7 +294,7 @@ def air_paths(
     if parts is None:
         parts = [[(name, (sign*x, y, z), axes) for name, (x, y, z), axes in HAND_PARTS]
                  for sign in (1, -1)]
-    spheres = [clearance_spheres(hand) for hand in parts]
+    ellipsoids = [clearance_ellipsoids(hand) for hand in parts]
     changes = 0
     runs = []
     for h in range(2):
@@ -323,14 +347,13 @@ def air_paths(
             q = poses[a:b] * (1 - fraction) + poses[a + 1 : b + 1] * fraction
             ca, _ = proxies(q[:, h], parts[h])
             cb, _ = proxies(q[:, 1 - h], parts[1 - h])
-            ia, ra = spheres[h]
-            ib, rb = spheres[1 - h]
+            ia, ra = ellipsoids[h]
+            ib, rb = ellipsoids[1 - h]
             delta = (ca[:, ia, None, :] - cb[:, None, ib, :])[None] + (
                 here - there
             )[:, :, None, None, :]
-            margin = (
-                np.linalg.norm(delta, axis=-1) - ra[:, None] - rb[None, :]
-            ).min(axis=(-2, -1), initial=np.inf) - gap
+            rotations = bases(q)
+            margin = glove_gap(delta, (rotations[:, h], rotations[:, 1 - h]), (ra, rb)) - gap
             if routes:
                 frames = np.arange(a, b) + fraction
                 layers = layers_at(frames, routes)
@@ -494,9 +517,9 @@ def solve(
     # Cache pose-dependent proxies; each endpoint query only translates them.
     ca, za = proxies(states[:, 0], parts[0])
     cb, zb = proxies(states[:, 1], parts[1])
-    forward = bases(states)[..., 1]
-    ia, ra = clearance_spheres(parts[0])
-    ib, rb = clearance_spheres(parts[1])
+    rotations = bases(states)
+    ia, ra = clearance_ellipsoids(parts[0])
+    ib, rb = clearance_ellipsoids(parts[1])
 
     layers = layers_at(np.arange(count), routes) if routes else np.zeros(count, dtype=np.int8)
     if routes:
@@ -519,9 +542,7 @@ def solve(
             - cb[:, None, ib, :]
             + (points[f, 0] - points[f, 1])[None, None, None, :]
         )
-        margin = (np.linalg.norm(delta, axis=-1) - ra[:, None] - rb[None, :]).min(
-            axis=(1, 2), initial=np.inf
-        )
+        margin = glove_gap(delta, (rotations[:, 0], rotations[:, 1]), (ra, rb))
         floor = np.minimum(
             (ca[..., 2] + points[f, 0, 2] - za).min(axis=1),
             (cb[..., 2] + points[f, 1, 2] - zb).min(axis=1),
@@ -529,7 +550,7 @@ def solve(
         penalty = _pose_penalty(margin, floor, gap, arm_weight, both_pinned[f])
         centres = (ca + points[f, 0], cb + points[f, 1])
         if arm_weight:
-            penalty += arm_weight * arm_cost(centres, forward, parts, gap, None if swivels is None else swivels[f],
+            penalty += arm_weight * arm_cost(centres, rotations, parts, gap, None if swivels is None else swivels[f],
                                              yaw_preference=yaw_preference)
         penalty += crossing_penalty(centres, states, f)
         return penalty
@@ -599,7 +620,7 @@ def solve(
             if arm_weight or layers[f]:
                 centres = [proxies(angles[:, h], parts[h])[0] + points[f, h] for h in range(2)]
                 if arm_weight:
-                    penalty += arm_weight * arm_cost(centres, bases(angles)[..., 1], parts, gap,
+                    penalty += arm_weight * arm_cost(centres, bases(angles), parts, gap,
                                                      None if swivels is None else swivels[f],
                                                      yaw_preference=yaw_preference)
                 penalty += crossing_penalty(centres, angles, f)

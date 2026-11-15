@@ -8,7 +8,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from hand_pose import (
     AVOIDANCE_ACCEL_M_S2, HAND_PARTS, NEUTRAL, acceleration_diagnostics,
-    accelerations, air_paths, arm_cost, bases, clearance_spheres, diagnostics, margins, proxies, solve,
+    accelerations, air_paths, arm_cost, bases, clearance_ellipsoids, diagnostics,
+    glove_gap, margins, proxies, solve,
 )
 
 PARTS = [
@@ -17,15 +18,21 @@ PARTS = [
 ]
 
 
-def test_only_half_size_palm_and_cuff_spheres_check_hand_clearance():
-    indices, radii = clearance_spheres(PARTS[0])
+def test_palm_and_cuff_clearance_ellipsoids_follow_the_hand_axes():
+    indices, radii = clearance_ellipsoids(PARTS[0])
     assert [PARTS[0][i][0] for i in indices] == ["palm", "cuff"]
-    np.testing.assert_allclose(radii, [.0105, .0085])
-    # Coincident fingertip pads do not overlap either sphere. The original
-    # pad geometry still sets the tablet margin at the contact.
+    np.testing.assert_allclose(radii, [[.0189, .0189, .0105], [.0153, .0153, .0085]])
+    # Only the palm proxy is present here. A 30 mm separation clears
+    # the flat faces, then intersects when the hands tilt edge-on.
+    delta = np.array([[[0., 0., .03]]])
+    flat = bases(np.array([0., 0.]))
+    edge_on = bases(np.array([90., 0.]))
+    palm = (radii[:1], radii[:1])
+    assert glove_gap(delta, (flat, flat), palm) == pytest.approx(.009)
+    assert glove_gap(delta, (edge_on, edge_on), palm) == pytest.approx(-.0078)
+    # The original pad geometry still sets the tablet margin.
     points = np.array([[0, 0, .006], [0, 0, .006]])
-    margin, floor = margins(points, np.zeros((2, 2)), PARTS)
-    assert margin == pytest.approx(.003)
+    _, floor = margins(points, np.zeros((2, 2)), PARTS)
     assert floor == pytest.approx(0.)
 
 
@@ -102,7 +109,7 @@ def test_arm_model_prefers_downward_tap_flex_to_sideways_bend():
 
     def cost(angles):
         centres = [proxies(angles[h], PARTS[h])[0] + points[h] for h in range(2)]
-        return arm_cost(centres, bases(angles)[..., 1], PARTS, 0.001)
+        return arm_cost(centres, bases(angles), PARTS, 0.001)
 
     assert cost(NEUTRAL) <= cost(tap) < cost(sideways) < cost(reversed_wrist)
 
