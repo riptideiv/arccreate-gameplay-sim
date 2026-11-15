@@ -29,10 +29,10 @@ def implementation_version(root=None):
     return digest.hexdigest()
 
 def request_key(chart,start,end,settings,prefer_same_hand,excluded,avoid_contacts,*,search_backend='auto'):
-    from arc_hand_order import api
+    from plan_excerpt import device_path
     chart=Path(chart)
     request={'schema':SCHEMA,'chart_sha256':hashlib.sha256(chart.read_bytes()).hexdigest(),
-        'chart_path':str(chart), 'device_sha256':hashlib.sha256(api.DEFAULT_DEVICE.read_bytes()).hexdigest(),
+        'chart_path':str(chart), 'device_sha256':hashlib.sha256(device_path(settings).read_bytes()).hexdigest(),
         'projection_version':implementation_version(),'window_ms':[start,end],
         'execution':execution_identity(search_backend),
         'settings':{k:v for k,v in (settings or {}).items() if k not in PRESENTATION_SETTINGS},

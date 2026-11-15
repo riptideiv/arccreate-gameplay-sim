@@ -103,7 +103,7 @@ export class RhythmPreview {
     if (!screen || !this.roots.left || !this.roots.right) throw new Error('The exported scene is missing the tablet or hand pivots.');
     if (motion.thumbs) {
       for (const side of ['left', 'right']) {
-        if (thumbNames.some((_, i) => !this.thumbParts[side][i]) || motion.thumbs[side]?.length !== motion.hands[side].length) {
+        if (thumbNames.slice(0, 2).some((_, i) => !this.thumbParts[side][i]) || motion.thumbs[side]?.length !== motion.hands[side].length) {
           throw new Error('The exported scene is missing the thumb joints.');
         }
       }
@@ -179,9 +179,9 @@ export class RhythmPreview {
           const length = axis.length();
           pieces[i].position.copy(start).lerp(end, .5);
           if (length > 1e-8) pieces[i].quaternion.setFromUnitVectors(this.thumbUp, axis.multiplyScalar(1 / length));
-          pieces[i].scale.set(1, length / 2 + .004 * (this.motion.hand_scale ?? 1), 1);
+          if (pieces[2]) pieces[i].scale.set(1, length / 2 + .004 * (this.motion.hand_scale ?? 1), 1);
         }
-        pieces[2].position.copy(this.thumbJoints[2]);
+        pieces[2]?.position.copy(this.thumbJoints[2]);
       }
     }
     this.canvas.dataset.mediaTime = String(time);

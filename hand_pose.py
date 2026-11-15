@@ -445,6 +445,7 @@ def solve(
     routes=None,
     *,
     progress=None,
+    thumb_contact=None,
 ):
     points = np.asarray(points, dtype=float)
     active = np.asarray(active, dtype=bool)
@@ -512,7 +513,13 @@ def solve(
         / 60
     )
     cumulative = np.vstack((np.zeros(2), np.cumsum(budgets, axis=0)))
-    knots = np.unique(np.r_[np.arange(0, count, stride), count - 1])
+    knots = np.r_[np.arange(0, count, stride), count - 1]
+    if thumb_contact is not None:
+        # Keep the base low while the short thumb is on the glass. Key both
+        # sides of a contact interval so interpolation cannot raise it inside.
+        contact_edges = np.flatnonzero(np.any(thumb_contact[1:] != thumb_contact[:-1], axis=1))
+        knots = np.r_[knots, contact_edges, contact_edges + 1]
+    knots = np.unique(knots)
     neutral = np.sum((states - NEUTRAL) ** 2, axis=(1, 2)) / 10000
     # Cache pose-dependent proxies; each endpoint query only translates them.
     ca, za = proxies(states[:, 0], parts[0])
@@ -553,6 +560,9 @@ def solve(
             penalty += arm_weight * arm_cost(centres, rotations, parts, gap, None if swivels is None else swivels[f],
                                              yaw_preference=yaw_preference)
         penalty += crossing_penalty(centres, states, f)
+        if thumb_contact is not None:
+            high_wrist = np.any(thumb_contact[f] & (states[..., 0] > NEUTRAL[:, 0]), axis=1)
+            penalty[high_wrist] = np.inf
         return penalty
 
     cache = {}

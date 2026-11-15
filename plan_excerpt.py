@@ -2,6 +2,7 @@
 
 import argparse
 from dataclasses import replace
+from functools import partial
 import json
 import math
 import re
@@ -16,6 +17,12 @@ from arc_hand_order.planning.rules import (
 )
 from arc_hand_order.planning.occupations import occupations_from_chart, TimeWindow
 from arc_hand_order.planning.multi_finger import NoCandidatePath
+
+
+def device_path(settings):
+    if (settings or {}).get("multifinger"):
+        return Path(__file__).resolve().parent / "devices/multifinger-tablet.json"
+    return api.DEFAULT_DEVICE
 
 
 def split_arc_ticks(occupations):
@@ -80,6 +87,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     if not 0 <= start_ms < end_ms:
         raise ValueError("Expected 0 <= start_ms < end_ms")
     settings = settings or {}
+    plan_chart = partial(api.plan_chart, device_path=device_path(settings))
     began = time.monotonic()
     attempt = 1
     retry = None
@@ -207,7 +215,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     checkpoint = None
     if not (excluded or avoid_contacts):
         try:
-            result = api.plan_chart(
+            result = plan_chart(
                 excerpt, multi=multi, planner=planner,
                 occupation_set=point_windows(occupations, duration, NATIVE_PERFECT_WINDOW_MS),
                 progress=report, keep_checkpoints=scoring, search_backend=search_backend, search_workers=search_workers,
@@ -238,7 +246,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                          if (item.parent_occupation_id or item.occupation_id) not in kept)
             local_retry = replace(split, items=checkpoint.items + tail)
             try:
-                resumed = api.plan_chart(
+                resumed = plan_chart(
                     excerpt, multi={**multi, "allow_misses": False}, planner=planner,
                     occupation_set=local_retry, progress=report, checkpoint=checkpoint, search_backend=search_backend, search_workers=search_workers,
                 )
@@ -254,7 +262,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                     # The global split retry can still beat it by retiming earlier.
                     retry = 'checkpoint_misses'
                     try:
-                        recovered = api.plan_chart(
+                        recovered = plan_chart(
                             excerpt, multi=multi, planner=planner, occupation_set=local_retry,
                             progress=report, checkpoint=checkpoint, search_backend=search_backend,
                             search_workers=search_workers,
@@ -277,7 +285,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                 prefix = checkpoint.items
                 held_items = replace(held_items, items=prefix + held_items.items[len(prefix):])
             try:
-                held = api.plan_chart(
+                held = plan_chart(
                     excerpt, multi=multi, planner={**planner, "protect_snake_presses": True},
                     occupation_set=held_items, progress=report, checkpoint=checkpoint,
                     search_backend=search_backend, search_workers=search_workers,
@@ -292,7 +300,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
         if result is None:
             retry = 'split'
             try:
-                result = api.plan_chart(excerpt, multi=multi, planner=planner, occupation_set=split, progress=report, search_backend=search_backend, search_workers=search_workers)
+                result = plan_chart(excerpt, multi=multi, planner=planner, occupation_set=split, progress=report, search_backend=search_backend, search_workers=search_workers)
             except ValueError as error:
                 if not can_retry_intact or "no candidate path" not in str(error):
                     raise
@@ -316,7 +324,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             retry = 'sky_requests'
             safe_planner = {**planner, "protect_sky_presses": True}
             try:
-                safe = api.plan_chart(
+                safe = plan_chart(
                     excerpt, multi=multi, planner=safe_planner, occupation_set=local_retry or split,
                     progress=report, checkpoint=checkpoint, search_backend=search_backend, search_workers=search_workers,
                 )
@@ -335,7 +343,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
             retry = 'intact'
             intact = point_windows(occupations, duration, NATIVE_FAR_WINDOW_MS)
             try:
-                result = api.plan_chart(excerpt, multi={**multi, "allow_misses": False}, planner=planner,
+                result = plan_chart(excerpt, multi={**multi, "allow_misses": False}, planner=planner,
                                         occupation_set=intact, progress=report, search_backend=search_backend, search_workers=search_workers)
             except ValueError as error:
                 if "no candidate path" not in str(error):

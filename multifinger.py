@@ -1,32 +1,50 @@
 """Anatomical digit labels and thumb poses for the experimental planner."""
 
+from bisect import bisect_left
+
 import numpy as np
 
 from arc_hand_order.planning.hand_travel import TIP, home_position, span, travel
-from hand_pose import bases
+from hand_pose import NEUTRAL, bases
 
-THUMB_BASE = np.array([.003, -.040, .010])
-THUMB_REST = np.array([.014, -.009, .011])
-THUMB_LENGTH_M = float(np.linalg.norm(THUMB_REST - THUMB_BASE))
+ORIGINAL_THUMB_BASE = np.array([.003, -.040, .010])
+THUMB_BASE = np.array([.003, -.040, .005])
+THUMB_REST_VECTOR = np.array([.014, -.009, .011]) - ORIGINAL_THUMB_BASE
+THUMB_LENGTH_M = float(np.linalg.norm(THUMB_REST_VECTOR))
+THUMB_LENGTH_RATIO = .60
 THUMB_OPEN_DEG = 115
 TABLET_TO_REACH = 1.95
+HAND_REFERENCE_DEPTH_M = .1735
 
 
 def hand_calibration(tablet_height_m):
-    # Measure the pad-to-pad reach on the glass. The thumb starts above it,
-    # so only the planar component of its original length contributes here.
+    # Measure the distance between pad centers with both fingers on the glass.
     angle = np.deg2rad(THUMB_OPEN_DEG)
-    projected_thumb = np.sqrt(THUMB_LENGTH_M**2 - THUMB_BASE[2]**2)
-    open_thumb = THUMB_BASE[:2] + projected_thumb * np.array([np.sin(angle), np.cos(angle)])
-    original_reach = float(np.linalg.norm(open_thumb))
-    scale = max(1., tablet_height_m / (TABLET_TO_REACH * original_reach))
+    direction = np.array([np.sin(angle), np.cos(angle)])
+
+    def reach(length, scale, thumb_base=THUMB_BASE):
+        base = thumb_base * scale
+        in_plane = np.sqrt(max(0., length**2 - base[2]**2))
+        return float(np.linalg.norm(base[:2] + in_plane * direction))
+
+    original_reach = reach(THUMB_LENGTH_M, 1., ORIGINAL_THUMB_BASE)
+    target_reach = tablet_height_m / TABLET_TO_REACH
+    previous_scale = max(1., target_reach / original_reach)
+    length = THUMB_LENGTH_M * previous_scale * THUMB_LENGTH_RATIO
+    low, high = 1., length / THUMB_BASE[2]
+    for _ in range(40):
+        scale = (low + high) / 2
+        if reach(length, scale) < target_reach:
+            low = scale
+        else:
+            high = scale
     return {
         "thumb_open_deg": THUMB_OPEN_DEG,
         "original_thumb_length_mm": THUMB_LENGTH_M * 1000,
         "original_open_reach_mm": original_reach * 1000,
-        "scale": scale,
-        "thumb_length_mm": THUMB_LENGTH_M * scale * 1000,
-        "open_reach_mm": original_reach * scale * 1000,
+        "scale": high,
+        "thumb_length_mm": length * 1000,
+        "open_reach_mm": reach(length, high) * 1000,
         "tablet_height_mm": tablet_height_m * 1000,
     }
 
@@ -92,7 +110,7 @@ def samples(touches, scale=1.):
             for frame, (x, y) in enumerate(touch["path_mm"], touch["down_frame"])}
 
 
-def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed, *, scale=1.):
+def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed, *, scale, length):
     """Anchor the hand with the thumb when its index is free."""
     paths = []
     fixed = []
@@ -101,11 +119,28 @@ def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed
         home = home_position(side, lift) + [0, 0, TIP * (scale-1)]
         anchors = {0: home}
         sign = 1 if side == "left" else -1
-        thumb_only = {f: point - [sign * .028 * scale, -.046 * scale, -lift]
-                      for f, point in thumbs[side].items()}
+        axis = bases(NEUTRAL[h])
+        base = axis @ (THUMB_BASE * [sign, 1, 1] * scale)
+        index_lift = np.clip(.85 * length - base[2], 0, lift)
+        outward = axis[:2, 0] * sign
+        outward /= np.linalg.norm(outward)
+        thumb_offset = base + np.r_[outward * .45 * length, -index_lift - base[2]]
         index = samples(contacts[side], scale)
         physical[list(index), h] = True
-        anchors.update(thumb_only)
+        shared = sorted(index.keys() & thumbs[side].keys())
+        for frame, point in thumbs[side].items():
+            if frame in index:
+                continue
+            offset = thumb_offset
+            insertion = bisect_left(shared, frame)
+            nearby = shared[max(0, insertion-1):insertion+1]
+            if nearby:
+                chord = min(nearby, key=lambda other: abs(other-frame))
+                # Approach the chord while the thumb is already down. The
+                # free index can line up with its next contact before landing.
+                blend = max(0., 1. - abs(chord-frame) / 9)
+                offset = (1-blend)*thumb_offset + blend*(thumbs[side][chord] - index[chord])
+            anchors[frame] = point - offset
         anchors.update(index)
         anchors.setdefault(last_frame, anchors[max(anchors)])
         path = np.empty((last_frame + 1, 3))
@@ -117,10 +152,9 @@ def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed
     return paths, fixed, physical
 
 
-def fit_thumb_yaw(paths, poses, thumbs, sides, scale, angular_limit, max_speed, hand_radius):
+def fit_thumb_yaw(paths, poses, thumbs, sides, scale, angular_limit, max_speed, hand_radius, *, length):
     """Choose a smooth wrist yaw inside the fixed-length thumb's reach."""
     result = np.array(poses, dtype=float, copy=True)
-    length = THUMB_LENGTH_M * scale
     for h, side in enumerate(sides):
         if not thumbs[side]:
             continue
@@ -157,7 +191,7 @@ def fit_thumb_yaw(paths, poses, thumbs, sides, scale, angular_limit, max_speed, 
     return result
 
 
-def thumb_joints(paths, poses, thumbs, sides, *, scale=1.):
+def thumb_joints(paths, poses, thumbs, sides, *, scale, length):
     """Return base, knuckle and pad positions in tablet space for each thumb."""
     result = {}
     for h, side in enumerate(sides):
@@ -166,7 +200,7 @@ def thumb_joints(paths, poses, thumbs, sides, *, scale=1.):
         axes = bases(np.asarray(poses)[:, h])
         base = THUMB_BASE * [sign, 1, 1] * scale
         # The thumb points along the index at rest, clear of the glass.
-        rest = THUMB_REST * [sign, 1, 1] * scale
+        rest = base + THUMB_REST_VECTOR * [sign, 1, 1] * (length / THUMB_LENGTH_M)
         anchors = {0: rest}
         for frame, target in thumbs[side].items():
             anchors[frame] = axes[frame].T @ (target - origin[frame])
@@ -185,7 +219,6 @@ def thumb_joints(paths, poses, thumbs, sides, *, scale=1.):
                 tips[a:b+1] = travel(start, end, b-a, 0, np.inf)
         axis = tips - base
         distance = np.linalg.norm(axis, axis=-1)
-        length = THUMB_LENGTH_M * scale
         if distance.max() > length + 1e-7:
             raise ValueError(f"{side.title()} thumb cannot reach its target at a fixed length")
         direction = axis / np.maximum(distance[:, None], 1e-12)

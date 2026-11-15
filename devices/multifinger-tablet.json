@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "multifinger_tablet_landscape",
+  "description": "Experimental landscape tablet sized for the Dantalion four-finger chord",
+  "screen": {
+    "width_m": 0.261793452,
+    "height_m": 0.182924898,
+    "pixel_width": 2388,
+    "pixel_height": 1668
+  }
+}
