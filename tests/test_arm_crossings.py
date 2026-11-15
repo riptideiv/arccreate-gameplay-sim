@@ -159,7 +159,7 @@ def test_raising_elbow_does_not_clear_a_hand_below_the_other_arm(monkeypatch):
     elbows = np.array([[-.06, -.06, .20], [0, -.06, .06]])
     wrists = np.array([[-.02, -.03, .16], [0, .05, .06]])
     monkeypatch.setattr(hand_pose, "arm_geometry", lambda *args: (wrists, elbows))
-    parts = ((HAND_PARTS[0],),)*2
+    parts = ((next(part for part in HAND_PARTS if part[0] == "palm"),),)*2
     low = (np.array([[-.020, 0, .006]]), np.array([[0, .09, .06]]))
     raised = (np.array([[-.020, 0, .100]]), low[1])
     angles = np.zeros((2, 2))

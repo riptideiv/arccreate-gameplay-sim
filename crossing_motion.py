@@ -104,7 +104,7 @@ def _hand_over_margin(centres, radii, start, stop, arm_radius):
     return np.where(overlaps, np.minimum(height, clearance), np.inf).min(axis=(-2,-1))
 
 
-def _link_margin(start, stop, layers, arm_radius, tip_radius):
+def _link_margin(start, stop, layers, arm_radius):
     # Each left arm segment against each right arm segment.
     a, b = start[..., 0, :, None, :], stop[..., 0, :, None, :]
     c, d = start[..., 1, None, :, :], stop[..., 1, None, :, :]
@@ -118,14 +118,11 @@ def _link_margin(start, stop, layers, arm_radius, tip_radius):
     denominator = np.where(parallel, 1, determinant)
     t, s = cross(w, v) / denominator, cross(w, u) / denominator
     intersects = ~parallel & (t >= 0) & (t <= 1) & (s >= 0) & (s <= 1)
-    radii = np.array([arm_radius, arm_radius, .017])
-    taper = np.array([0., 0., .017 - tip_radius])
     order = np.asarray(layers)[..., None, None]
 
     def margin_at(t, s):
         vertical = (a[..., 2] + t * u[..., 2]) - (c[..., 2] + s * v[..., 2])
-        radius = radii[:, None] - t * taper[:, None] + radii[None, :] - s * taper[None, :]
-        return vertical * order - radius
+        return vertical * order - 2 * arm_radius
 
     margin = np.where(intersects, margin_at(t, s), np.inf)
     if np.any(parallel & (order != 0)):
@@ -148,28 +145,24 @@ def _link_margin(start, stop, layers, arm_radius, tip_radius):
 
 
 def layer_clearances(centres, angles, parts, layers, swivels=None):
-    from hand_pose import ARM_RADIUS, SHOULDERS, TIP, arm_geometry, bases
+    from hand_pose import ARM_RADIUS, SHOULDERS, arm_geometry, bases, clearance_spheres
 
     wrists, elbows = arm_geometry(centres, bases(angles)[..., 1], parts, swivels)
     shoulders = np.broadcast_to(SHOULDERS, wrists.shape)
-    pads = np.stack([hand[..., 0, :] for hand in centres], axis=-2)
-    start = np.stack((shoulders, elbows, wrists), axis=-2)
-    stop = np.stack((elbows, wrists, pads), axis=-2)
-    arm = _link_margin(start, stop, layers, ARM_RADIUS, TIP)
+    start = np.stack((shoulders, elbows), axis=-2)
+    stop = np.stack((elbows, wrists), axis=-2)
+    arm = _link_margin(start, stop, layers, ARM_RADIUS)
     hand = np.full_like(arm, np.inf)
     if parts is not None:
         for h in range(2):
             top = np.asarray(layers) == (1 if h == 0 else -1)
-            if top.any():
+            indices, radii = clearance_spheres(parts[h])
+            if top.any() and indices:
                 lower = 1-h
-                radii = [max(p[2]) for p in parts[h]]
-                margin = _hand_over_margin(centres[h], radii, start[..., lower, :2, :],
-                                           stop[..., lower, :2, :], ARM_RADIUS)
+                margin = _hand_over_margin(centres[h][..., indices, :], radii,
+                                           start[..., lower, :, :], stop[..., lower, :, :],
+                                           ARM_RADIUS)
                 hand = np.where(top, margin, hand)
-        pad_delta = pads[..., 0, :] - pads[..., 1, :]
-        together = np.sum(pad_delta[..., :2]**2, axis=-1) < (2*TIP)**2
-        pad_margin = np.minimum(pad_delta[..., 2]*layers, np.linalg.norm(pad_delta, axis=-1) - 2*TIP)
-        hand = np.minimum(hand, np.where(together & (np.asarray(layers) != 0), pad_margin, np.inf))
     return arm, hand
 
 

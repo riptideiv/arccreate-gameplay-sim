@@ -1,6 +1,6 @@
 """Offline, contact-preserving glove posing. Collision costs never alter a chart.
 
-The search uses enclosing spheres for the glove's ellipsoids. Its fixed budget
+The search uses small palm and cuff spheres for hand clearance. Its fixed budget
 returns the best pose corridor found, with residual overlaps reported, never a
 request for the contact planner to skip notes.
 """
@@ -23,7 +23,7 @@ HAND_PARTS = (
 )
 
 
-VERSION = "pivot-beam-acceleration-2"
+VERSION = "pivot-beam-acceleration-3"
 NEUTRAL = np.array([[10.0, -18.0], [10.0, 18.0]])
 # Fixed shoulder pivots and outward/downward elbow poles in tablet space.
 SHOULDERS = np.array([[-0.18, -0.38, 0.17], [0.18, -0.38, 0.17]])
@@ -82,13 +82,19 @@ def bases(angles):
 
 
 def proxies(angles, parts):
-    """Pose ellipsoid centres; use their enclosing radii to certify clearance."""
+    """Pose the visible ellipsoid centres and their vertical extents."""
     centres = np.array([p[1] for p in parts])
     radii = np.array([p[2] for p in parts])
     rot = bases(np.asarray(angles))
     return np.einsum("...ij,pj->...pi", rot, centres), np.sqrt(
         np.einsum("...j,pj->...p", rot[..., 2, :] ** 2, radii**2)
     )
+
+
+def clearance_spheres(parts):
+    indices = [i for i, part in enumerate(parts) if part[0] in ("palm", "cuff")]
+    radii = np.array([max(parts[i][2]) * 0.5 for i in indices])
+    return indices, radii
 
 
 def arm_elbows(wrists, forward, swivels=None):
@@ -158,11 +164,11 @@ def arm_metrics(centres, forward, parts, swivels=None):
         margin = np.minimum(margin, _segment_gap(
             shoulder, elbow, elbows[..., other, :], wrists[..., other, :]
         ) - 2 * ARM_RADIUS)
-        glove = centres[other]
-        radius = np.array([max(part[2]) for part in parts[other]])
+        indices, radius = clearance_spheres(parts[other])
+        glove = centres[other][..., indices, :]
         margin = np.minimum(margin, (_point_segment(
             glove, elbow[..., None, :], wrist[..., None, :]
-        ) - radius - ARM_RADIUS).min(axis=-1))
+        ) - radius - ARM_RADIUS).min(axis=-1, initial=np.inf))
     forearm_xy = forearm[..., :2]
     forward_xy = forward[..., :2]
     yaw_cos = (forearm_xy * forward_xy).sum(axis=-1) / np.maximum(
@@ -223,13 +229,13 @@ def arm_diagnostics(points, poses, parts, swivels=None):
 def margins(points, angles, parts):
     a, za = proxies(angles[..., 0, :], parts[0])
     b, zb = proxies(angles[..., 1, :], parts[1])
-    ra = np.array([max(p[2]) for p in parts[0]])
-    rb = np.array([max(p[2]) for p in parts[1]])
+    ia, ra = clearance_spheres(parts[0])
+    ib, rb = clearance_spheres(parts[1])
     a = a + points[..., 0, None, :]
     b = b + points[..., 1, None, :]
-    delta = a[..., :, None, :] - b[..., None, :, :]
+    delta = a[..., ia, None, :] - b[..., None, ib, :]
     gap = (np.linalg.norm(delta, axis=-1) - ra[:, None] - rb[None, :]).min(
-        axis=(-2, -1)
+        axis=(-2, -1), initial=np.inf
     )
     floor = np.minimum((a[..., 2] - za).min(axis=-1), (b[..., 2] - zb).min(axis=-1))
     return gap, floor
@@ -250,7 +256,7 @@ def _pose_penalty(margin, floor, gap, arm_weight, both_pinned):
 
 
 def air_paths(
-    points, active, max_speed, pad_radius=0.006, gap=0.001, poses=None, parts=None, idle_speed=math.inf,
+    points, active, max_speed, gap=0.001, poses=None, parts=None, idle_speed=math.inf,
     routes=None, swivels=None, *, reference=None, progress=None,
 ):
     """Refine free travel while preserving every contact sample.
@@ -259,6 +265,12 @@ def air_paths(
     """
     result = points.copy()
     reference = points if reference is None else reference
+    if poses is None:
+        poses = np.broadcast_to(NEUTRAL, (*points.shape[:2], 2))
+    if parts is None:
+        parts = [[(name, (sign*x, y, z), axes) for name, (x, y, z), axes in HAND_PARTS]
+                 for sign in (1, -1)]
+    spheres = [clearance_spheres(hand) for hand in parts]
     changes = 0
     runs = []
     for h in range(2):
@@ -299,11 +311,7 @@ def air_paths(
             *[directions * height for height in heights],
         )
     )
-    radius = (
-        (max(np.linalg.norm(p[1]) + max(p[2]) for p in parts[0]) + 0.002)
-        if parts
-        else 0
-    )
+    radius = max(np.linalg.norm(p[1]) + max(p[2]) for p in parts[0]) + 0.002
 
     def penalty_for(candidates, other, a, b, h, has_crossing):
         penalty = np.zeros(len(candidates))
@@ -312,32 +320,21 @@ def air_paths(
         for fraction in fractions:
             here = candidates[:, :-1] * (1 - fraction) + candidates[:, 1:] * fraction
             there = other[:-1] * (1 - fraction) + other[1:] * fraction
-            if poses is None:
-                margin = np.linalg.norm(here - there, axis=-1) - (
-                    2 * pad_radius + gap + 0.008
-                )
-            else:
-                q = poses[a:b] * (1 - fraction) + poses[a + 1 : b + 1] * fraction
-                ca, _ = proxies(q[:, h], parts[h])
-                cb, _ = proxies(q[:, 1 - h], parts[1 - h])
-                ra = np.array([max(p[2]) for p in parts[h]])
-                rb = np.array([max(p[2]) for p in parts[1 - h]])
-                margins = []
-                for block in range(0, len(candidates), 8):
-                    delta = (ca[:, :, None, :] - cb[:, None, :, :])[None] + (
-                        here[block : block + 8] - there
-                    )[:, :, None, None, :]
-                    margins.append(
-                        (
-                            np.linalg.norm(delta, axis=-1) - ra[:, None] - rb[None, :]
-                        ).min(axis=(-2, -1))
-                        - gap
-                    )
-                margin = np.concatenate(margins)
-                if routes:
-                    frames = np.arange(a, b) + fraction
-                    layers = layers_at(frames, routes)
-                if routes and layers.any():
+            q = poses[a:b] * (1 - fraction) + poses[a + 1 : b + 1] * fraction
+            ca, _ = proxies(q[:, h], parts[h])
+            cb, _ = proxies(q[:, 1 - h], parts[1 - h])
+            ia, ra = spheres[h]
+            ib, rb = spheres[1 - h]
+            delta = (ca[:, ia, None, :] - cb[:, None, ib, :])[None] + (
+                here - there
+            )[:, :, None, None, :]
+            margin = (
+                np.linalg.norm(delta, axis=-1) - ra[:, None] - rb[None, :]
+            ).min(axis=(-2, -1), initial=np.inf) - gap
+            if routes:
+                frames = np.arange(a, b) + fraction
+                layers = layers_at(frames, routes)
+                if layers.any():
                     # The candidate axis broadcasts over the fixed other hand.
                     own = ca[None] + here[..., None, :]
                     peer = np.broadcast_to(cb[None] + there[None, :, None, :], own.shape)
@@ -364,13 +361,7 @@ def air_paths(
             base = reference[a : b + 1, h]
             other = result[a : b + 1, 1 - h]
             has_crossing = bool(routes and layers_at(np.arange(a, b+1), routes).any())
-            if poses is None:
-                if (
-                    np.linalg.norm(result[a : b + 1, h] - other, axis=-1).min()
-                    >= 2 * pad_radius + gap + 0.008
-                ):
-                    continue
-            elif penalty_for(result[a : b + 1, h][None], other, a, b, h, has_crossing)[0] < 1e-7:
+            if penalty_for(result[a : b + 1, h][None], other, a, b, h, has_crossing)[0] < 1e-7:
                 continue
             elapsed = np.arange(b - a + 1)
             edge_distance = np.minimum(elapsed, elapsed[::-1])
@@ -393,14 +384,9 @@ def air_paths(
             required = np.linalg.norm(np.diff(base, axis=0), axis=-1).max(initial=0) * 60
             free_cap = min(max_speed, max(idle_speed, required))
             valid_translation = speed.max(axis=1) <= free_cap + 1e-5
-            if poses is not None:
-                speed += (
-                    radius
-                    * np.radians(
-                        np.linalg.norm(np.diff(poses[a : b + 1, h], axis=0), axis=-1)
-                        * 60
-                    )[None, :]
-                )
+            speed += radius * np.radians(
+                np.linalg.norm(np.diff(poses[a : b + 1, h], axis=0), axis=-1) * 60
+            )[None, :]
             valid = valid_translation & (speed.max(axis=1) <= max_speed + 1e-5)
             valid[1:] &= peak_optional <= AVOIDANCE_ACCEL_M_S2
             # The incumbent was generated on the same reference in the first
@@ -477,7 +463,7 @@ def solve(
                 }
     else:
         points, lifts = air_paths(
-            points, active, max_speed, gap=gap, idle_speed=idle_speed, routes=routes, progress=progress,
+            points, active, max_speed, gap=gap, parts=parts, idle_speed=idle_speed, progress=progress,
         )
     # Each state is a pair of pitch/yaw choices. The pad centre is the pivot.
     pitches = (10, 25, 40, 55, 70, 85) if angular_limit < 200 else (10, 30, 50, 70, 85)
@@ -509,8 +495,8 @@ def solve(
     ca, za = proxies(states[:, 0], parts[0])
     cb, zb = proxies(states[:, 1], parts[1])
     forward = bases(states)[..., 1]
-    ra = np.array([max(p[2]) for p in parts[0]])
-    rb = np.array([max(p[2]) for p in parts[1]])
+    ia, ra = clearance_spheres(parts[0])
+    ib, rb = clearance_spheres(parts[1])
 
     layers = layers_at(np.arange(count), routes) if routes else np.zeros(count, dtype=np.int8)
     if routes:
@@ -529,12 +515,12 @@ def solve(
 
     def spatial(f):
         delta = (
-            ca[:, :, None, :]
-            - cb[:, None, :, :]
+            ca[:, ia, None, :]
+            - cb[:, None, ib, :]
             + (points[f, 0] - points[f, 1])[None, None, None, :]
         )
         margin = (np.linalg.norm(delta, axis=-1) - ra[:, None] - rb[None, :]).min(
-            axis=(1, 2)
+            axis=(1, 2), initial=np.inf
         )
         floor = np.minimum(
             (ca[..., 2] + points[f, 0, 2] - za).min(axis=1),

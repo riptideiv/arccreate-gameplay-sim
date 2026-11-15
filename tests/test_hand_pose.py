@@ -8,13 +8,25 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from hand_pose import (
     AVOIDANCE_ACCEL_M_S2, HAND_PARTS, NEUTRAL, acceleration_diagnostics,
-    accelerations, air_paths, arm_cost, bases, diagnostics, proxies, solve,
+    accelerations, air_paths, arm_cost, bases, clearance_spheres, diagnostics, margins, proxies, solve,
 )
 
 PARTS = [
     [(name, (sign * x, y, z), r) for name, (x, y, z), r in HAND_PARTS]
     for sign in (1, -1)
 ]
+
+
+def test_only_half_size_palm_and_cuff_spheres_check_hand_clearance():
+    indices, radii = clearance_spheres(PARTS[0])
+    assert [PARTS[0][i][0] for i in indices] == ["palm", "cuff"]
+    np.testing.assert_allclose(radii, [.0105, .0085])
+    # Coincident fingertip pads do not overlap either sphere. The original
+    # pad geometry still sets the tablet margin at the contact.
+    points = np.array([[0, 0, .006], [0, 0, .006]])
+    margin, floor = margins(points, np.zeros((2, 2)), PARTS)
+    assert margin == pytest.approx(.003)
+    assert floor == pytest.approx(0.)
 
 
 def speed_bounds(points, poses):
