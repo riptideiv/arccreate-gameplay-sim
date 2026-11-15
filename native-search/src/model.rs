@@ -149,6 +149,7 @@ impl Touch {
 #[derive(Clone)]
 pub struct State {
     pub hands: [Option<Arc<Touch>>; 2],
+    pub last_point_press: [Option<i32>; 2],
     pub runs: [i32; 2],
     pub owned: [Option<Arc<Touch>>; 2],
     pub locks: [i64; 4],

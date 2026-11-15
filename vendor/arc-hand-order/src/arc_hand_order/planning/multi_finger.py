@@ -136,7 +136,7 @@ class MultiFingerOptions:
     jack_gap_ms: int = 150
     jack_free: int = 4
     jack_weight: float = 0.0
-    tap_interval_ms: int = 0  # Minimum press-to-press interval for consecutive point taps on one finger.
+    tap_interval_ms: int = 0  # Minimum interval between point presses on one finger, even if a press also serves a hold.
     # The most peak acceleration (m/s^2; 0: off) a finger may need, counted for a rest-to-rest minimum-jerk move
     # (MIN_JERK_PEAK d/T^2): a hand's move in the air between two touches (d over the air time T, from where _release
     # lets it go to where _arrival needs it; _Graph.air_over), and each jump composing makes inside a touch
@@ -895,6 +895,8 @@ class _Graph:
         # Only contested ones ride there: a tap or sky note starts on their end spot within arc_takeover_ms.
         self.own = (4 + (2 if multi.jack_weight else 0)) if multi.arc_takeover_weight else None
         self.lock_index = 4 + (2 if multi.jack_weight else 0) + (2 if multi.arc_takeover_weight else 0) if multi.tick_contacts else None
+        self.press_index = (4 + 2*bool(multi.jack_weight) + 2*bool(multi.arc_takeover_weight)
+                            + 4*bool(multi.tick_contacts)) if multi.tap_interval_ms else None
         # ArcCreate starts grace for every colour when any differently coloured
         # pair intersects. Grace clears an existing lock permanently.
         self.lock_grace = sorted(self.graced if self.graced is not None else self._grace_frames(groups)) if multi.tick_contacts else []
@@ -1030,18 +1032,33 @@ class _Graph:
                     break
         return frozenset(out)
 
+    def initial_state(self):
+        return ((-1,) * 4 + ((0, 0) if self.multi.jack_weight else ())
+                + ((-1, -1) if self.own is not None else ())
+                + ((-1,) * 4 if self.lock_index is not None else ())
+                + ((None,) * 4 if self.press_index is not None else ()))
+
     def tail_key(self, state, f0: int):
         """The state after the slots as later moves read it: fast-run lengths, and each hand's held contact while it
         can still be taken over (its id, else -1)."""
         locks = tuple(value if value >= frame_ms(f0,self.offset) else -1
-                      for value in state[self.lock_index:]) if self.lock_index is not None else ()
+                      for value in state[self.lock_index:self.lock_index+4]) if self.lock_index is not None else ()
+        presses = ()
+        if self.press_index is not None:
+            presses = tuple(value if value is not None and (f0-value)*1000 < self.multi.tap_interval_ms*60
+                            else None for value in state[self.press_index:])
         if self.own is None:
-            return state[4:self.lock_index] + locks if self.lock_index is not None else state[4:]
+            state_end = self.lock_index if self.lock_index is not None else self.press_index
+            return state[4:state_end] + locks + presses
         now = frame_ms(f0, self.offset)
         owned = tuple((self.touches[i].up, self.touches[i].last_xy, self.takeover_window(self.touches[i]))
                       if i >= 0 and self.touches[i].up_ms + self.takeover_window(self.touches[i]) > now else -1
                       for i in state[self.own:self.own + 2])
-        return state[4:self.own] + owned + locks
+        return state[4:self.own] + owned + locks + presses
+
+    def point_press_too_soon(self, state, slot, frame):
+        previous = state[self.press_index + slot]
+        return previous is not None and (frame - previous) * 1000 < self.multi.tap_interval_ms * 60
 
     def takeover_window(self, touch: Touch) -> int:
         """How long after ``touch`` (a contested arc or hold, or its hand's later press on the spot) a takeover counts."""
@@ -1357,10 +1374,6 @@ class _Graph:
         if previous is None:
             return 0.0
         if current.down - previous.up < self.options.min_air_frames:
-            return None
-        if (self.multi.tap_interval_ms and (current.down - previous.down) * 1000 < self.multi.tap_interval_ms * 60
-                and previous.single is not None and not previous.single.occupation.continuous_contact
-                and current.single is not None and not current.single.occupation.continuous_contact):
             return None
         if current.down - previous.up < self.options.held_release_air_frames and self.held_release(previous):
             return None
@@ -1722,8 +1735,8 @@ class _Graph:
             if self.options.scoring_arcs and c.occupation.parent_occupation_id:
                 from .arc_scoring import source_note
                 if c.down_ms > source_note(c.occupation).end: return
-            k = 0
             recent = max((t for t in mine if t is not None), key=lambda t: t.up, default=None)
+            k = mine.index(recent) if self.press_index is not None and recent is not None else 0
             if (recent is not None and mine.index(recent) in bridged) or not press_order_ok():
                 pass
             else:
@@ -2141,6 +2154,10 @@ class _Graph:
         ``partner_new`` replaces the other slot's touch (the same notes, moved within reach); ``second_free``: a
         second-finger press not charged as one (second_finger_again)."""
         partner = mine[1 - k] if partner_new is None else partner_new
+        point_press = (self.press_index is not None and old is None
+                       and any(p.candidate.occupation.kind in ("tap", "sky") for p in new.parts))
+        if point_press and self.point_press_too_soon(state, h+k, new.down):
+            return None
         if self.options.contact_exclusions:
             parents = {p.candidate.occupation.parent_occupation_id or p.candidate.occupation.occupation_id
                        for p in new.parts if p.candidate.occupation.kind == "chain"}
@@ -2207,6 +2224,8 @@ class _Graph:
         base = Cost(base.colour, crossing, base.movement, base.handover,
                     base.apart, base.repeat, base.distance_m + trace_distance, base.untouched_arc_s, base.untouched_hold_s)
         slots = list(state)
+        if point_press:
+            slots[self.press_index + h+k] = new.down
         jack = 0.0
         if old is None and self.multi.jack_weight:
             slots[4 + h // 2], jack = self._run(state, h, mine, new)
@@ -2240,6 +2259,9 @@ class _Graph:
         return min(steps, key=lambda step: step[1].weighted(self.options, self.multi), default=None)
 
     def _takeover_at(self, state, h, giver_slot, giver, receiver, theirs, c, hand, release):
+        point_press = self.press_index is not None and c.occupation.kind in ("tap", "sky")
+        if point_press and self.point_press_too_soon(state, h+giver_slot, c.down_frame):
+            return None
         key = (giver.id, receiver.id, c.id, release)
         if key not in self.takeovers:
             self.takeovers[key] = self._takeover_touches(giver, receiver, c, release)
@@ -2283,6 +2305,8 @@ class _Graph:
             if over:
                 features["accel_over"] = over
         slots = list(state)
+        if point_press:
+            slots[self.press_index + h+giver_slot] = new.down
         jack = 0.0
         if self.multi.jack_weight:
             slots[4 + h // 2], jack = self._run(state, h, (giver, receiver), new)
@@ -2848,7 +2872,7 @@ def _checkpoint_states(checkpoint, graph):
         return imported[touch.id]
 
     # Only the contact and takeover slots hold touch IDs. The remaining slots
-    # hold repeat counts and native colour lock expiry times.
+    # hold repeat counts, native colour lock expiries and point press frames.
     slots = (0, 1, 2, 3) if graph.own is None else (0, 1, 2, 3, graph.own, graph.own + 1)
     result = []
     for state, cost, node, arms in checkpoint.states:
@@ -2877,15 +2901,12 @@ def _plan_items(occupations: OccupationSet, projection: GameplayProjection, opti
     check_weights(options, multi)
     progress('graph')
     graph = _Graph(groups, projection, options, multi, meetings, occupations)
-    # Four slots (left 1, 2, right 1, 2: touch ids), then with jack_weight each hand's fast-run length.
-    initial = ((-1,) * 4 + ((0, 0) if multi.jack_weight else ())
-               + ((-1, -1) if multi.arc_takeover_weight else ()) + ((-1,) * 4 if multi.tick_contacts else ()))
     crossing = None
     if multi.arm_crossing_travel is not None:
         from .arm_crossings import CrossingGraph
         lift, idle_speed, requested = multi.arm_crossing_travel
         crossing = CrossingGraph(lift, options.speed_max_m_s, idle_speed, requested)
-    states = [(initial, MultiCost(), None, crossing.initial if crossing else None)]
+    states = [(graph.initial_state(), MultiCost(), None, crossing.initial if crossing else None)]
     visited, pruned = 1, 0
     if checkpoint is not None:
         states = _checkpoint_states(checkpoint, graph)

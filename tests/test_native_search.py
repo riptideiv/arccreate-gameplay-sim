@@ -140,6 +140,39 @@ def test_point_press_can_serve_both_overlapping_snake_ticks(tmp_path):
     assert [part['kind'] for part in touch['parts']] == ['sky', 'chain', 'chain']
 
 
+@pytest.mark.parametrize('backend', ['python', 'native'])
+@pytest.mark.parametrize('second_ms, expected_taps', [(1117, 1), (1167, 2)])
+def test_shared_sky_press_counts_toward_minimum_tap_interval(tmp_path, backend, second_ms, expected_taps):
+    from arc_hand_order import api
+    from arc_hand_order.planning.arc_scoring import native_occupations
+    from arc_hand_order.planning.occupations import occupations_from_chart
+    from plan_excerpt import split_arc_ticks
+
+    path = chart(tmp_path, 'timing(0,172,4);'
+                 'arc(1000,1087,.42,.42,s,0,0,0,none,false);'
+                 'arc(1000,1087,.58,.58,s,0,0,1,none,false);'
+                 f'arc(1033,{second_ms},.5,.5,s,0,0,0,none,true)[arctap(1033),arctap({second_ms})];')
+    loaded = api.load_chart(path)
+    items = split_arc_ticks(native_occupations(occupations_from_chart(loaded.chart),
+                                             chart_events=loaded.chart.events))
+    multi = dict(second_finger=False, second_finger_again=False, meeting_swaps=False,
+                 covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False,
+                 tick_contacts=True, share_weight=0, allow_misses=True)
+    planner = dict(scoring_arcs=True, point_contact_frames=1, point_window_ms=0,
+                   contact_offset_fractions=(.6, .3), colour_weight=0, repeat_weight=100,
+                   fixed_hands=((1033, 'left'), (second_ms, 'left')))
+
+    def plan(interval):
+        result = api.plan_chart(loaded, multi={**multi, 'tap_interval_ms': interval}, planner=planner,
+                                occupation_set=items, search_backend=backend)
+        return [[p['kind'] for p in t['parts']] for t in api.plan_to_dict(result)['touches']]
+
+    unlocked = plan(0)
+    assert sum('sky' in t for t in unlocked) == 2
+    assert any('sky' in t and 'chain' in t for t in unlocked)
+    assert sum('sky' in t for t in plan(130)) == expected_taps
+
+
 def test_native_segmented_snake_matches_an_independently_prepared_python_graph(tmp_path):
     path = chart(tmp_path, SEGMENTED_SNAKE)
     settings = {**BASE, 'prefer_arc_trace': True, 'arc_trace_weight': 100}
@@ -310,7 +343,7 @@ def test_selected_route_validator_rejects_invalid_structure(corruption):
     from arc_hand_order.planning.native_search import _validate
     multi = SimpleNamespace(jack_weight=0, arc_takeover_weight=0, tick_contacts=True,
                             allow_misses=True, forced_misses=())
-    graph = SimpleNamespace(multi=multi)
+    graph = SimpleNamespace(multi=multi, initial_state=lambda: (-1,) * 8)
     item = SimpleNamespace(first_tick=SimpleNamespace(time_ms=100), occupation_id='target',
                            source_event_ids=('event',), is_red=False, score_weight=1, start_ms=100)
     step = {'item': 0, 'touch': None, 'hand': 0}

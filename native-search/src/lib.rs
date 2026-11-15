@@ -123,7 +123,7 @@ fn wrist_frames(py: Python<'_>, input: &str, pairs: Vec<[[f64; 2]; 2]>) -> PyRes
 #[pyfunction]
 fn implementation_id() -> String {
     format!(
-        "arc-hand-order-native/{};schema=6",
+        "arc-hand-order-native/{};schema=7",
         env!("CARGO_PKG_VERSION")
     )
 }

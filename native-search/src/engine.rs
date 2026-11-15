@@ -213,6 +213,7 @@ impl Engine {
             input,
             states: vec![State {
                 hands: [None, None],
+                last_point_press: [None; 2],
                 runs: [0, 0],
                 owned: [None, None],
                 locks: [-1; 4],
@@ -1267,19 +1268,6 @@ impl Engine {
         let prev = state.hands[hand].as_deref();
         let other = state.hands[1 - hand].as_deref();
         let mut v = zero();
-        if let Some(t) = prev {
-            if self.multi("tap_interval_ms") != 0.
-                && t.parts.len() == 1
-                && t.bridges.is_empty()
-                && new.parts.len() == 1
-                && new.bridges.is_empty()
-                && !self.item(&t.parts[0]).continuous
-                && !self.item(&new.parts[0]).continuous
-                && ((new.down - t.down) as f64) * 1000. < self.multi("tap_interval_ms") * 60.
-            {
-                return None;
-            }
-        }
         v[2] = self.movement(prev, new)?;
         if let Some(t) = prev {
             v[6] = dist(t.last(), new.first());
@@ -1424,6 +1412,16 @@ impl Engine {
     ) -> Option<State> {
         let c = &self.input.candidates[ci];
         let o = &self.input.items[c.item];
+        let point_press = self.multi("tap_interval_ms") != 0.
+            && old.is_none()
+            && matches!(o.kind.as_str(), "tap" | "sky");
+        if point_press
+            && state.last_point_press[hand].is_some_and(|previous| {
+                f64::from(new.down - previous) * 1000. < self.multi("tap_interval_ms") * 60.
+            })
+        {
+            return None;
+        }
         events.push(ExpansionEvent::Arrival(new.clone()));
         if old.is_none() {
             for p in &new.parts {
@@ -1548,6 +1546,9 @@ impl Engine {
         increment[9] = f64::from(share);
         increment[14] = f64::from(bridge);
         let mut out = state.clone();
+        if point_press {
+            out.last_point_press[hand] = Some(new.down);
+        }
         if old.is_none() && self.multi("jack_weight") != 0. {
             let fast = state.hands[hand].as_ref().is_some_and(|t| {
                 self.ms(new.down) - self.ms(t.down) < self.multi("jack_gap_ms") as i64
@@ -1898,6 +1899,13 @@ impl Engine {
     }
     fn key(&self, s: &State, f0: i32) -> Vec<u64> {
         let mut key = vec![];
+        if self.multi("tap_interval_ms") != 0. {
+            key.extend(s.last_point_press.iter().map(|press| {
+                press
+                    .filter(|p| f64::from(f0 - p) * 1000. < self.multi("tap_interval_ms") * 60.)
+                    .map_or(u64::MAX, |p| p as u64)
+            }));
+        }
         if self.opt("crossing_pass_s") != 0. {
             // This rule reads the other hand's earlier release. Python keeps
             // the complete raw state rather than merging future suffixes.

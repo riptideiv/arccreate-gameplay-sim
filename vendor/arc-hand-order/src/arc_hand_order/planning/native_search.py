@@ -46,7 +46,7 @@ def _load_extension():
     if (
         not isinstance(identity, str)
         or not identity.startswith("arc-hand-order-native/")
-        or identity.rsplit(";", 1)[-1] != "schema=6"
+        or identity.rsplit(";", 1)[-1] != "schema=7"
     ):
         raise NativeUnsupported(
             "native extension has an incompatible input schema; rebuild native-search"
@@ -365,12 +365,7 @@ def _validate(result, graph, items, candidates, reporter):
         ):
             raise RuntimeError("native search returned invalid point-cache geometry")
         graph.points[(parent, frame)] = tuple(xy)
-    state = (
-        (-1,) * 4
-        + ((0, 0) if multi.jack_weight else ())
-        + ((-1, -1) if multi.arc_takeover_weight else ())
-        + ((-1,) * 4 if multi.tick_contacts else ())
-    )
+    state = graph.initial_state()
     total = mf.MultiCost()
     current, done, skipped, step_costs = {}, [], [], []
     for index, step in enumerate(result["steps"]):

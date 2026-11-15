@@ -80,6 +80,7 @@ fn event(engine: &Engine, new: Arc<Touch>, old: Arc<Touch>) -> ExpansionEvent {
     let state = State {
         arms: None,
         hands: [Some(new.clone()), None],
+        last_point_press: [None; 2],
         runs: [0; 2],
         owned: [None, None],
         locks: [-1; 4],
