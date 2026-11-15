@@ -459,6 +459,7 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
     offset = occupations.audio_offset_ms
     fractions = options.contact_offset_fractions
     profiles = {}
+    final_arc_jobs = {}
     if options.scoring_arcs:
         if progress:
             progress('geometry')
@@ -467,6 +468,9 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         native_geometry = geometry_for(occupations.items, projection, offset)
         cells = trace_cells([o for o in items if o.kind == 'chain'], offset)
         parents = {}
+        for o in occupations.items:
+            if o.kind == 'chain':
+                final_arc_jobs[o.parent_occupation_id or o.occupation_id] = o
         for o in items:
             if o.kind == 'chain':
                 key = o.parent_occupation_id or o.occupation_id
@@ -481,7 +485,9 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
         if progress:
             progress('candidates', k, len(occupations.items), chart_ms=item.start_ms)
         if options.scoring_arcs and item.kind == 'chain':
-            fitted,pool = profiles[item.parent_occupation_id or item.occupation_id]
+            parent_key = item.parent_occupation_id or item.occupation_id
+            fitted,pool = profiles[parent_key]
+            final_arc_job = item is final_arc_jobs[parent_key]
             variants = []
             if not item.parent_occupation_id:
                 if fitted is not None:
@@ -545,22 +551,43 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
                 for down, up in spans:
                     variants.extend((down, path) for path in
                                     contact_variants(item, down, up, offset, projection, fractions))
-            candidates=[]
+            candidates = []
+            emitted = set()
             for down,path in dict.fromkeys(variants) if fractions is not None else variants:
                 path = native_geometry.guard_path(item,path,down)
-                if any(abs(x)>projection.width_m/2 or abs(y)>projection.height_m/2 for x,y in path):continue
-                up=down+len(path)
-                if any(parent==(item.parent_occupation_id or item.occupation_id) and frame_ms(down,offset)<=stop and frame_ms(up-1,offset)>=start
-                       for parent,start,stop in options.contact_exclusions):continue
-                if covers(item,path,down,offset,projection,fractions=fractions) is None:continue
-                speed=max((math.dist(a,b)*60 for a,b in zip(path,path[1:])),default=0)
-                if speed>options.speed_max_m_s*1.00001:continue
-                untouched=0
-                if not item.parent_occupation_id:
-                    untouched=max(0,frame_ms(down,offset)-item.start_ms)/1000+max(0,item.end_ms+1-frame_ms(up,offset))/1000
-                if not options.full_arc_hold:untouched=0
-                candidates.append(Candidate(next_id,k,item,down,up,path[0],path[-1],offset,speed,untouched,tuple(path)))
-                next_id+=1
+                if any(abs(x) > projection.width_m/2 or abs(y) > projection.height_m/2 for x,y in path):
+                    continue
+                caught = covers(item, path, down, offset, projection, fractions=fractions)
+                if caught is None:
+                    continue
+                releases = (path,)
+                if final_arc_job:
+                    # A standalone arc catch keeps the two samples used to
+                    # acquire its colour. Later ticks can release on the next
+                    # frame after the last catch. Nonterminal jobs can still
+                    # extend the same touch through the rest of the snake.
+                    scored_path = path[:max(2, max(caught) - down + 1)]
+                    releases = (path, scored_path) if options.full_arc_hold else (scored_path,)
+                for path in releases:
+                    if final_arc_job:
+                        key = (down, path)
+                        if key in emitted:
+                            continue
+                        emitted.add(key)
+                    up = down + len(path)
+                    if any(parent == parent_key and frame_ms(down, offset) <= stop and frame_ms(up-1, offset) >= start
+                           for parent, start, stop in options.contact_exclusions):
+                        continue
+                    speed = max((math.dist(a, b)*60 for a, b in zip(path, path[1:])), default=0)
+                    if speed > options.speed_max_m_s*1.00001:
+                        continue
+                    untouched = 0
+                    if options.full_arc_hold and not item.parent_occupation_id:
+                        untouched = (max(0, frame_ms(down, offset) - item.start_ms) / 1000
+                                     + max(0, item.end_ms + 1 - frame_ms(up, offset)) / 1000)
+                    candidates.append(Candidate(next_id, k, item, down, up, path[0], path[-1],
+                                                offset, speed, untouched, tuple(path)))
+                    next_id += 1
             groups.append(tuple(candidates));continue
         if item.parent_occupation_id:
             candidates = []

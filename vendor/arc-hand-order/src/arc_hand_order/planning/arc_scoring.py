@@ -34,9 +34,10 @@ def trace_cells(items, offset, *, include_tail=True):
     """Partition each snake's trace window between its tick jobs.
 
     Each frame is counted once, including the head and gaps between ticks.
-    The window ends at the last scoring tick unless the visual tail is included.
+    Without the visual tail, price tracing through the first frame on which
+    the last required contact can score. A later catch can still satisfy it.
     """
-    from .two_finger import frame_at_or_after
+    from .two_finger import frame_at_or_after, frame_ms
 
     parents = {}
     for item in items:
@@ -55,7 +56,9 @@ def trace_cells(items, offset, *, include_tail=True):
         )
         end = jobs[0].end_ms
         if not include_tail:
-            end = min(end, max(job.last_tick.time_ms for job in jobs))
+            opening = max(point.contact_window.earliest_ms
+                          for job in jobs for point in job.score_points)
+            end = min(end, frame_ms(frame_at_or_after(opening, offset), offset))
         boundaries.append(end + 1)
         boundaries = [
             min(end + 1, max(jobs[0].start_ms, t)) for t in boundaries
