@@ -7,7 +7,7 @@ a press could take, or settled ticks.
 """
 from __future__ import annotations
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, asdict, replace
 from functools import lru_cache
 import math
@@ -65,6 +65,7 @@ class PlannerOptions:
     # None keeps the occupation's window; 25 requests Max-PURE timing.
     point_window_ms: int | None = None
     protect_sky_presses: bool = False  # FAR retry can avoid newer native sky-tap requests.
+    protect_snake_presses: bool = False  # Try held contacts where a new snake press can take a sky note.
     full_point_window: bool = False  # Enumerate every frame in the occupation's bounded press window.
     distance_weight: float = 5.0  # cost per metre of straight-line transfer, even below comfort speed
     # Hold every arc chain from the frame it reaches the line
@@ -672,11 +673,14 @@ def build_candidates(occupations: OccupationSet, projection: GameplayProjection,
     if options.full_arc_hold or options.full_ground_hold:
         groups, next_id = _add_partial_holds(groups, projection, options, next_id)
     if fractions is not None:
-        groups = _offset_contacts(groups, projection, options, next_id)
+        groups = _offset_contacts(groups, projection, options, next_id,
+                                  native_geometry if options.scoring_arcs and options.protect_snake_presses else None)
     if options.protect_sky_presses:
         groups = _protect_sky_presses(groups, occupations.items, projection, next_id)
     if options.scoring_arcs and any(item.parent_occupation_id for item in items):
         groups = _shareable_tick_candidates(prefix, groups, projection, options)
+        if options.protect_snake_presses:
+            groups = _protect_snake_presses(groups, occupations.items, projection)
     if progress:
         progress('candidates', len(occupations.items), len(occupations.items))
     return prefix + tuple(groups)
@@ -771,8 +775,59 @@ def _protect_sky_presses(groups, items, projection, next_id):
     return result
 
 
-def _offset_contacts(groups, projection, options, next_id):
+def _protect_snake_presses(groups, items, projection):
+    """Reserve fresh presses for sky notes with overlapping request windows."""
+    from .native_input import screen_hitbox
+
+    skies = sorted((item.start_ms, target_xy(item, item.start_ms, projection))
+                   for item in items if item.kind == "sky")
+    times = [time for time, _ in skies]
+    half_x, below, above = screen_hitbox("sky", projection.width_m, projection.height_m)
+    window = rules.NATIVE_POINT_REQUEST_WINDOW_MS
+
+    def protect(candidate):
+        if candidate.occupation.kind != "chain" or candidate.share_only:
+            return candidate
+        time = candidate.down_ms
+        first = bisect_left(times, time - window)
+        stop = bisect_right(times, time + window)
+        x, y = candidate.first_xy
+        nearby = {note_time for note_time, (u, v) in skies[first:stop]
+                  if abs(x - u) <= half_x and -below <= y - v <= above}
+        # Still available to a finger that is already down. A fresh press
+        # here could score a neighbouring sky note before its planned tap.
+        return replace(candidate, share_only=True) if len(nearby) >= 2 else candidate
+
+    return [tuple(protect(c) for c in group) for group in groups]
+
+
+def _sky_snake_paths(candidate, releases, projection, fractions, geometry):
+    """Press where the sky region contains a nearby snake, then follow it."""
+    camera = geometry.camera
+    offset = candidate.audio_offset_ms
+    centre = target_xy(candidate.occupation, candidate.down_ms, projection)
+    left, bottom, right, top = camera.contact_rectangle(
+        "sky", *camera.unproject(centre, 2), fractions)
+    nearby = {id(note): note for frame in (candidate.down_frame, candidate.down_frame + 1)
+              for _, note in geometry.active_notes.get(frame, ())}
+    for note in nearby.values():
+        xy = projection.judgement_to_device(*note.position(max(candidate.down_ms, note.start)))
+        if not (left <= xy[0] <= right and bottom <= xy[1] <= top):
+            continue
+        yield (xy,) * (candidate.up_frame - candidate.down_frame)
+        end = frame_at_or_after(note.end + 1, offset)
+        for release in releases:
+            stop = min(release, end)
+            if stop > candidate.up_frame:
+                yield tuple(projection.judgement_to_device(*note.position(
+                    min(max(frame_ms(frame, offset), note.start), note.end)))
+                    for frame in range(candidate.down_frame, stop))
+
+
+def _offset_contacts(groups, projection, options, next_id, native_geometry=None):
     """Expand spatial choices at a few press times; retain centre timing resolution."""
+    sky_times = (sorted({g[0].occupation.start_ms for g in groups if g and g[0].occupation.kind == "sky"})
+                 if native_geometry is not None else [])
     result = []
     for group in groups:
         if not group or group[0].occupation.native_scoring:
@@ -782,16 +837,27 @@ def _offset_contacts(groups, projection, options, next_id):
         times = {c.down_frame for c in group}
         nominal = min(group, key=lambda c: abs(c.down_ms - item.start_ms)).down_frame
         sampled = {min(times), nominal, max(times)}
+        on_snakes = native_geometry is not None and item.kind == "sky"
+        if on_snakes:
+            # Leave lift room before either of the next two taps. The beam
+            # decides which, if either, comes back to this finger.
+            follow = bisect_right(sky_times, item.start_ms)
+            releases = [frame_at_or_after(ms, group[0].audio_offset_ms) - options.min_air_frames
+                        for ms in sky_times[follow:follow + 2] if ms - item.start_ms <= 200]
         variants = []
         for c in group:
             edges = item.continuous_contact or c.down_frame in sampled
             paths = contact_variants(c.occupation, c.down_frame, c.up_frame, c.audio_offset_ms,
                                      projection, options.contact_offset_fractions, edges=edges,
                                      corners=c.down_frame == nominal and item.kind != "chain")
+            if on_snakes and abs(c.down_frame - nominal) <= 1:
+                paths = tuple(dict.fromkeys((*paths, *_sky_snake_paths(
+                    c, releases, projection, options.contact_offset_fractions, native_geometry))))
             for path in paths:
                 speed = max((math.dist(a, b)*60 for a,b in zip(path,path[1:])), default=0.0)
                 if speed <= options.speed_max_m_s * 1.00001:
-                    variants.append(replace(c, id=next_id, first_xy=path[0], last_xy=path[-1],
+                    variants.append(replace(c, id=next_id, up_frame=c.down_frame + len(path),
+                                            first_xy=path[0], last_xy=path[-1],
                                             max_contact_sample_speed_m_s=speed, contact_path=path))
                     next_id += 1
         result.append(tuple(variants))

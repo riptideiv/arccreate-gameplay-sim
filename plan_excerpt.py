@@ -11,7 +11,9 @@ from pathlib import Path
 from arc_hand_order import api
 from arc_hand_order.chart.arc_connections import connect_arcs
 from arc_hand_order.planning.native_input import DEFAULT_CONTACT_OFFSET_X_PERCENT, DEFAULT_CONTACT_OFFSET_Y_PERCENT
-from arc_hand_order.planning.rules import NATIVE_FAR_WINDOW_MS, NATIVE_PERFECT_WINDOW_MS
+from arc_hand_order.planning.rules import (
+    NATIVE_FAR_WINDOW_MS, NATIVE_MAX_WINDOW_MS, NATIVE_PERFECT_WINDOW_MS, NATIVE_POINT_REQUEST_WINDOW_MS,
+)
 from arc_hand_order.planning.occupations import occupations_from_chart, TimeWindow
 from arc_hand_order.planning.multi_finger import NoCandidatePath
 
@@ -42,6 +44,13 @@ def point_windows(occupations, duration, timing_window):
             item = replace(item, down_window=window, score_points=points)
         items.append(item)
     return replace(occupations, items=tuple(items))
+
+
+def dense_skies_over_snakes(items):
+    times = sorted({item.start_ms for item in items if item.kind == 'sky'})
+    snakes = [(item.start_ms, item.end_ms) for item in items if item.kind == 'chain']
+    return any(b-a <= NATIVE_POINT_REQUEST_WINDOW_MS and any(start <= a < b <= end for start, end in snakes)
+               for a,b in zip(times, times[1:]))
 
 
 def create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=False,
@@ -253,6 +262,28 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                         attempt += 1
 
         split_error = None
+        if result is None and can_retry_intact and dense_skies_over_snakes(native_items):
+            # Where sky requests overlap, look for a MAX plan whose sky
+            # presses can also catch the snake ticks. Fresh snake catches at
+            # those positions can take a sky note before its intended press.
+            retry = 'held_sky'
+            held_items = point_windows(local_retry or split, duration, NATIVE_MAX_WINDOW_MS)
+            if checkpoint is not None:
+                prefix = checkpoint.items
+                held_items = replace(held_items, items=prefix + held_items.items[len(prefix):])
+            try:
+                held = api.plan_chart(
+                    excerpt, multi=multi, planner={**planner, "protect_snake_presses": True},
+                    occupation_set=held_items, progress=report, checkpoint=checkpoint,
+                    search_backend=search_backend, search_workers=search_workers,
+                )
+            except NoCandidatePath:
+                pass
+            else:
+                if not (held.plan.cost.missed_ticks or held.plan.cost.non_max_taps):
+                    result = held
+            if result is None:
+                attempt += 1
         if result is None:
             retry = 'split'
             try:

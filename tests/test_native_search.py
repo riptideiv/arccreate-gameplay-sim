@@ -173,6 +173,34 @@ def test_shared_sky_press_counts_toward_minimum_tap_interval(tmp_path, backend, 
     assert sum('sky' in t for t in plan(130)) == expected_taps
 
 
+def test_dense_sky_candidates_follow_snakes_and_reserve_new_presses_for_taps(tmp_path):
+    from arc_hand_order import api
+    from arc_hand_order.planning.arc_scoring import native_occupations
+    from arc_hand_order.planning.occupations import occupations_from_chart
+    from arc_hand_order.planning.projection import GameplayProjection
+    from arc_hand_order.planning.two_finger import PlannerOptions, build_candidates
+    from plan_excerpt import point_windows, split_arc_ticks
+
+    path = chart(tmp_path, 'timing(0,172,4);'
+                 'arc(1000,1290,.42,.42,s,0,.08,0,none,false);'
+                 'arc(1000,1290,.58,.58,s,0,.08,1,none,false);'
+                 'arc(1000,1262,.5,.5,s,0,.08,0,none,true)'
+                 '[arctap(1000),arctap(1087),arctap(1174),arctap(1262)];')
+    loaded = api.load_chart(path)
+    items = native_occupations(occupations_from_chart(loaded.chart), chart_events=loaded.chart.events)
+    items = point_windows(split_arc_ticks(items), 2000, 25)
+    projection = GameplayProjection(api.load_device())
+    options = PlannerOptions(scoring_arcs=True, point_contact_frames=1, min_air_frames=1,
+                             full_point_window=True, contact_offset_fractions=(.6, .3),
+                             protect_snake_presses=True)
+    candidates = [c for group in build_candidates(items, projection, options) for c in group]
+    held = [c for c in candidates if c.occupation.kind == 'sky' and c.up_frame - c.down_frame > 2]
+    assert any(c.first_xy[0] < 0 and c.first_xy != c.last_xy for c in held)
+    assert any(c.first_xy[0] > 0 and c.first_xy != c.last_xy for c in held)
+    snake_presses = [c for c in candidates if c.occupation.kind == 'chain' and 1067 <= c.down_ms <= 1167]
+    assert snake_presses and all(c.share_only for c in snake_presses)
+
+
 def test_native_segmented_snake_matches_an_independently_prepared_python_graph(tmp_path):
     path = chart(tmp_path, SEGMENTED_SNAKE)
     settings = {**BASE, 'prefer_arc_trace': True, 'arc_trace_weight': 100}
