@@ -17,6 +17,7 @@ TIP = 0.006
 SIDES = ("left", "right")
 SAMPLE_RATE = 60
 FPS = 30
+TABLET_BEZEL_M = .013
 # Shared geometry and pose model; the index-pad centre is the root pivot.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hand_pose import (
@@ -75,12 +76,12 @@ def sphere(name, xyz, radii, collection):
     return obj
 
 
-def hand_mesh(side, collection, glove, cuff, *, articulated_thumb=False):
+def hand_mesh(side, collection, glove, cuff, *, articulated_thumb=False, scale=1.):
     root = bpy.data.objects.new(f"{side.title()} index target", None)
     collection.objects.link(root)
     root.empty_display_size = 0.008
     pieces = []
-    for name, center, radii in hand_parts(side):
+    for name, center, radii in hand_parts(side, scale):
         if articulated_thumb and name == "tucked thumb":
             continue
         piece = sphere(name, center, radii, collection)
@@ -108,9 +109,9 @@ def hand_mesh(side, collection, glove, cuff, *, articulated_thumb=False):
     return root
 
 
-def hand_parts(side):
+def hand_parts(side, scale=1.):
     sign = 1 if side == "left" else -1
-    return [(name, Vector((sign * xyz[0], xyz[1], xyz[2])), radii)
+    return [(name, Vector((sign * xyz[0], xyz[1], xyz[2])) * scale, tuple(r * scale for r in radii))
             for name, xyz, radii in HAND_PARTS]
 
 
@@ -148,13 +149,13 @@ def rotation(pitch, yaw):
 HAND_RADIUS = max(Vector(center).length + max(radii) for _, center, radii in HAND_PARTS) + 0.002
 
 
-def step_speed(a, b, before, after):
+def step_speed(a, b, before, after, hand_radius=HAND_RADIUS):
     translation = (b-a).length * SAMPLE_RATE
     angular = math.sqrt(sum((x-y)**2 for x, y in zip(before, after))) * SAMPLE_RATE
-    return translation, angular, translation + HAND_RADIUS * math.radians(angular)
+    return translation, angular, translation + hand_radius * math.radians(angular)
 
 
-def motion_report(paths, poses, max_speed, angular_limit, gap):
+def motion_report(paths, poses, max_speed, angular_limit, gap, hand_radius=HAND_RADIUS):
     report = {"max_speed_m_s": max_speed, "angular_limit_deg_s": angular_limit,
               "minimum_clearance_mm": None, "collision_verification": False,
               "hands": {}, "sample_rate_hz": SAMPLE_RATE}
@@ -162,7 +163,7 @@ def motion_report(paths, poses, max_speed, angular_limit, gap):
         samples = [[0, 0, 0]]
         for frame in range(1, len(poses)):
             samples.append(list(step_speed(paths[i][frame-1], paths[i][frame],
-                                           poses[frame-1][i], poses[frame][i])))
+                                           poses[frame-1][i], poses[frame][i], hand_radius)))
         peak = max(range(len(samples)), key=lambda f: samples[f][2])
         report["hands"][side] = {
             "peak_translation_m_s": max(s[0] for s in samples),
@@ -180,7 +181,8 @@ def motion_report(paths, poses, max_speed, angular_limit, gap):
 
 
 def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0.001,
-                  idle_speed=1.0, physical=None, instructions=None, *, allow_clipping=False, progress=None):
+                  idle_speed=1.0, physical=None, instructions=None, *, allow_clipping=False, progress=None,
+                  hand_scale=1., thumb_targets=None):
     """Pose around pinned contacts and check the touch planner's arm layers."""
     from crossing_motion import validate, verify
 
@@ -190,8 +192,12 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
         active[list(samples), h] = True
     physical = active if physical is None else physical
     neutral = np.broadcast_to([[10., -18.], [10., 18.]], (*points.shape[:2], 2))
-    motion_report(paths, neutral, max_speed, angular_limit, gap)
-    parts = [hand_parts(s) for s in SIDES]
+    hand_radius = HAND_RADIUS * hand_scale
+    motion_report(paths, neutral, max_speed, angular_limit, gap, hand_radius)
+    parts = [hand_parts(s, hand_scale) for s in SIDES]
+    if thumb_targets is not None:
+        from multifinger import fit_thumb_yaw
+        parts = [[part for part in hand if part[0] != "tucked thumb"] for hand in parts]
     routes = None
     if instructions is not None:
         validate(points, instructions, locked=physical)
@@ -202,10 +208,17 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
             idle_speed=idle_speed, arm_weight=ARM_WEIGHT, routes=routes, progress=progress,
         )
         output = [[Vector(p) for p in solved[:, h]] for h in range(2)]
-        report = motion_report(output, angles, max_speed, angular_limit, gap)
+        if thumb_targets is not None:
+            angles = fit_thumb_yaw(output, angles, thumb_targets, SIDES, hand_scale, angular_limit,
+                                   max_speed, hand_radius)
+            posing.update(diagnostics(solved, angles, parts, gap))
+        report = motion_report(output, angles, max_speed, angular_limit, gap, hand_radius)
     except (RuntimeError, ValueError) as error:
         solved, angles, output = points, neutral, paths
-        report = motion_report(output, angles, max_speed, angular_limit, gap)
+        if thumb_targets is not None:
+            angles = fit_thumb_yaw(output, angles, thumb_targets, SIDES, hand_scale, angular_limit,
+                                   max_speed, hand_radius)
+        report = motion_report(output, angles, max_speed, angular_limit, gap, hand_radius)
         posing = diagnostics(solved, angles, parts, gap)
         posing.update(solver=POSE_VERSION, pose_solver_fallback_reason=str(error))
     if progress:
@@ -243,6 +256,7 @@ def webgl_motion(paths, poses, plan, settings, report, thumbs=None):
             "duration_s": (len(poses)-1)/SAMPLE_RATE - plan["chart"]["audio_offset_ms"]/1000,
             "hands": hands, "screen_mm": plan["device"]["screen_mm"],
             "settings": settings, "misses": plan.get("misses", []),
+            **({"hand_scale": report["hand_calibration"]["scale"]} if "hand_calibration" in report else {}),
             **({"thumbs": {side: ((joints + np.asarray(CENTER))[..., [0, 2, 1]]
                                   * [1, 1, -1]).round(7).tolist()
                            for side, joints in thumbs.items()}} if thumbs is not None else {}),
@@ -258,9 +272,9 @@ def linear(obj):
             key.interpolation = "LINEAR"
 
 
-def animate_thumb(side, joints, audio_offset, collection, glove):
+def animate_thumb(side, joints, audio_offset, collection, glove, scale):
     names = ("thumb proximal", "thumb distal", "thumb pad")
-    axes = ((.008, .008, 1.), (.007, .007, 1.), (TIP,)*3)
+    axes = ((.008*scale, .008*scale, 1.), (.007*scale, .007*scale, 1.), (TIP*scale,)*3)
     pieces = [sphere(f"{side.title()} {name}", (0, 0, 0), radii, collection)
               for name, radii in zip(names, axes)]
     for obj in pieces:
@@ -274,7 +288,7 @@ def animate_thumb(side, joints, audio_offset, collection, glove):
             axis = end - start
             piece.location = (start + end) / 2
             piece.rotation_quaternion = up.rotation_difference(axis) if axis.length > 1e-8 else (1., 0., 0., 0.)
-            piece.scale.z = axis.length / 2 + .004
+            piece.scale.z = axis.length / 2 + .004 * scale
             for channel in ("location", "rotation_quaternion", "scale"):
                 piece.keyframe_insert(channel, frame=frame)
         pieces[2].location = tip
@@ -287,7 +301,7 @@ def screen(plan, movie, frame_count, collection):
     width, height = (value / 1000 for value in plan["device"]["screen_mm"])
     case = material("Tablet | satin aluminum", (0.085, 0.13, 0.21), metal=0.65)
     rim = material("Tablet | black glass edge", (0.013, 0.021, 0.034), roughness=0.24)
-    bezel_x, bezel_y = width + 0.013, height + 0.013
+    bezel_x, bezel_y = width + TABLET_BEZEL_M, height + TABLET_BEZEL_M
     box("Tablet chassis", (bezel_x, bezel_y, 0.010),
         CENTER + Vector((0, 0, -0.008)), case, collection, 0.004)
     box("Tablet bezel", (bezel_x-0.001, bezel_y-0.001, 0.004),
@@ -389,11 +403,15 @@ def main():
     if any(detour["hand"] not in SIDES for detour in planned_travel):
         raise ValueError("Invalid hand in planned travel")
     thumbs = None
+    hand_scale = 1.
+    calibration = None
     if multifinger:
-        from multifinger import index_paths, samples
-        thumbs = {side: samples(fingers[(side, 2)]) for side in SIDES}
+        from multifinger import hand_calibration, index_paths, samples
+        calibration = hand_calibration(plan["device"]["screen_mm"][1] / 1000 + TABLET_BEZEL_M)
+        hand_scale = calibration["scale"]
+        thumbs = {side: samples(fingers[(side, 2)], hand_scale) for side in SIDES}
         index, active_samples, physical = index_paths(
-            contacts, thumbs, SIDES, last_frame, lift, max_speed, idle_speed)
+            contacts, thumbs, SIDES, last_frame, lift, max_speed, idle_speed, scale=hand_scale)
         paths = [[Vector(p) for p in path] for path in index]
         physical_samples = [set(np.flatnonzero(physical[:, h])) for h in range(2)]
     else:
@@ -417,7 +435,8 @@ def main():
         for h, samples in enumerate(physical_samples):
             active[list(samples), h] = True
         signature = pose_cache.request_key(base, active, settings, crossings=instructions,
-                                           fixed=active_samples if multifinger else None)
+                                           fixed=active_samples if multifinger else None,
+                                           thumbs=thumbs)
         cached = pose_cache.read(args.pose_cache_dir, signature, base, active)
         if cached:
             points, poses, report = cached
@@ -427,7 +446,8 @@ def main():
             paths, poses, report = pose_sequence(paths, active_samples, max_speed, angular_limit,
                                                 settings.get("clearance_mm", 1)/1000, idle_speed,
                                                 physical=active, instructions=instructions,
-                                                allow_clipping=settings.get("allow_clipping", False), progress=progress)
+                                                allow_clipping=settings.get("allow_clipping", False), progress=progress,
+                                                hand_scale=hand_scale, thumb_targets=thumbs)
             points = np.stack([np.array([tuple(p) for p in path]) for path in paths], axis=1)
             pose_cache.write(args.pose_cache_dir, signature, points, np.array(poses), report, base, active)
         report['pose_cache'] = {'hit': cached is not None, 'key': signature}
@@ -441,7 +461,8 @@ def main():
         from multifinger import thumb_joints
         report["thumb_contacts"] = sum(len(fingers[(side, 2)]) for side in SIDES)
         report["multifinger"] = True
-        thumbs = thumb_joints(paths, poses, thumbs, SIDES)
+        report["hand_calibration"] = calibration
+        thumbs = thumb_joints(paths, poses, thumbs, SIDES, scale=hand_scale)
         report["peak_thumb_speed_m_s"] = {
             side: float(np.linalg.norm(np.diff(joints[:, 2], axis=0), axis=-1).max(initial=0) * SAMPLE_RATE)
             for side, joints in thumbs.items()
@@ -468,7 +489,7 @@ def main():
     for i, side in enumerate(SIDES):
         cuff = material(f"{side.title()} | cuff", cuffs[i], roughness=0.47)
         glove = material(f"{side.title()} | glove", gloves[i], roughness=0.39)
-        root = hand_mesh(side, collection, glove, cuff, articulated_thumb=multifinger)
+        root = hand_mesh(side, collection, glove, cuff, articulated_thumb=multifinger, scale=hand_scale)
         for sample, (position, pose) in enumerate(zip(paths[i], poses)):
             frame = timeline_frame(sample, plan["chart"]["audio_offset_ms"])
             root.location = CENTER + position
@@ -477,7 +498,7 @@ def main():
             root.keyframe_insert("rotation_euler", frame=frame)
         linear(root)
         if thumbs is not None:
-            animate_thumb(side, thumbs[side], plan["chart"]["audio_offset_ms"], collection, glove)
+            animate_thumb(side, thumbs[side], plan["chart"]["audio_offset_ms"], collection, glove, hand_scale)
     distance = settings.get("camera_distance_m", 0.29)
     elevation = math.radians(settings.get("camera_elevation_deg", 52))
     yaw = math.radians(settings.get("camera_yaw_deg", 0))

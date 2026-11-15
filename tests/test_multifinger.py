@@ -5,7 +5,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from hand_pose import NEUTRAL
-from multifinger import assign_digits, index_paths, samples, thumb_joints
+from multifinger import (
+    THUMB_LENGTH_M, assign_digits, fit_thumb_yaw, hand_calibration, index_paths, samples, thumb_joints,
+)
 
 
 def touch(finger, x, y, down=4, up=16, kind="hold"):
@@ -19,14 +21,20 @@ def test_upper_contact_becomes_index_and_lower_contact_becomes_thumb():
     assert lower["finger"] == 2 and upper["finger"] == 1
 
     contacts = {"left": [upper], "right": []}
-    thumbs = {"left": samples([lower]), "right": {}}
-    paths, _, active = index_paths(contacts, thumbs, ("left", "right"), 45, .012, 4, .7)
+    calibration = hand_calibration(.1735)
+    scale = calibration["scale"]
+    np.testing.assert_allclose(calibration["open_reach_mm"] * 1.95, 173.5)
+    thumbs = {"left": samples([lower], scale), "right": {}}
+    paths, _, active = index_paths(contacts, thumbs, ("left", "right"), 45, .012, 4, .7, scale=scale)
     poses = np.broadcast_to(NEUTRAL, (46, 2, 2))
-    joints = thumb_joints(paths, poses, thumbs, ("left", "right"))
-    for frame, position in samples([upper]).items():
+    poses = fit_thumb_yaw(paths, poses, thumbs, ("left", "right"), scale, 360, 4, .08 * scale)
+    joints = thumb_joints(paths, poses, thumbs, ("left", "right"), scale=scale)
+    for frame, position in samples([upper], scale).items():
         assert active[frame, 0]
         np.testing.assert_allclose(paths[0][frame], position)
         np.testing.assert_allclose(joints["left"][frame, 2], thumbs["left"][frame])
+    np.testing.assert_allclose(np.linalg.norm(np.diff(joints["left"], axis=1), axis=-1),
+                               THUMB_LENGTH_M * scale / 2)
     # An inactive thumb rests straight along the side of the hand.
     a, b, c = joints["right"][0]
     np.testing.assert_allclose(b-a, c-b, atol=1e-10)

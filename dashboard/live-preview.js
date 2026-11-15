@@ -179,7 +179,7 @@ export class RhythmPreview {
           const length = axis.length();
           pieces[i].position.copy(start).lerp(end, .5);
           if (length > 1e-8) pieces[i].quaternion.setFromUnitVectors(this.thumbUp, axis.multiplyScalar(1 / length));
-          pieces[i].scale.set(1, length / 2 + .004, 1);
+          pieces[i].scale.set(1, length / 2 + .004 * (this.motion.hand_scale ?? 1), 1);
         }
         pieces[2].position.copy(this.thumbJoints[2]);
       }

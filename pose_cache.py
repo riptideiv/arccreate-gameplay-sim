@@ -22,7 +22,7 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
-def request_key(points, active, settings, root=None, *, crossings=None, fixed=None):
+def request_key(points, active, settings, root=None, *, crossings=None, fixed=None, thumbs=None):
     root = Path(root or Path(__file__).resolve().parent)
     digest = hashlib.sha256(SCHEMA.encode())
     options = {k: float(settings.get(k, v)) for k, v in POSE_DEFAULTS.items()}
@@ -31,6 +31,9 @@ def request_key(points, active, settings, root=None, *, crossings=None, fixed=No
     digest.update(canonical(crossings).encode())
     if fixed is not None:
         digest.update(canonical([sorted(int(f) for f in frames) for frames in fixed]).encode())
+    if thumbs is not None:
+        digest.update(canonical({side: {frame: point.tolist() for frame, point in samples.items()}
+                                 for side, samples in thumbs.items()}).encode())
     for value, dtype in ((points, '<f8'), (active, '?')):
         array = np.asarray(value, dtype=dtype)
         digest.update(str(array.shape).encode()); digest.update(array.tobytes())

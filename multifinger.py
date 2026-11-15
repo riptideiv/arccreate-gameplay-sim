@@ -5,6 +5,31 @@ import numpy as np
 from arc_hand_order.planning.hand_travel import TIP, home_position, span, travel
 from hand_pose import bases
 
+THUMB_BASE = np.array([.003, -.040, .010])
+THUMB_REST = np.array([.014, -.009, .011])
+THUMB_LENGTH_M = float(np.linalg.norm(THUMB_REST - THUMB_BASE))
+THUMB_OPEN_DEG = 115
+TABLET_TO_REACH = 1.95
+
+
+def hand_calibration(tablet_height_m):
+    # Measure the pad-to-pad reach on the glass. The thumb starts above it,
+    # so only the planar component of its original length contributes here.
+    angle = np.deg2rad(THUMB_OPEN_DEG)
+    projected_thumb = np.sqrt(THUMB_LENGTH_M**2 - THUMB_BASE[2]**2)
+    open_thumb = THUMB_BASE[:2] + projected_thumb * np.array([np.sin(angle), np.cos(angle)])
+    original_reach = float(np.linalg.norm(open_thumb))
+    scale = max(1., tablet_height_m / (TABLET_TO_REACH * original_reach))
+    return {
+        "thumb_open_deg": THUMB_OPEN_DEG,
+        "original_thumb_length_mm": THUMB_LENGTH_M * 1000,
+        "original_open_reach_mm": original_reach * 1000,
+        "scale": scale,
+        "thumb_length_mm": THUMB_LENGTH_M * scale * 1000,
+        "open_reach_mm": original_reach * scale * 1000,
+        "tablet_height_mm": tablet_height_m * 1000,
+    }
+
 
 def assign_digits(touches, tap_interval_ms, min_air_frames, max_speed):
     """Orient each connected set of interchangeable planner slots anatomically."""
@@ -61,23 +86,24 @@ def assign_digits(touches, tap_interval_ms, min_air_frames, max_speed):
                 touch["finger"] = 3 - touch["finger"]
 
 
-def samples(touches):
-    return {frame: np.array([x / 1000, y / 1000, TIP])
+def samples(touches, scale=1.):
+    return {frame: np.array([x / 1000, y / 1000, TIP * scale])
             for touch in touches
             for frame, (x, y) in enumerate(touch["path_mm"], touch["down_frame"])}
 
 
-def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed):
+def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed, *, scale=1.):
     """Anchor the hand with the thumb when its index is free."""
     paths = []
     fixed = []
     physical = np.zeros((last_frame + 1, 2), dtype=bool)
     for h, side in enumerate(sides):
-        home = home_position(side, lift)
+        home = home_position(side, lift) + [0, 0, TIP * (scale-1)]
         anchors = {0: home}
         sign = 1 if side == "left" else -1
-        thumb_only = {f: point - [sign * .028, -.046, -lift] for f, point in thumbs[side].items()}
-        index = samples(contacts[side])
+        thumb_only = {f: point - [sign * .028 * scale, -.046 * scale, -lift]
+                      for f, point in thumbs[side].items()}
+        index = samples(contacts[side], scale)
         physical[list(index), h] = True
         anchors.update(thumb_only)
         anchors.update(index)
@@ -91,16 +117,56 @@ def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed
     return paths, fixed, physical
 
 
-def thumb_joints(paths, poses, thumbs, sides):
+def fit_thumb_yaw(paths, poses, thumbs, sides, scale, angular_limit, max_speed, hand_radius):
+    """Choose a smooth wrist yaw inside the fixed-length thumb's reach."""
+    result = np.array(poses, dtype=float, copy=True)
+    length = THUMB_LENGTH_M * scale
+    for h, side in enumerate(sides):
+        if not thumbs[side]:
+            continue
+        origin = np.asarray(paths[h], dtype=float)
+        pitch, preferred = result[:, h].T
+        base = THUMB_BASE * [(-1 if side == "right" else 1), 1, 1] * scale
+        base_at_pitch = bases(np.column_stack((pitch, np.zeros(len(pitch))))) @ base
+        lower = np.full(len(pitch), -np.inf)
+        upper = np.full(len(pitch), np.inf)
+        for frame, point in thumbs[side].items():
+            delta = point - origin[frame]
+            base_vec = base_at_pitch[frame]
+            a, b = np.linalg.norm(delta[:2]), np.linalg.norm(base_vec[:2])
+            cos_limit = (a*a + b*b + (delta[2]-base_vec[2])**2 - length**2) / max(2*a*b, 1e-12)
+            if cos_limit > 1. + 1e-7:
+                raise ValueError(f"{side.title()} thumb is out of reach at {frame/60:.3f} s")
+            centre = np.degrees(np.arctan2(delta[1], delta[0]) - np.arctan2(base_vec[1], base_vec[0]))
+            centre = preferred[frame] + (centre - preferred[frame] + 180) % 360 - 180
+            limit = np.degrees(np.arccos(np.clip(cos_limit, -1, 1)))
+            lower[frame], upper[frame] = centre-limit, centre+limit
+        speeds = np.linalg.norm(np.diff(origin, axis=0), axis=-1) * 60
+        rotation = np.minimum(angular_limit, np.degrees(np.maximum(0, max_speed-speeds)/hand_radius)) / 60
+        budget = np.sqrt(np.maximum(0, rotation**2 - np.diff(pitch)**2))
+        for frame in range(len(pitch)-2, -1, -1):
+            lower[frame] = max(lower[frame], lower[frame+1]-budget[frame])
+            upper[frame] = min(upper[frame], upper[frame+1]+budget[frame])
+        if np.any(lower > upper + 1e-7):
+            raise ValueError(f"{side.title()} wrist cannot turn fast enough to reach the thumb contacts")
+        preferred[0] = np.clip(preferred[0], lower[0], upper[0])
+        for frame, step in enumerate(budget, 1):
+            lo = max(lower[frame], preferred[frame-1]-step)
+            hi = min(upper[frame], preferred[frame-1]+step)
+            preferred[frame] = np.clip(preferred[frame], lo, hi)
+    return result
+
+
+def thumb_joints(paths, poses, thumbs, sides, *, scale=1.):
     """Return base, knuckle and pad positions in tablet space for each thumb."""
     result = {}
     for h, side in enumerate(sides):
         sign = 1 if side == "left" else -1
         origin = np.asarray(paths[h], dtype=float)
         axes = bases(np.asarray(poses)[:, h])
-        base = np.array([sign * .003, -.040, .010])
+        base = THUMB_BASE * [sign, 1, 1] * scale
         # The thumb points along the index at rest, clear of the glass.
-        rest = np.array([sign * .014, -.009, .011])
+        rest = THUMB_REST * [sign, 1, 1] * scale
         anchors = {0: rest}
         for frame, target in thumbs[side].items():
             anchors[frame] = axes[frame].T @ (target - origin[frame])
@@ -117,9 +183,17 @@ def thumb_joints(paths, poses, thumbs, sides):
                 tips[b-9:b+1] = travel(rest, end, 9, 0, np.inf)
             else:
                 tips[a:b+1] = travel(start, end, b-a, 0, np.inf)
-        bend = np.clip(np.linalg.norm(tips-rest, axis=-1) * .15, 0, .008)
-        middle = (base + tips) / 2
-        middle[:, 2] += bend
+        axis = tips - base
+        distance = np.linalg.norm(axis, axis=-1)
+        length = THUMB_LENGTH_M * scale
+        if distance.max() > length + 1e-7:
+            raise ValueError(f"{side.title()} thumb cannot reach its target at a fixed length")
+        direction = axis / np.maximum(distance[:, None], 1e-12)
+        up = np.array([0., 0., 1.]) - direction[:, 2, None] * direction
+        vertical = np.linalg.norm(up, axis=-1) < 1e-8
+        up[vertical] = [sign, 0, 0]
+        bend = np.sqrt(np.maximum(0, length**2 - distance**2)) / 2
+        middle = (base + tips) / 2 + up / np.linalg.norm(up, axis=-1)[:, None] * bend[:, None]
         local = np.stack((np.broadcast_to(base, tips.shape), middle, tips), axis=1)
         world = np.einsum("fij,fkj->fki", axes, local) + origin[:, None]
         # Pinned pad coordinates use the identical replay samples.
