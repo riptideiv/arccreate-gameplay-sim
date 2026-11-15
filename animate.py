@@ -195,12 +195,10 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
     hand_radius = HAND_RADIUS * hand_scale
     motion_report(paths, neutral, max_speed, angular_limit, gap, hand_radius)
     parts = [hand_parts(s, hand_scale) for s in SIDES]
-    thumb_contact = None
+    pitch_ceiling = None
     if thumb_targets is not None:
-        from multifinger import fit_thumb_yaw
-        thumb_contact = np.zeros_like(active)
-        for hand, side in enumerate(SIDES):
-            thumb_contact[list(thumb_targets[side]), hand] = True
+        from multifinger import fit_thumb_yaw, thumb_pitch_ceiling
+        pitch_ceiling = thumb_pitch_ceiling(points, thumb_targets, SIDES, hand_scale, thumb_length)
         parts = [[part for part in hand if part[0] != "tucked thumb"] for hand in parts]
     routes = None
     if instructions is not None:
@@ -210,7 +208,7 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
         solved, angles, posing = solve_hand_poses(
             points, active, parts, max_speed, angular_limit, gap,
             idle_speed=idle_speed, arm_weight=ARM_WEIGHT, routes=routes, progress=progress,
-            thumb_contact=thumb_contact,
+            pitch_ceiling=pitch_ceiling,
         )
         output = [[Vector(p) for p in solved[:, h]] for h in range(2)]
         if thumb_targets is not None:

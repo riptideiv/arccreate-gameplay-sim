@@ -6,7 +6,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from hand_pose import NEUTRAL
 from multifinger import (
-    assign_digits, fit_thumb_yaw, hand_calibration, index_paths, samples, thumb_joints,
+    assign_digits, feasible_yaw, fit_thumb_yaw, hand_calibration, index_paths, samples, smooth_thumb_yaw, thumb_joints,
 )
 
 
@@ -48,3 +48,25 @@ def test_relabeling_keeps_close_point_presses_on_different_digits():
     second = touch(2, -30, -40, down=10, up=11, kind="tap")
     assign_digits([first, second], 130, 1, 4)
     assert first["finger"] != second["finger"]
+
+
+
+def test_thumb_yaw_eases_a_turn_into_and_out_of_contact():
+    preferred = np.zeros(100)
+    lower = np.full_like(preferred, -np.inf)
+    upper = np.full_like(preferred, np.inf)
+    lower[45:55] = upper[45:55] = 36.
+    budget = np.full(len(preferred) - 1, 6.)
+    greedy = feasible_yaw(preferred, lower, upper, budget)
+    greedy_acceleration = np.diff(greedy, n=2)
+    yaw = feasible_yaw(preferred, lower, upper, np.minimum(budget, 2.5))
+
+    smooth_thumb_yaw(yaw, preferred, lower, upper, budget, range(45, 55))
+
+    np.testing.assert_allclose(yaw[45:55], 36.)
+    assert np.abs(np.diff(yaw)).max() <= budget.max() + 1e-9
+    acceleration = np.diff(yaw, n=2)
+    assert np.abs(acceleration).max() < np.abs(greedy_acceleration).max()
+    assert np.sum(acceleration**2) < np.sum(greedy_acceleration**2)
+    np.testing.assert_array_equal(yaw[:27], 0.)
+    np.testing.assert_array_equal(yaw[73:], 0.)

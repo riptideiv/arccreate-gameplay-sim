@@ -445,7 +445,7 @@ def solve(
     routes=None,
     *,
     progress=None,
-    thumb_contact=None,
+    pitch_ceiling=None,
 ):
     points = np.asarray(points, dtype=float)
     active = np.asarray(active, dtype=bool)
@@ -491,6 +491,8 @@ def solve(
         )
     # Each state is a pair of pitch/yaw choices. The pad centre is the pivot.
     pitches = (10, 25, 40, 55, 70, 85) if angular_limit < 200 else (10, 30, 50, 70, 85)
+    if pitch_ceiling is not None and np.any(pitch_ceiling == 0):
+        pitches = (0, *pitches)
     yaws = (
         sorted(set(range(-150, 151, 15)) | {-18, 18})
         if angular_limit < 200
@@ -514,10 +516,10 @@ def solve(
     )
     cumulative = np.vstack((np.zeros(2), np.cumsum(budgets, axis=0)))
     knots = np.r_[np.arange(0, count, stride), count - 1]
-    if thumb_contact is not None:
+    if pitch_ceiling is not None:
         # Keep the base low while the short thumb is on the glass. Key both
         # sides of a contact interval so interpolation cannot raise it inside.
-        contact_edges = np.flatnonzero(np.any(thumb_contact[1:] != thumb_contact[:-1], axis=1))
+        contact_edges = np.flatnonzero(np.any(pitch_ceiling[1:] != pitch_ceiling[:-1], axis=1))
         knots = np.r_[knots, contact_edges, contact_edges + 1]
     knots = np.unique(knots)
     neutral = np.sum((states - NEUTRAL) ** 2, axis=(1, 2)) / 10000
@@ -560,8 +562,8 @@ def solve(
             penalty += arm_weight * arm_cost(centres, rotations, parts, gap, None if swivels is None else swivels[f],
                                              yaw_preference=yaw_preference)
         penalty += crossing_penalty(centres, states, f)
-        if thumb_contact is not None:
-            high_wrist = np.any(thumb_contact[f] & (states[..., 0] > NEUTRAL[:, 0]), axis=1)
+        if pitch_ceiling is not None:
+            high_wrist = np.any(states[..., 0] > pitch_ceiling[f], axis=1)
             penalty[high_wrist] = np.inf
         return penalty
 

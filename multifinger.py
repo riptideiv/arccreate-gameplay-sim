@@ -142,6 +142,12 @@ def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed
                 offset = (1-blend)*thumb_offset + blend*(thumbs[side][chord] - index[chord])
             anchors[frame] = point - offset
         anchors.update(index)
+        if len(anchors) > 1 and 0 not in index and 0 not in thumbs[side]:
+            first = min(frame for frame in anchors if frame > 0)
+            if np.linalg.norm(anchors[first] - anchors[0]) * 60 > max_speed * first:
+                # The excerpt may open during an existing hold. Start at the
+                # first contact if there is no time to travel from home.
+                anchors[0] = anchors[first]
         anchors.setdefault(last_frame, anchors[max(anchors)])
         path = np.empty((last_frame + 1, 3))
         frames = sorted(anchors)
@@ -152,6 +158,68 @@ def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed
     return paths, fixed, physical
 
 
+def thumb_pitch_ceiling(points, thumbs, sides, scale, length):
+    """Find where a thumb contact needs a flatter wrist than the neutral pose."""
+    ceiling = np.full(points.shape[:2], np.inf)
+    for h, side in enumerate(sides):
+        if not thumbs[side]:
+            continue
+        frames = list(thumbs[side])
+        delta = np.array(list(thumbs[side].values())) - points[frames, h]
+        sign = 1 if side == "left" else -1
+        base = bases(NEUTRAL[h]) @ (THUMB_BASE * [sign, 1, 1] * scale)
+        reach = np.hypot(np.linalg.norm(delta[:, :2], axis=1) - np.linalg.norm(base[:2]),
+                         delta[:, 2] - base[2])
+        ceiling[frames, h] = np.where(reach > length, 0., NEUTRAL[h, 0])
+    return ceiling
+
+
+def feasible_yaw(preferred, lower, upper, budget):
+    """Find a reachable yaw trajectory within the supplied turn budget."""
+    lower, upper = lower.copy(), upper.copy()
+    for frame in range(len(preferred)-2, -1, -1):
+        lower[frame] = max(lower[frame], lower[frame+1]-budget[frame])
+        upper[frame] = min(upper[frame], upper[frame+1]+budget[frame])
+    if np.any(lower > upper + 1e-7):
+        return None
+    yaw = preferred.copy()
+    yaw[0] = np.clip(preferred[0], lower[0], upper[0])
+    for frame, step in enumerate(budget, 1):
+        lo = max(lower[frame], yaw[frame-1]-step)
+        hi = min(upper[frame], yaw[frame-1]+step)
+        yaw[frame] = np.clip(preferred[frame], lo, hi)
+    return yaw
+
+
+def smooth_thumb_yaw(yaw, preferred, lower, upper, budget, contact_frames):
+    """Minimize angular acceleration while keeping the thumb reachable."""
+    if len(yaw) < 3:
+        return
+    window = np.zeros(len(yaw), dtype=bool)
+    for frame in contact_frames:
+        window[max(0, frame-18):frame+19] = True
+    before = np.r_[np.inf, budget]
+    after = np.r_[budget, np.inf]
+    previous = np.arange(len(yaw)) - 1
+    following = np.minimum(previous + 2, len(yaw)-1)
+    previous[0] = 0
+    groups = [np.flatnonzero(window & (np.arange(len(yaw)) % 3 == phase)) for phase in range(3)]
+    weight = .025
+    diagonal = np.convolve(np.ones(len(yaw)-2), [1., 4., 1.]) + weight
+    # The acceleration stencil couples at most two neighbors on each side.
+    # Three disjoint groups let us optimize in bulk while respecting speeds.
+    for _ in range(160):
+        for frames in groups:
+            accel = np.diff(yaw, n=2)
+            gradient = np.pad(accel, (0, 2)) - 2*np.pad(accel, (1, 1)) + np.pad(accel, (2, 0))
+            gradient += weight * (yaw - preferred)
+            lo = np.maximum.reduce((lower[frames], yaw[previous[frames]]-before[frames],
+                                    yaw[following[frames]]-after[frames]))
+            hi = np.minimum.reduce((upper[frames], yaw[previous[frames]]+before[frames],
+                                    yaw[following[frames]]+after[frames]))
+            yaw[frames] = np.clip(yaw[frames] - gradient[frames] / diagonal[frames], lo, hi)
+
+
 def fit_thumb_yaw(paths, poses, thumbs, sides, scale, angular_limit, max_speed, hand_radius, *, length):
     """Choose a smooth wrist yaw inside the fixed-length thumb's reach."""
     result = np.array(poses, dtype=float, copy=True)
@@ -159,7 +227,8 @@ def fit_thumb_yaw(paths, poses, thumbs, sides, scale, angular_limit, max_speed, 
         if not thumbs[side]:
             continue
         origin = np.asarray(paths[h], dtype=float)
-        pitch, preferred = result[:, h].T
+        pitch, yaw = result[:, h].T
+        preferred = yaw.copy()
         base = THUMB_BASE * [(-1 if side == "right" else 1), 1, 1] * scale
         base_at_pitch = bases(np.column_stack((pitch, np.zeros(len(pitch))))) @ base
         lower = np.full(len(pitch), -np.inf)
@@ -178,16 +247,15 @@ def fit_thumb_yaw(paths, poses, thumbs, sides, scale, angular_limit, max_speed, 
         speeds = np.linalg.norm(np.diff(origin, axis=0), axis=-1) * 60
         rotation = np.minimum(angular_limit, np.degrees(np.maximum(0, max_speed-speeds)/hand_radius)) / 60
         budget = np.sqrt(np.maximum(0, rotation**2 - np.diff(pitch)**2))
-        for frame in range(len(pitch)-2, -1, -1):
-            lower[frame] = max(lower[frame], lower[frame+1]-budget[frame])
-            upper[frame] = min(upper[frame], upper[frame+1]+budget[frame])
-        if np.any(lower > upper + 1e-7):
+        # Seed the refinement with an earlier, slower turn when that is
+        # possible. Otherwise use the full turn budget to reach the contacts.
+        comfort = feasible_yaw(preferred, lower, upper, np.minimum(budget, 2.5))
+        if comfort is None:
+            comfort = feasible_yaw(preferred, lower, upper, budget)
+        if comfort is None:
             raise ValueError(f"{side.title()} wrist cannot turn fast enough to reach the thumb contacts")
-        preferred[0] = np.clip(preferred[0], lower[0], upper[0])
-        for frame, step in enumerate(budget, 1):
-            lo = max(lower[frame], preferred[frame-1]-step)
-            hi = min(upper[frame], preferred[frame-1]+step)
-            preferred[frame] = np.clip(preferred[frame], lo, hi)
+        yaw[:] = comfort
+        smooth_thumb_yaw(yaw, preferred, lower, upper, budget, thumbs[side])
     return result
 
 
