@@ -466,3 +466,16 @@ def test_native_multifinger_staggered_chord_matches_reference(tmp_path, workers)
     assert_equivalent(reference, actual)
     assert {touch['hand'] for touch in actual['touches'] if touch['finger'] == 2} == {'left', 'right'}
     assert not actual['misses']
+
+
+def test_forced_sky_miss_does_not_retry_sky_timing(tmp_path):
+    from arc_hand_order import api
+
+    path = chart(tmp_path, 'arc(1000,1001,.5,.5,s,.5,.5,0,none,true)[arctap(1000)];(1700,2);')
+    sky = next(event.event_id for event in api.load_chart(path).chart.events if event.type == 'arctap')
+    progress = []
+    actual = create_plan(path, 0, 3500, BASE, excluded=(sky,), search_backend='native',
+                         search_workers=1, progress=progress.append)
+    assert any(sky in miss['events'] for miss in actual['misses'])
+    assert all(event.get('retry') != 'sky_requests' for event in progress)
+    assert any(touch['down_ms'] > 1500 for touch in actual['touches'])

@@ -87,6 +87,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
     if not 0 <= start_ms < end_ms:
         raise ValueError("Expected 0 <= start_ms < end_ms")
     settings = settings or {}
+    excluded = tuple(excluded)
     plan_chart = partial(api.plan_chart, device_path=device_path(settings))
     began = time.monotonic()
     attempt = 1
@@ -158,6 +159,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                              if item.continuous_contact else item.up_window))
     occupations = replace(occupations, items=tuple(items))
     native_items = occupations.items
+    excluded_events = set(excluded)
     multifinger = settings.get("multifinger", False)
     multi = {
         "second_finger": multifinger, "second_finger_again": multifinger,
@@ -318,7 +320,9 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                     split_error = None
 
         if (scoring and multi["allow_misses"] and result is not None
-                and any(item.kind == "sky" for item in result.plan.skipped)):
+                and any(item.kind == "sky" and item.occupation_id not in excluded_events
+                        and excluded_events.isdisjoint(item.source_event_ids)
+                        for item in result.plan.skipped)):
             # A geometric hit can still go to a newer overlapping request in
             # ArcCreate. Try a different press window and keep early contacts
             # down when they can settle a nearby arc tick on the same finger.
@@ -374,7 +378,7 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                          "parent_occupation_id": o.parent_occupation_id,
                          "start_ms": o.first_tick.time_ms if o.parent_occupation_id else o.start_ms,
                          "end_ms": o.last_tick.time_ms if o.parent_occupation_id else o.end_ms, "scoring_ticks": o.score_weight,
-                         "reason": "motion limits" if set(o.source_event_ids) & set(excluded) or any(x['parent']==o.parent_occupation_id and
+                         "reason": "motion limits" if o.occupation_id in excluded_events or not excluded_events.isdisjoint(o.source_event_ids) or any(x['parent']==o.parent_occupation_id and
                              x['start_ms'] <= o.last_tick.contact_window.latest_ms and x['end_ms'] >= o.first_tick.contact_window.earliest_ms for x in avoid_contacts)
                          else "no feasible contact in the bounded search"}
                         for o in result.plan.skipped]
