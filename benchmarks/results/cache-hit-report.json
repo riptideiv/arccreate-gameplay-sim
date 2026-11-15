@@ -1,0 +1,44 @@
+[
+  {
+    "window_s": [
+      20,
+      30
+    ],
+    "median_s": 0.1214637910015881,
+    "range_s": [
+      0.12016225000843406,
+      0.12257787515409291
+    ],
+    "peak_rss_mib": 44.9375,
+    "trials": 3,
+    "search_performed": false
+  },
+  {
+    "window_s": [
+      65,
+      75
+    ],
+    "median_s": 0.1219178750179708,
+    "range_s": [
+      0.12140166689641774,
+      0.12257879204116762
+    ],
+    "peak_rss_mib": 45.015625,
+    "trials": 3,
+    "search_performed": false
+  },
+  {
+    "window_s": [
+      90,
+      100
+    ],
+    "median_s": 0.1200232079718262,
+    "range_s": [
+      0.11877029109746218,
+      0.12100604199804366
+    ],
+    "peak_rss_mib": 44.984375,
+    "trials": 3,
+    "search_performed": false
+  }
+]

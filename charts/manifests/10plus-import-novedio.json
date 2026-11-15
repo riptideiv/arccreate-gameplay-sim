@@ -1,0 +1,5081 @@
+{
+  "archive": "10plus-import-novedio.zip",
+  "archive_sha256": "0f73b21737c3481bc81826ba05a729501adf98b369372a0468ba8ea504564e12",
+  "archive_bytes": 379909860,
+  "format": "Arcaea song folders (songlist + AFF + audio + artwork), not ArcCreate projects",
+  "song_folders": [
+    {
+      "folder": "abstrusedilemma-11",
+      "id": "abstrusedilemma",
+      "title": "Abstruse Dilemma",
+      "artist": "Ashrount vs. 打打だいず",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Remnant ⇐ Guilt",
+          "jacketDesigner": "おぐち",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Remnant ⇒ Doubt",
+          "jacketDesigner": "おぐち",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Remnant ⇑⇓ Volition",
+          "jacketDesigner": "おぐち",
+          "rating": 11,
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 21874,
+          "sha256": "f16e927fbdf80875a8a2ca526bfd0b7fe59d41821c5acd3c1833db23a136e323",
+          "note_commands": 595,
+          "parse_status": "ok",
+          "event_count": 600
+        },
+        {
+          "file": "1.aff",
+          "bytes": 36008,
+          "sha256": "073b6993757c3b79d4d83a0123a14ee326d1817aa5389b1a866cd5b73ee902a6",
+          "note_commands": 880,
+          "parse_status": "ok",
+          "event_count": 1113
+        },
+        {
+          "file": "2.aff",
+          "bytes": 115131,
+          "sha256": "5bcfbc244504d41386002cabff577696406091c66809a3c8e73281020a9e6264",
+          "note_commands": 2241,
+          "parse_status": "ok",
+          "event_count": 2927
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "acidgod-10+",
+      "id": "acidgod",
+      "title": "Acid God",
+      "artist": "Yuta Imai",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "nora::pengin",
+          "jacketDesigner": "",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "nora::pengin",
+          "jacketDesigner": "",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "nora::pengin",
+          "jacketDesigner": "",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "終点",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 10806,
+          "sha256": "1163ada5bdbe2d96bbc4d6ddb017e91db3ac802170b2447dfea23c709df4b160",
+          "note_commands": 353,
+          "parse_status": "ok",
+          "event_count": 354
+        },
+        {
+          "file": "1.aff",
+          "bytes": 16680,
+          "sha256": "6c76113e2ab8ac210dde56d135ba07d922ff8ef4226aab14455062712864c75e",
+          "note_commands": 587,
+          "parse_status": "ok",
+          "event_count": 654
+        },
+        {
+          "file": "2.aff",
+          "bytes": 60839,
+          "sha256": "00c4d31fbe50358fea477ffcf05983e7def52123408675df6f8edba4e9854f68",
+          "note_commands": 1298,
+          "parse_status": "ok",
+          "event_count": 1671
+        },
+        {
+          "file": "4.aff",
+          "bytes": 58329,
+          "sha256": "343363985c6fac0e807693c9461dcb2c1c82469a64d0cbd977609e0c27254dba",
+          "note_commands": 1403,
+          "parse_status": "ok",
+          "event_count": 1835
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "aegleseeker-11",
+      "id": "aegleseeker",
+      "title": "Aegleseeker",
+      "artist": "Silentroom vs Frums",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "⟨RECORD START⟩ 0:",
+          "jacketDesigner": "シエラ",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "⟨OBSRV⟩ boundary(?°a,?°A)",
+          "jacketDesigner": "シエラ",
+          "rating": 9
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "L₆ː The Void",
+          "jacketDesigner": "シエラ",
+          "rating": 11,
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 24694,
+          "sha256": "618404d98ca16edba833052ab7b5971c4f9169528f81eef44867ea42685834c1",
+          "note_commands": 631,
+          "parse_status": "ok",
+          "event_count": 636
+        },
+        {
+          "file": "1.aff",
+          "bytes": 29673,
+          "sha256": "256a42c0265f45d4379670f8fe2388f52d03dc91e217954e284bd99fc74b8ff9",
+          "note_commands": 886,
+          "parse_status": "ok",
+          "event_count": 1016
+        },
+        {
+          "file": "2.aff",
+          "bytes": 67965,
+          "sha256": "03b54dae185b67143cc372a9c1a39dd878d8b2b7f6c48043eb100d73abeb2fc1",
+          "note_commands": 1681,
+          "parse_status": "ok",
+          "event_count": 2021
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "aethercrest-11",
+      "id": "aethercrest",
+      "title": "Aether Crest: Astral",
+      "artist": "void (Mournfinale) × 水野健治",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Nitro",
+          "jacketDesigner": "すずなし",
+          "rating": 6
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Empyrean",
+          "jacketDesigner": "すずなし",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "M理論 《Quintessence》",
+          "jacketDesigner": "すずなし",
+          "rating": 10
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "夜浪 × 絶滅「αἴθων」",
+          "jacketDesigner": "すずなし",
+          "rating": 11,
+          "legacy11": false
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 16051,
+          "sha256": "50138893b23968f194d0ade6743898c80dd544b162c016eeabec9cf31350dade",
+          "note_commands": 484,
+          "parse_status": "ok",
+          "event_count": 485
+        },
+        {
+          "file": "1.aff",
+          "bytes": 31180,
+          "sha256": "50717c3570672df808fd2e53d7eda8df5a12881c38466f29fbf0183468873633",
+          "note_commands": 795,
+          "parse_status": "ok",
+          "event_count": 968
+        },
+        {
+          "file": "2.aff",
+          "bytes": 57938,
+          "sha256": "e94e6829b1591144d73f8f854f88297be7a286a75858c61d389089ebd12ed08f",
+          "note_commands": 1290,
+          "parse_status": "ok",
+          "event_count": 1576
+        },
+        {
+          "file": "4.aff",
+          "bytes": 94640,
+          "sha256": "76080049442bfd0557bc2a9b1bba2d85bdd6ed7b5d55264d164af425b14c7738",
+          "note_commands": 1912,
+          "parse_status": "ok",
+          "event_count": 2420
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "alterego-11",
+      "id": "alterego",
+      "title": "ALTER EGO",
+      "artist": "Yuta Imai vs Qlarabelle",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Article V《Observation》",
+          "jacketDesigner": "すずなし",
+          "rating": 6
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Article VI《Hypothesis》",
+          "jacketDesigner": "すずなし",
+          "rating": 9
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Article VII《Analysis》",
+          "jacketDesigner": "すずなし",
+          "rating": 10
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "Article 0x8《Enmity》",
+          "jacketDesigner": "すずなし",
+          "rating": 11,
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 21845,
+          "sha256": "4f41f804b993d8e10f5018f36709caa1be50ac0fdde62ff602438e00a87bb09e",
+          "note_commands": 633,
+          "parse_status": "ok",
+          "event_count": 686
+        },
+        {
+          "file": "1.aff",
+          "bytes": 34850,
+          "sha256": "8e328b85e847c6eea38669448049acec623288670fc40233d75dcb81e366ab27",
+          "note_commands": 890,
+          "parse_status": "ok",
+          "event_count": 1121
+        },
+        {
+          "file": "2.aff",
+          "bytes": 74395,
+          "sha256": "643a22ace06bf580445242971f092203beb6ad567df290c2248d4e69dd0c5543",
+          "note_commands": 1498,
+          "parse_status": "ok",
+          "event_count": 2101
+        },
+        {
+          "file": "4.aff",
+          "bytes": 104180,
+          "sha256": "9010149e877ffd330dbf5bc16efdf1c3204b84bb679e42a9b823d0c64f97e6bc",
+          "note_commands": 1985,
+          "parse_status": "ok",
+          "event_count": 2686
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "altergate-10+",
+      "id": "altergate",
+      "title": "AlterGate",
+      "artist": "MisoilePunch♪ ~タケノコ添え~",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "辷",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "辷",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "辷",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 17404,
+          "sha256": "7ff5bd92610ddbea4f7cb6144705517ad0487abeac0db7f817ae7baef7496eef",
+          "note_commands": 482,
+          "parse_status": "ok",
+          "event_count": 485
+        },
+        {
+          "file": "1.aff",
+          "bytes": 30443,
+          "sha256": "4dba1670f72b2b2ec17f89d12db9bee0a0c1ad749b704284446dd9436d6caa4c",
+          "note_commands": 804,
+          "parse_status": "ok",
+          "event_count": 960
+        },
+        {
+          "file": "2.aff",
+          "bytes": 62218,
+          "sha256": "4568fa084d06713151b412e81f90daa948f929c768861529f3da5479fc89f868",
+          "note_commands": 1324,
+          "parse_status": "ok",
+          "event_count": 1788
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "amazingmightyyyy-10+",
+      "id": "amazingmightyyyy",
+      "title": "AMAZING MIGHTYYYY!!!!",
+      "artist": "WAiKURO",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "AMAZING TOASTYYYY!!!!",
+          "jacketDesigner": "",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "AMAZING TOASTYYYY!!!!",
+          "jacketDesigner": "",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "AMAZING TOASTYYYY!!!!",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 8742,
+          "sha256": "414a6a7fcc316a55a5d9b368f7ed9ff579db2b49d6545a83f982dcb08af86b8d",
+          "note_commands": 306,
+          "parse_status": "ok",
+          "event_count": 307
+        },
+        {
+          "file": "1.aff",
+          "bytes": 19200,
+          "sha256": "20efb1d504a4f4852010173a2b8dc13cd8acb764a4f9e35a7fe697d7e0ce219f",
+          "note_commands": 561,
+          "parse_status": "ok",
+          "event_count": 671
+        },
+        {
+          "file": "2.aff",
+          "bytes": 54864,
+          "sha256": "85f0519904ccba803e8b49d001d55d06c6cfc060c3057c8d5e563b8fa7469ca6",
+          "note_commands": 1350,
+          "parse_status": "ok",
+          "event_count": 1692
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "andorxor-10+",
+      "id": "andorxor",
+      "title": "ANDORXOR",
+      "artist": "Sobrem",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "反∧水",
+          "jacketDesigner": "南条まや + Vormis.",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "反∧水",
+          "jacketDesigner": "南条まや + Vormis.",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "反∧水",
+          "jacketDesigner": "南条まや + Vormis.",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "反∧水",
+          "jacketDesigner": "南条まや + Vormis.",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 10402,
+          "sha256": "a3e82b23f60fc5cda166c692ca52ce93093e2be10cb45cdeb0c2591dd7eccc17",
+          "note_commands": 352,
+          "parse_status": "ok",
+          "event_count": 353
+        },
+        {
+          "file": "1.aff",
+          "bytes": 20599,
+          "sha256": "e3638aeeaf7a4e2a25e11215ece6c2507d8a01b0fe51a6758136a902abff3f37",
+          "note_commands": 625,
+          "parse_status": "ok",
+          "event_count": 670
+        },
+        {
+          "file": "2.aff",
+          "bytes": 39123,
+          "sha256": "95981b98c8a143be7efa51cee544dc87bb0577d41573c1dd11a2b59f0bf9c12c",
+          "note_commands": 971,
+          "parse_status": "ok",
+          "event_count": 1208
+        },
+        {
+          "file": "4.aff",
+          "bytes": 64737,
+          "sha256": "d0c8b21ab3109a64097005b68c36c649daa437a7a49265b07cd6212912f6f7d6",
+          "note_commands": 1438,
+          "parse_status": "ok",
+          "event_count": 1813
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "andrevivemelody-10+",
+      "id": "andrevivemelody",
+      "title": "And Revive The Melody",
+      "artist": "黒魔",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪 (FIRE) Lv.75",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪 (FIRE) Lv.75",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪 (FIRE) Lv.75",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 22757,
+          "sha256": "78a0a2b2d0bd949bc7eb4631514f696745add759f4998ab8be48cbd868b26879",
+          "note_commands": 606,
+          "parse_status": "ok",
+          "event_count": 633
+        },
+        {
+          "file": "1.aff",
+          "bytes": 31368,
+          "sha256": "91df3fab70e8076b828195f6177f02f78b8eb1c162f506ce36853abbf370e46c",
+          "note_commands": 794,
+          "parse_status": "ok",
+          "event_count": 999
+        },
+        {
+          "file": "2.aff",
+          "bytes": 118548,
+          "sha256": "92997396c520a691f09964ddf4eb65e672cbf1cb9d03d0f4dd1eda487b8bd67d",
+          "note_commands": 2004,
+          "parse_status": "ok",
+          "event_count": 3231
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "arcanaeden-11",
+      "id": "arcanaeden",
+      "title": "Arcana Eden",
+      "artist": "Team Grimoire vs Sakuzyo vs Laur",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "jacketDesigner": "シエラ",
+          "chartDesigner": "Eye of the Storm",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "jacketDesigner": "シエラ",
+          "chartDesigner": "Eye of the Storm",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "jacketDesigner": "シエラ",
+          "chartDesigner": "Eye of the Storm",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "jacketDesigner": "シエラ",
+          "chartDesigner": "Eye of the Storm",
+          "rating": 11,
+          "legacy11": true,
+          "world_unlock": false,
+          "hidden_until": "none"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 19628,
+          "sha256": "cef803d7fec416d032a38907e9e57293a365f2f973297eb0effcd84b1d0f1c6c",
+          "note_commands": 608,
+          "parse_status": "ok",
+          "event_count": 625
+        },
+        {
+          "file": "1.aff",
+          "bytes": 39023,
+          "sha256": "934f863e3a8e9b1b82a9c123696da3849151c18f083d00d01bfc514938add10f",
+          "note_commands": 933,
+          "parse_status": "ok",
+          "event_count": 1156
+        },
+        {
+          "file": "2.aff",
+          "bytes": 80719,
+          "sha256": "d974935959b95fbbb5f104ff1d74d4572fd766f3ae31076046103b8a87ae1fe9",
+          "note_commands": 1872,
+          "parse_status": "ok",
+          "event_count": 2290
+        },
+        {
+          "file": "3.aff",
+          "bytes": 88049,
+          "sha256": "76a589e52dc50a7c9315fdbb261869ed71b185131b7780e97032664f9a90bb34",
+          "note_commands": 1941,
+          "parse_status": "ok",
+          "event_count": 2400
+        }
+      ],
+      "audio": [
+        "kick.wav",
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "arghena-11",
+      "id": "arghena",
+      "title": "Arghena",
+      "artist": "Feryquitous vs Laur",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "第一識 \"Reality\"",
+          "jacketDesigner": "すずなし",
+          "rating": 7
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "第二識 \"Causality\"",
+          "jacketDesigner": "すずなし",
+          "rating": 9
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "第三識 \"Pluriversality\"",
+          "jacketDesigner": "すずなし",
+          "rating": 11,
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 21201,
+          "sha256": "561fb71e38ed6817951bea71a9dbcdaa4174791f8e5854c6be669add0ffd0808",
+          "note_commands": 559,
+          "parse_status": "ok",
+          "event_count": 606
+        },
+        {
+          "file": "1.aff",
+          "bytes": 42119,
+          "sha256": "0906678fdf9743b2ff408d7096ae48d092cf74f9da21ff646b206968c5f71fa3",
+          "note_commands": 896,
+          "parse_status": "ok",
+          "event_count": 1222
+        },
+        {
+          "file": "2.aff",
+          "bytes": 134942,
+          "sha256": "4008e47d0a04b50581885f16294dd94ae4bb8c273739406de5180d267ca57926",
+          "note_commands": 2302,
+          "parse_status": "ok",
+          "event_count": 3347
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "axiumcrisis-11",
+      "id": "axiumcrisis",
+      "title": "Axium Crisis",
+      "artist": "ak+q",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "The Monolith",
+          "jacketDesigner": "シエラ",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "The Monolith",
+          "jacketDesigner": "シエラ",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "The Monolith",
+          "jacketDesigner": "シエラ",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "title_localized": {
+            "en": "Axium Divergence"
+          },
+          "artist": "ak+q (lowiro)",
+          "bpm": "170?",
+          "bpm_base": 180,
+          "audioOverride": true,
+          "chartDesigner": "Monolith - Diverged",
+          "jacketDesigner": "すずなし",
+          "jacketOverride": true,
+          "bg": "axiumcrisis3",
+          "rating": 11,
+          "legacy11": true,
+          "date": 1773014406,
+          "version": "6.13",
+          "hidden_until": "difficulty"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 11012,
+          "sha256": "f8611b085024c3a8dc44716366f19b1cccb8bd59e6b0960ebcc5dab15f033617",
+          "note_commands": 344,
+          "parse_status": "ok",
+          "event_count": 351
+        },
+        {
+          "file": "1.aff",
+          "bytes": 21212,
+          "sha256": "6b316a467cfbece0c0865930de0534da0e0f13e89e62172557e798d2c8a10bf5",
+          "note_commands": 667,
+          "parse_status": "ok",
+          "event_count": 725
+        },
+        {
+          "file": "2.aff",
+          "bytes": 45443,
+          "sha256": "45e73a1694f47550d9362aa5d44e6641e6d0fcc0cd1dc67cf83826349c85b325",
+          "note_commands": 1150,
+          "parse_status": "ok",
+          "event_count": 1385
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "blackmind-10+",
+      "id": "blackmind",
+      "title": "Black MInD",
+      "artist": "COSIO",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "聖輪",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "聖輪",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "聖輪",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 12203,
+          "sha256": "37cd1fbf77410a06fd5f58138f052d9ede091c2a9d5d267405142301950cd526",
+          "note_commands": 450,
+          "parse_status": "ok",
+          "event_count": 454
+        },
+        {
+          "file": "1.aff",
+          "bytes": 14723,
+          "sha256": "0193f7a0616350efde4623b1e52e37b60e7d2445ca8a60fc9230672708c77ffc",
+          "note_commands": 658,
+          "parse_status": "ok",
+          "event_count": 714
+        },
+        {
+          "file": "2.aff",
+          "bytes": 97070,
+          "sha256": "8e9a824f17cc9c93468dc8e5fbd89b56dfb703446b244727016aefd27dad32c2",
+          "note_commands": 2111,
+          "parse_status": "ok",
+          "event_count": 2542
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "breachoffaith-10+",
+      "id": "breachoffaith",
+      "title": "Breach of Faith",
+      "artist": "Supire feat.eili",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪「perfidulo」",
+          "jacketDesigner": "おにねこ",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪「perfidulo」",
+          "jacketDesigner": "おにねこ",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪「perfidulo」",
+          "jacketDesigner": "おにねこ",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "chartDesigner": "夜浪「perfidulo」",
+          "jacketDesigner": "おにねこ",
+          "rating": 10,
+          "ratingPlus": true,
+          "hidden_until": "none"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 16133,
+          "sha256": "b569fdd53a1ded3d49b0c8a28ce4b70a6049dd54b1272a60f7452bc9eb6693fa",
+          "note_commands": 436,
+          "parse_status": "ok",
+          "event_count": 464
+        },
+        {
+          "file": "1.aff",
+          "bytes": 33034,
+          "sha256": "6e21acba1cce5d7dd72812c53054d849b382d20b073a6a434cb77b54e21bfc4a",
+          "note_commands": 700,
+          "parse_status": "ok",
+          "event_count": 889
+        },
+        {
+          "file": "2.aff",
+          "bytes": 67176,
+          "sha256": "a9f4c98e015ad99f8ff11e4fa66aaf037f9a257e29e4e3f2dcc8e79cf72d9ea2",
+          "note_commands": 1390,
+          "parse_status": "ok",
+          "event_count": 1709
+        },
+        {
+          "file": "3.aff",
+          "bytes": 71399,
+          "sha256": "ea434b7e1722201ead5382817553ece9021195ad8de191f2d9459ddc067c117a",
+          "note_commands": 1421,
+          "parse_status": "ok",
+          "event_count": 1806
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "buchigireberserker-10+",
+      "id": "buchigireberserker",
+      "title": "BUCHiGiRE Berserker",
+      "artist": "REDALiCE vs MASAKI",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "東星 vs 夜浪 《BERSERK》",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 17584,
+          "sha256": "8a032e3f71e84357d5d4c642b6cd75c84db87348434e6df491d1e00b7830144e",
+          "note_commands": 540,
+          "parse_status": "ok",
+          "event_count": 550
+        },
+        {
+          "file": "1.aff",
+          "bytes": 25223,
+          "sha256": "210c250cd660e0655efa939cc84c481bc2011e091593ed4f760737e5bb1a4106",
+          "note_commands": 665,
+          "parse_status": "ok",
+          "event_count": 856
+        },
+        {
+          "file": "2.aff",
+          "bytes": 56047,
+          "sha256": "93ae3968b859b8d183074a7f291f9f1ce2114d5f9dc0323566a3bbbe9d61b419",
+          "note_commands": 1297,
+          "parse_status": "ok",
+          "event_count": 1763
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "cataclysmcry-11+",
+      "id": "cataclysmcry",
+      "title": "Cataclysm Cry",
+      "artist": "Aid",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "運命の響 -echo of fate-",
+          "jacketDesigner": "すずなし",
+          "rating": 6
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "運命の目 -eye of fate-",
+          "jacketDesigner": "すずなし",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "運命の手 -hand of fate-",
+          "jacketDesigner": "すずなし",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "ratingClassAlias": 1,
+          "chartDesigner": "運命の淵 -threshold of fate-",
+          "jacketDesigner": "すずなし",
+          "rating": 11,
+          "ratingPlus": true,
+          "hidden_until": "difficulty",
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 21321,
+          "sha256": "67336bb693af7c1003146daf929395071c681f80f3e36654d8c06559ef42f0a3",
+          "note_commands": 641,
+          "parse_status": "ok",
+          "event_count": 646
+        },
+        {
+          "file": "1.aff",
+          "bytes": 32973,
+          "sha256": "5c5a4db95041229cf93de4659ef7228c9a793039c686b5c46cb0bfe960d5cc45",
+          "note_commands": 870,
+          "parse_status": "ok",
+          "event_count": 1025
+        },
+        {
+          "file": "2.aff",
+          "bytes": 88819,
+          "sha256": "e37ccb20b90f0ccceb5cd930974f4ac8a4f4587e3c080ec4e917502a877ddb49",
+          "note_commands": 1855,
+          "parse_status": "ok",
+          "event_count": 2294
+        },
+        {
+          "file": "3.aff",
+          "bytes": 129155,
+          "sha256": "b6b0b679a8b8ea5aa392274f8da2ea7aa99df7426230499107c5e5e37cdfda16",
+          "note_commands": 2091,
+          "parse_status": "ok",
+          "event_count": 3312
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "chaos-10+",
+      "id": "chaos",
+      "title": "CHAOS",
+      "artist": "Æsir",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "",
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 16197,
+          "sha256": "c0d5ac9c6998826be2dd15140a29b27978a2c720094d6f45fb9b360dafb56f7f",
+          "note_commands": 499,
+          "parse_status": "ok",
+          "event_count": 506
+        },
+        {
+          "file": "1.aff",
+          "bytes": 25300,
+          "sha256": "30940e137a0a28a4fd57c11c1169a2fad89dad684526dd6aa9f0bf5394c3d2f7",
+          "note_commands": 644,
+          "parse_status": "ok",
+          "event_count": 792
+        },
+        {
+          "file": "2.aff",
+          "bytes": 72306,
+          "sha256": "a4dfb751b8ea18eb974c65a8caae42b9fb12914b7735b3db0b852d19dbd1ca2f",
+          "note_commands": 1565,
+          "parse_status": "ok",
+          "event_count": 1998
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "chronologia-10+",
+      "id": "chronologia",
+      "title": "chronologia",
+      "artist": "lowiro Sound Team (ak+q x nitro)",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Nitro",
+          "jacketDesigner": "Khronetic x SARYN",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Nitro",
+          "jacketDesigner": "Khronetic x SARYN",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Nitro",
+          "jacketDesigner": "Khronetic x SARYN",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "Nitro x Toaster",
+          "jacketDesigner": "Khronetic x SARYN",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 10454,
+          "sha256": "bdb0205024f518cc2dd24f5818d8e77283d7be681b040bd5f924a0db55f17e4c",
+          "note_commands": 340,
+          "parse_status": "ok",
+          "event_count": 341
+        },
+        {
+          "file": "1.aff",
+          "bytes": 20954,
+          "sha256": "165bbc8131d9c0281c666e3b138ad3ca73cba263c3d2f9364a37b39bb413569d",
+          "note_commands": 597,
+          "parse_status": "ok",
+          "event_count": 648
+        },
+        {
+          "file": "2.aff",
+          "bytes": 41374,
+          "sha256": "f939d09869f9bfc20bbba72b1cf637013043d9e36dcb18f341a409b9b32dfaa5",
+          "note_commands": 943,
+          "parse_status": "ok",
+          "event_count": 1314
+        },
+        {
+          "file": "4.aff",
+          "bytes": 66906,
+          "sha256": "5126af9b9cb881f0c283419c99fcb7802e94c0547efb1d3e459d86e53f88ccf4",
+          "note_commands": 1542,
+          "parse_status": "ok",
+          "event_count": 2018
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "codeoblivion-10+",
+      "id": "codeoblivion",
+      "title": "Code: Oblivion",
+      "artist": "Kobaryo × Gram",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "~sidewaves",
+          "jacketDesigner": "MILKteaWegan",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "~sidewaves",
+          "jacketDesigner": "MILKteaWegan",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "~sidewaves",
+          "jacketDesigner": "MILKteaWegan",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "煌磨",
+          "jacketDesigner": "MILKteaWegan",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 15201,
+          "sha256": "4ce86e57d16ec53312a3cb24ec73a1968b6731cbe325343a36fe49a0867152af",
+          "note_commands": 462,
+          "parse_status": "ok",
+          "event_count": 463
+        },
+        {
+          "file": "1.aff",
+          "bytes": 22653,
+          "sha256": "01af4b915ba3cd9399934a8f88ef125183939850d2a27c4cf3637b1a3bdeb90c",
+          "note_commands": 685,
+          "parse_status": "ok",
+          "event_count": 826
+        },
+        {
+          "file": "2.aff",
+          "bytes": 50596,
+          "sha256": "d3280a423efa90ac30280c88fb45e44a0a29b90af3f7267f4467fff74ca98cee",
+          "note_commands": 1228,
+          "parse_status": "ok",
+          "event_count": 1496
+        },
+        {
+          "file": "4.aff",
+          "bytes": 72011,
+          "sha256": "e6e1299e85218b8b1217a800aaa8e391b4cc8c9235d65916764f0b8a0d36cb46",
+          "note_commands": 1596,
+          "parse_status": "ok",
+          "event_count": 2020
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "cyaegha-10+",
+      "id": "cyaegha",
+      "title": "Cyaegha",
+      "artist": "USAO",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪、旧支配者",
+          "jacketDesigner": "シエラ",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪、旧支配者",
+          "jacketDesigner": "シエラ",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪、旧支配者",
+          "jacketDesigner": "シエラ",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 10923,
+          "sha256": "3090320317143092070ecd8e26b3cd6765a97d88d1ac5dc6b875a1e20818543d",
+          "note_commands": 399,
+          "parse_status": "ok",
+          "event_count": 400
+        },
+        {
+          "file": "1.aff",
+          "bytes": 20414,
+          "sha256": "909a9526576fe34979288d24aedfa297326049d89bf49f6d6724c0827893025d",
+          "note_commands": 556,
+          "parse_status": "ok",
+          "event_count": 691
+        },
+        {
+          "file": "2.aff",
+          "bytes": 44575,
+          "sha256": "02dc2e81befb4d2096296104c5cc12debf318a3d452bced499f1763ef94e43b7",
+          "note_commands": 1141,
+          "parse_status": "ok",
+          "event_count": 1390
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "daat-10+",
+      "id": "daat",
+      "title": "DA'AT -The First Seeker of Souls-",
+      "artist": "水野健治 VS 大国奏音",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪 -Revolutions-",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪 -Revolutions-",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪 -Revolutions-",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 16613,
+          "sha256": "f3a6f2e5fa5303fa1010e52c9efc8b146b726c51bcfbcc094942c45285f493ea",
+          "note_commands": 506,
+          "parse_status": "ok",
+          "event_count": 519
+        },
+        {
+          "file": "1.aff",
+          "bytes": 29553,
+          "sha256": "8c22c1e6c8d33f8e5a924b0573a574e9ba140ccddf4ae3a8dcbc965884b35fdd",
+          "note_commands": 732,
+          "parse_status": "ok",
+          "event_count": 921
+        },
+        {
+          "file": "2.aff",
+          "bytes": 112514,
+          "sha256": "cf32a94aeeb8dfeedcd9cfc1f661e50aa5b8cb59bdd665a06490d4db10bd0812",
+          "note_commands": 2250,
+          "parse_status": "ok",
+          "event_count": 2599
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "dantalion-10+",
+      "id": "dantalion",
+      "title": "Dantalion",
+      "artist": "Team Grimoire",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "Rolua",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "東星",
+          "jacketDesigner": "Rolua",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪 X 東星 \"The Lost\"",
+          "jacketDesigner": "Rolua",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 11026,
+          "sha256": "6b04e69fcf495a371abff8c384961c0b7a465a06f2532507b8c6f85079e91909",
+          "note_commands": 402,
+          "parse_status": "ok",
+          "event_count": 406
+        },
+        {
+          "file": "1.aff",
+          "bytes": 19769,
+          "sha256": "030f858877ca80c172b44f4d31d8ec8c05acab5342030abeb9c126b229813ff1",
+          "note_commands": 617,
+          "parse_status": "ok",
+          "event_count": 717
+        },
+        {
+          "file": "2.aff",
+          "bytes": 53224,
+          "sha256": "01ddc8e31f3080b80160bf8ef4b56c4b2dabae2e209a826e6cb7fca5b0e12255",
+          "note_commands": 1427,
+          "parse_status": "ok",
+          "event_count": 1721
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "deinosphainein-12",
+      "id": "deinosphainein",
+      "title": "DEINOS PHAINEIN",
+      "artist": "Blacklolita vs Juggernaut.",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "DIVINE INSIGHT ⟦識眼⟧",
+          "jacketDesigner": "すずなし",
+          "rating": 7,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "DIVINE KNOWLEDGE ⟦叡智⟧",
+          "jacketDesigner": "すずなし",
+          "rating": 9,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "DIVINE CURSE ⟦呪詛⟧",
+          "jacketDesigner": "すずなし",
+          "rating": 10,
+          "ratingPlus": true,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 3,
+          "ratingClassAlias": 1,
+          "chartDesigner": "DIVINE WRATH ⟦憤怒⟧",
+          "jacketDesigner": "すずなし",
+          "rating": 12,
+          "hidden_until_unlocked": true,
+          "hidden_until": "difficulty",
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 23510,
+          "sha256": "1d6dec502b2de19e93878dd8cd210c367517219b6298389ac800a6cb59ca5f66",
+          "note_commands": 781,
+          "parse_status": "ok",
+          "event_count": 785
+        },
+        {
+          "file": "1.aff",
+          "bytes": 40971,
+          "sha256": "c11212f7ec25586fc352f1e5f2ec34df14c57c2449ce48ee81751e83441cc8cd",
+          "note_commands": 1092,
+          "parse_status": "ok",
+          "event_count": 1292
+        },
+        {
+          "file": "2.aff",
+          "bytes": 85212,
+          "sha256": "098af68f542b8ef9950e8f2db750d9c010ae3885e5965e662ca371f8a818e44a",
+          "note_commands": 1801,
+          "parse_status": "ok",
+          "event_count": 2325
+        },
+        {
+          "file": "3.aff",
+          "bytes": 154013,
+          "sha256": "7769e044fc9b07482ecec9acf967f2365ef1ee0a6662edc393493795872d26ca",
+          "note_commands": 2895,
+          "parse_status": "ok",
+          "event_count": 3630
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "designant-11+",
+      "id": "designant",
+      "title": "Designant.",
+      "artist": "Designant",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "1st Command ≒ Legacy",
+          "jacketDesigner": "すずなし",
+          "rating": 7,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "2nd Command ≒ Perfection",
+          "jacketDesigner": "すずなし",
+          "rating": 9,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "3rd Command ≒ Ascendance",
+          "jacketDesigner": "すずなし",
+          "rating": 10,
+          "ratingPlus": true,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 3,
+          "chartDesigner": "Final Command. Infinity",
+          "jacketDesigner": "すずなし",
+          "rating": 11,
+          "legacy11": true,
+          "ratingPlus": true,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 38167,
+          "sha256": "a9d55c137f69ff77edc0f6834f040877d80c97596299abcbb2fb78ec12400b41",
+          "note_commands": 933,
+          "parse_status": "unsupported",
+          "parse_error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/designant-11+/0.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+        },
+        {
+          "file": "1.aff",
+          "bytes": 56948,
+          "sha256": "7688e9177b1d4ee34ad026fad8741a18fea421d12c9c09e64974a84b1b2ee974",
+          "note_commands": 1328,
+          "parse_status": "unsupported",
+          "parse_error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/designant-11+/1.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+        },
+        {
+          "file": "2.aff",
+          "bytes": 99137,
+          "sha256": "3a02e106e5772cc5039ec0db5221764c934428865cfafa0089ffe35637f0db13",
+          "note_commands": 2073,
+          "parse_status": "unsupported",
+          "parse_error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/designant-11+/2.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+        },
+        {
+          "file": "3.aff",
+          "bytes": 125802,
+          "sha256": "bd7b198b28ebbeef694a446e3f22f8ba81bfe5541cdca4379f0a4730ff5974f7",
+          "note_commands": 2335,
+          "parse_status": "unsupported",
+          "parse_error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/designant-11+/3.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "distortedfate-10+",
+      "id": "distortedfate",
+      "title": "Distorted Fate",
+      "artist": "Sakuzyo",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "knife美工刀",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "knife美工刀",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "knife美工刀",
+          "rating": 9
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "TOASTER DATA PATCHER",
+          "jacketDesigner": "knife美工刀",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 11751,
+          "sha256": "834df59693847dccf1dde3171b2853a523d00179f85235b8bc3ec7abd639074d",
+          "note_commands": 334,
+          "parse_status": "ok",
+          "event_count": 360
+        },
+        {
+          "file": "1.aff",
+          "bytes": 25313,
+          "sha256": "8b115d53d9af38776142bb373175ac941024a57e4c446605103c95ed9769351e",
+          "note_commands": 661,
+          "parse_status": "ok",
+          "event_count": 771
+        },
+        {
+          "file": "2.aff",
+          "bytes": 46021,
+          "sha256": "d19f767210e86683f2ef52acc2b9709c56e17ee56d87e69d8f5209b9b98421a8",
+          "note_commands": 1094,
+          "parse_status": "ok",
+          "event_count": 1387
+        },
+        {
+          "file": "4.aff",
+          "bytes": 99182,
+          "sha256": "30e3c30e1fabd1f71bc951fa400fde2ccc16dd98ede294835fe0b97659c13116",
+          "note_commands": 1727,
+          "parse_status": "ok",
+          "event_count": 2682
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "divinelight-10+",
+      "id": "divinelight",
+      "title": "Divine Light of Myriad",
+      "artist": "yoho",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "東星※神授",
+          "jacketDesigner": "緋原ヨウ",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "東星※神授",
+          "jacketDesigner": "緋原ヨウ",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "東星※神授",
+          "jacketDesigner": "緋原ヨウ",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 13880,
+          "sha256": "b4143ba7d519a11fdf33ccdd1b9ad087908e7ca608270a31f0ed622fce6752b2",
+          "note_commands": 387,
+          "parse_status": "ok",
+          "event_count": 389
+        },
+        {
+          "file": "1.aff",
+          "bytes": 21187,
+          "sha256": "09b5e097406393ad6d92dfdcd67c1e6404754223a21ee7b925c0c95677f48ecb",
+          "note_commands": 590,
+          "parse_status": "ok",
+          "event_count": 664
+        },
+        {
+          "file": "2.aff",
+          "bytes": 37029,
+          "sha256": "be72b5778045e6887424b0151a5fed7272fda39f57595de60034c745fe76f217",
+          "note_commands": 1021,
+          "parse_status": "ok",
+          "event_count": 1283
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "dontfightmusic-10+",
+      "id": "dontfightmusic",
+      "title": "Don't Fight The Music",
+      "artist": "黒魔",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "絶滅 (AQUA) Lv.70",
+          "jacketDesigner": "",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "絶滅 (AQUA) Lv.70",
+          "jacketDesigner": "",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "絶滅 (AQUA) Lv.70",
+          "jacketDesigner": "",
+          "rating": 9
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "絶滅 (AQUA) Lv.70",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 13445,
+          "sha256": "71ba51e4e668fe8abd482d90b71b9800e4c065b79b92568030ff035f295b8609",
+          "note_commands": 390,
+          "parse_status": "ok",
+          "event_count": 413
+        },
+        {
+          "file": "1.aff",
+          "bytes": 26373,
+          "sha256": "6b166ef55d56b04fcd361b7cec777ce0fcf19a9578baca8c44455e9dd0ed997d",
+          "note_commands": 542,
+          "parse_status": "ok",
+          "event_count": 772
+        },
+        {
+          "file": "2.aff",
+          "bytes": 73238,
+          "sha256": "27bea582b46bfadf777c5230be4bfa2d83a1368540b84ff75d999157d5a5cf2d",
+          "note_commands": 1282,
+          "parse_status": "ok",
+          "event_count": 2075
+        },
+        {
+          "file": "4.aff",
+          "bytes": 106021,
+          "sha256": "809ae746f638697b961e175f6d126a85dd6def7790d59bc9e1e2fa9cf9eafab3",
+          "note_commands": 1888,
+          "parse_status": "ok",
+          "event_count": 2846
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "dreadarea-11",
+      "id": "dreadarea",
+      "title": "DREAD AREA",
+      "artist": "Ashrount vs. 打打だいず",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "絶滅「天道」",
+          "jacketDesigner": "あらへなす",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "絶滅「天道」",
+          "jacketDesigner": "あらへなす",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "絶滅「天道」",
+          "jacketDesigner": "あらへなす",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "ratingClassAlias": 1,
+          "chartDesigner": "絶滅「天道」",
+          "jacketDesigner": "あらへなす",
+          "rating": 11,
+          "hidden_until": "difficulty",
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 20527,
+          "sha256": "1edeb342256dc5aa8e555fe2b4fe20b8c0b4659c3202c8801a1db46c7f13c0f4",
+          "note_commands": 489,
+          "parse_status": "ok",
+          "event_count": 557
+        },
+        {
+          "file": "1.aff",
+          "bytes": 27316,
+          "sha256": "40436167f7e292d13774aa0cc3f1f105676098afa8a714443e38493938591c95",
+          "note_commands": 680,
+          "parse_status": "ok",
+          "event_count": 904
+        },
+        {
+          "file": "2.aff",
+          "bytes": 64666,
+          "sha256": "aa31cc75b96c9e3dc805bd4fb86d5917bb13a288db4f1cd02394f54718f06c82",
+          "note_commands": 1177,
+          "parse_status": "ok",
+          "event_count": 1832
+        },
+        {
+          "file": "3.aff",
+          "bytes": 121532,
+          "sha256": "2af7b226d8e979c0d39180a3df83d25101d51aead131e40919292ed3eb0d7010",
+          "note_commands": 1827,
+          "parse_status": "ok",
+          "event_count": 3095
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "einherjar-10+",
+      "id": "einherjar",
+      "title": "Einherjar Joker",
+      "artist": "DJ Genki vs Gram",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Requiem TaroNuke",
+          "jacketDesigner": "すずなし",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Requiem TaroNuke",
+          "jacketDesigner": "すずなし",
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Requiem TaroNuke",
+          "jacketDesigner": "すずなし",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 3,
+          "chartDesigner": "~REQUIEM~ 夜浪",
+          "jacketDesigner": "すずなし",
+          "jacketOverride": true,
+          "rating": 10,
+          "ratingPlus": true,
+          "date": 1706140805,
+          "version": "5.3",
+          "hidden_until": "difficulty"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 5518,
+          "sha256": "957239aac4703d7541d2b0608fce234dd0b8ae831937c01356352600a4973429",
+          "note_commands": 236,
+          "parse_status": "ok",
+          "event_count": 237
+        },
+        {
+          "file": "1.aff",
+          "bytes": 11578,
+          "sha256": "466774a20df151914634abcc6b1d027c83479a54de213302f0dd3b4c946a6d39",
+          "note_commands": 434,
+          "parse_status": "ok",
+          "event_count": 513
+        },
+        {
+          "file": "2.aff",
+          "bytes": 28273,
+          "sha256": "65e0a340778ff5f3097d685f449429ddc9e6205968e743fa29936b1afcda311d",
+          "note_commands": 999,
+          "parse_status": "ok",
+          "event_count": 1182
+        },
+        {
+          "file": "3.aff",
+          "bytes": 62936,
+          "sha256": "1c01540b0b50651455655b08b1aacf7c5f5d93f4fa479eba22bbe4be2c75addd",
+          "note_commands": 1562,
+          "parse_status": "ok",
+          "event_count": 1934
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "extradimensional-11",
+      "id": "extradimensional",
+      "title": "Extradimensional Cosmic Phenomenon",
+      "artist": "TAKIO feat. つぐ",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "#0000遒ｧ",
+          "jacketDesigner": "すずなし",
+          "rating": 6
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "#0000遒ｧ",
+          "jacketDesigner": "すずなし",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "#0000遒ｧ",
+          "jacketDesigner": "すずなし",
+          "rating": 10
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "#0000遒ｧ",
+          "jacketDesigner": "すずなし",
+          "legacy11": true,
+          "rating": 11
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 20607,
+          "sha256": "9d7a98697a9b7af3b0b940adb0cf4bdf88086dadba0d1998bf888ff44ce21e1d",
+          "note_commands": 629,
+          "parse_status": "ok",
+          "event_count": 672
+        },
+        {
+          "file": "1.aff",
+          "bytes": 34081,
+          "sha256": "278cd47237540bf34075fbe1b53afb3906301d9d1ed2315e93a87adf816a6e47",
+          "note_commands": 880,
+          "parse_status": "ok",
+          "event_count": 1076
+        },
+        {
+          "file": "2.aff",
+          "bytes": 65235,
+          "sha256": "305ab1bd0794f256f60929a2d9af6ee777e7a7c1a10b6e43969d7ff1fb03a7ba",
+          "note_commands": 1499,
+          "parse_status": "ok",
+          "event_count": 1886
+        },
+        {
+          "file": "4.aff",
+          "bytes": 82910,
+          "sha256": "b05ad152ce376425be5f116c85a79bf7647865f71a497d3ee71d0b820eb193e1",
+          "note_commands": 1805,
+          "parse_status": "ok",
+          "event_count": 2237
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "fractureray-11",
+      "id": "fractureray",
+      "title": "Fracture Ray",
+      "artist": "Sakuzyo",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Volatile Paradox",
+          "jacketDesigner": "シエラ",
+          "rating": 6
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Absolute Paradox",
+          "jacketDesigner": "シエラ",
+          "rating": 9,
+          "plusFingers": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Paradox Zero",
+          "jacketDesigner": "シエラ",
+          "rating": 11,
+          "legacy11": true,
+          "plusFingers": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 13001,
+          "sha256": "cb9b72f09ec8e0aa7f778ea6dca5b7df5a8b6310ea1d6fe76a41991e93a1f116",
+          "note_commands": 481,
+          "parse_status": "ok",
+          "event_count": 485
+        },
+        {
+          "file": "1.aff",
+          "bytes": 29571,
+          "sha256": "72131f9f315cbbd6711c98fcb5721528cd936a82479b6860f23490d8830e552a",
+          "note_commands": 867,
+          "parse_status": "ok",
+          "event_count": 941
+        },
+        {
+          "file": "2.aff",
+          "bytes": 52917,
+          "sha256": "f61fb13bf9a766844afe9ed7eeafabb663c776ccf5626d771c0eb7b93d65ec94",
+          "note_commands": 1183,
+          "parse_status": "ok",
+          "event_count": 1435
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "genocider-10+",
+      "id": "genocider",
+      "title": "GENOCIDER",
+      "artist": "DJ Myosuke",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "Taiyo Yamamoto",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "Taiyo Yamamoto",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "Taiyo Yamamoto",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 17061,
+          "sha256": "1b10590e2eaf68113bb47c59c3695d72ead2abd6e508fdc6d4587bda8c881f7c",
+          "note_commands": 456,
+          "parse_status": "ok",
+          "event_count": 472
+        },
+        {
+          "file": "1.aff",
+          "bytes": 31011,
+          "sha256": "3b5e52bfeb156e1b0766dd6381b08cdf3ca61fad81a9acb2c1318f61b614e602",
+          "note_commands": 826,
+          "parse_status": "ok",
+          "event_count": 982
+        },
+        {
+          "file": "2.aff",
+          "bytes": 60314,
+          "sha256": "34f4aa130d8620a4417b2b612074ed2b1146fd0ee0ab213bc9ec81435b160a2e",
+          "note_commands": 1434,
+          "parse_status": "ok",
+          "event_count": 1835
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "gou-10+",
+      "id": "gou",
+      "title": "Misdeed -la bonté de Dieu et l'origine du mal-",
+      "artist": "光吉猛修 VS 穴山大輔",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "神の啓示「人類の限界」",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "神の啓示「人類の希望」",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "神の啓示「人類の未来」",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 16675,
+          "sha256": "2a577eb024d225b3498da486868c4196e965c50cce6088c4ea23ec64157a4b25",
+          "note_commands": 503,
+          "parse_status": "ok",
+          "event_count": 522
+        },
+        {
+          "file": "1.aff",
+          "bytes": 29094,
+          "sha256": "8c0d1a434b3efaf47d294e5ed37fdae0c509e8b334b31bd7ea3799331d565cf1",
+          "note_commands": 877,
+          "parse_status": "ok",
+          "event_count": 957
+        },
+        {
+          "file": "2.aff",
+          "bytes": 69907,
+          "sha256": "b639719ddec934b6a68f9f922e31566fe51e7e6318818590b1fddb39deb30a3e",
+          "note_commands": 1668,
+          "parse_status": "ok",
+          "event_count": 1989
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "grievouslady-11",
+      "id": "grievouslady",
+      "title": "Grievous Lady",
+      "artist": "Team Grimoire vs Laur",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "迷路第一層",
+          "jacketDesigner": "シエラ",
+          "rating": 6
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "迷路第二層",
+          "jacketDesigner": "シエラ",
+          "rating": 9,
+          "plusFingers": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "迷路深層",
+          "jacketDesigner": "シエラ",
+          "rating": 11,
+          "legacy11": true,
+          "plusFingers": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 14772,
+          "sha256": "9c622a452dd6808a0985665c7e2f06181737c185ff9eb5dd7026ccb325604201",
+          "note_commands": 536,
+          "parse_status": "ok",
+          "event_count": 537
+        },
+        {
+          "file": "1.aff",
+          "bytes": 21172,
+          "sha256": "637496f3cc81c5eda0fc50a813e5ccd8bc8a1cc2def38b14902b89e890898306",
+          "note_commands": 745,
+          "parse_status": "ok",
+          "event_count": 841
+        },
+        {
+          "file": "2.aff",
+          "bytes": 59396,
+          "sha256": "0df172e82248ef94ac5873e377af471c07fbf21f6e07697e3433f683fe51bd7c",
+          "note_commands": 1421,
+          "parse_status": "ok",
+          "event_count": 1679
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "heavenlycaress-10+",
+      "id": "heavenlycaress",
+      "title": "Heavenly caress",
+      "artist": "Noah",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "fixro2n",
+          "rating": 3
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "fixro2n",
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Toaster",
+          "jacketDesigner": "fixro2n",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 3,
+          "chartDesigner": "絶･零･夜",
+          "jacketDesigner": "fixro2n",
+          "jacketOverride": true,
+          "rating": 10,
+          "ratingPlus": true,
+          "date": 1773014405,
+          "version": "6.13"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 8304,
+          "sha256": "380933c9e902f7b4d3a1641a96ab503603e7550796c07522e9f2fb96a987c9f8",
+          "note_commands": 241,
+          "parse_status": "ok",
+          "event_count": 244
+        },
+        {
+          "file": "1.aff",
+          "bytes": 14146,
+          "sha256": "e1e4e40372c22ddd677b2dde59e2d4d62d3d3226c6de3481eb4c0d8cf1226833",
+          "note_commands": 403,
+          "parse_status": "ok",
+          "event_count": 446
+        },
+        {
+          "file": "2.aff",
+          "bytes": 56522,
+          "sha256": "6b7f8f524da12b719d25dbb3458fb0f3f882659469b45808172f3a03ecf556c0",
+          "note_commands": 1202,
+          "parse_status": "ok",
+          "event_count": 1307
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "heavensdoor-10+",
+      "id": "heavensdoor",
+      "title": "Heavensdoor",
+      "artist": "LeaF",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Kurorak",
+          "jacketDesigner": "yusi. + Khronetic",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Kurorak",
+          "jacketDesigner": "yusi. + Khronetic",
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Black Tea",
+          "jacketDesigner": "yusi. + Khronetic",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 3,
+          "chartDesigner": "東星※天の門",
+          "jacketDesigner": "nonokuro",
+          "jacketOverride": true,
+          "rating": 10,
+          "ratingPlus": true,
+          "date": 1639008003,
+          "version": "3.10",
+          "hidden_until": "difficulty"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 10849,
+          "sha256": "1a77617a2cf1ea81d7e1e15cc049e5562c921e938ef0b072855535754afb346d",
+          "note_commands": 304,
+          "parse_status": "ok",
+          "event_count": 305
+        },
+        {
+          "file": "1.aff",
+          "bytes": 19061,
+          "sha256": "52ca7651447b57c175b8960bc52e5e889a8b2973698139ede85d1509d1b0121f",
+          "note_commands": 477,
+          "parse_status": "ok",
+          "event_count": 587
+        },
+        {
+          "file": "2.aff",
+          "bytes": 37893,
+          "sha256": "04f8963e7ebb04ba172c516a79b8afda164a1ec6228aa315ce1114fab278cf82",
+          "note_commands": 990,
+          "parse_status": "ok",
+          "event_count": 1202
+        },
+        {
+          "file": "3.aff",
+          "bytes": 68365,
+          "sha256": "9457620a39883f6d0cd01ad6a65cfc8f8b3dacf5568b5e9b242b63dba8586d03",
+          "note_commands": 1531,
+          "parse_status": "ok",
+          "event_count": 1837
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "ifi-11",
+      "id": "ifi",
+      "title": "#1f1e33",
+      "artist": "かめりあ(EDP)",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "望月けい",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "望月けい",
+          "rating": 9
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪 VS 東星 \"Convergence\"",
+          "jacketDesigner": "望月けい",
+          "rating": 11,
+          "legacy11": false
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 15536,
+          "sha256": "3ea1b9a4982808efc9ecf4e72516da80a78d59521e6b4db2831b9e56c1b108d1",
+          "note_commands": 496,
+          "parse_status": "ok",
+          "event_count": 497
+        },
+        {
+          "file": "1.aff",
+          "bytes": 28159,
+          "sha256": "17a67f8729f7284f6412cd10e89e6dc2e90b583f8e2ff56381a256f52280bf94",
+          "note_commands": 819,
+          "parse_status": "ok",
+          "event_count": 1018
+        },
+        {
+          "file": "2.aff",
+          "bytes": 72956,
+          "sha256": "7f501c6b59057ca98b407df850693933c071385421f9e1c1ca396926e23b13c4",
+          "note_commands": 1515,
+          "parse_status": "ok",
+          "event_count": 1978
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "ii-10+",
+      "id": "ii",
+      "title": " ͟͝͞Ⅱ́̕ ",
+      "artist": "Cytus",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Corrupted data\nRecovery progress......100%",
+          "jacketDesigner": "",
+          "rating": 5,
+          "jacketOverride": true
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Main_Log_702_10_25",
+          "jacketDesigner": "",
+          "rating": 8,
+          "ratingPlus": true,
+          "jacketOverride": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Cam_Library_702_12_29",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 12705,
+          "sha256": "04e470cfccd0fe94921eeba3e6769c4ea1d20ebe38406e803a83b98f446e35b8",
+          "note_commands": 335,
+          "parse_status": "ok",
+          "event_count": 353
+        },
+        {
+          "file": "1.aff",
+          "bytes": 25765,
+          "sha256": "a16a5b851fc178dd78bf58e843a65de8368ab2958b2a4879fc58878d164d380d",
+          "note_commands": 581,
+          "parse_status": "ok",
+          "event_count": 739
+        },
+        {
+          "file": "2.aff",
+          "bytes": 73128,
+          "sha256": "1c5462bd16557d452031b5f654fd54fb2e9f13d9eea012c450e248525adc4ce6",
+          "note_commands": 1432,
+          "parse_status": "ok",
+          "event_count": 1846
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "infinitestrife-10+",
+      "id": "infinitestrife",
+      "title": "Infinite Strife,",
+      "artist": "BlackYooh vs. siromaru",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "jacketDesigner": "Enji",
+          "chartDesigner": "Inner Labyrinth",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "jacketDesigner": "Enji",
+          "chartDesigner": "Inner Labyrinth",
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "jacketDesigner": "Enji",
+          "chartDesigner": "Inner Labyrinth",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 3,
+          "jacketDesigner": "Enji",
+          "chartDesigner": "Inner Labyrinth",
+          "rating": 10,
+          "ratingPlus": true,
+          "world_unlock": false,
+          "hidden_until": "none"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 13066,
+          "sha256": "8180a5390e38e507b7f99caedfb1052175d0e401e44d79ef62ccc37f97b25482",
+          "note_commands": 393,
+          "parse_status": "ok",
+          "event_count": 396
+        },
+        {
+          "file": "1.aff",
+          "bytes": 28051,
+          "sha256": "53517daaa83f1e5dcb160185a8be2459da55f20d2c1f0ecf7afe7b1e611b1c32",
+          "note_commands": 763,
+          "parse_status": "ok",
+          "event_count": 898
+        },
+        {
+          "file": "2.aff",
+          "bytes": 68190,
+          "sha256": "b0fc4817f0214466cf5a9975a6395ec28bf178b7b307c50d39fe2a53b04595a8",
+          "note_commands": 1612,
+          "parse_status": "ok",
+          "event_count": 1993
+        },
+        {
+          "file": "3.aff",
+          "bytes": 78812,
+          "sha256": "fe983a2b5c92b1925175dd397e50ff57ed9025bbc7520d73e6d3a2a7c001f62c",
+          "note_commands": 1766,
+          "parse_status": "ok",
+          "event_count": 2311
+        }
+      ],
+      "audio": [
+        "glass.wav",
+        "voice.wav",
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "invertedworld-10+",
+      "id": "invertedworld",
+      "title": "Inverted World",
+      "artist": "ARForest",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "↑én↓",
+          "jacketDesigner": "Mechari",
+          "rating": 3
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "↑én↓",
+          "jacketDesigner": "Mechari",
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "↑én↓",
+          "jacketDesigner": "Mechari",
+          "rating": 9
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "聖輪↓↑夜浪",
+          "jacketDesigner": "Mechari",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 9253,
+          "sha256": "9479945096b19cb2a7af7e76afc8fef63d542ae564f5929f67fdfd962f010d86",
+          "note_commands": 252,
+          "parse_status": "ok",
+          "event_count": 253
+        },
+        {
+          "file": "1.aff",
+          "bytes": 15354,
+          "sha256": "43eacc17a7dcb32c0fb32c22a2b1c91aff2581e6a90b3b6dd7eef57729157ef4",
+          "note_commands": 473,
+          "parse_status": "ok",
+          "event_count": 524
+        },
+        {
+          "file": "2.aff",
+          "bytes": 44401,
+          "sha256": "75c98d5362b76bb9c45278ab552561e4874162b34fb5c20cef82384087a06d08",
+          "note_commands": 1079,
+          "parse_status": "ok",
+          "event_count": 1288
+        },
+        {
+          "file": "4.aff",
+          "bytes": 69539,
+          "sha256": "605c06d493b52231e293a50ce93533cf7f3e83d3d8b9d8bcd83efb5eaea9c14e",
+          "note_commands": 1487,
+          "parse_status": "ok",
+          "event_count": 1852
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "kyorenromance-10+",
+      "id": "kyorenromance",
+      "title": "KYOREN ROMANCE",
+      "artist": "REDALiCE vs DJ Myosuke feat. DELUTAYA",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Dec18 + Nitro",
+          "jacketDesigner": "イカダ",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Dec18 + Nitro",
+          "jacketDesigner": "イカダ",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Dec18 + Nitro",
+          "jacketDesigner": "イカダ",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 12257,
+          "sha256": "956805f894cc571dde45e1866b7892823cddd264b75ce9fa0a19ab3648c09e83",
+          "note_commands": 381,
+          "parse_status": "ok",
+          "event_count": 382
+        },
+        {
+          "file": "1.aff",
+          "bytes": 23026,
+          "sha256": "4c4b1d34b185b99643ec8169f13a448bc6b27b8ff9426ba599155fa7f1d3a96a",
+          "note_commands": 562,
+          "parse_status": "ok",
+          "event_count": 693
+        },
+        {
+          "file": "2.aff",
+          "bytes": 150199,
+          "sha256": "52e91ee5129ef414aaef90edd1cd0cf43d8bd94937b5c56845f8d022bd9f57b1",
+          "note_commands": 2917,
+          "parse_status": "ok",
+          "event_count": 3406
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "lamentrain-11",
+      "id": "lamentrain",
+      "title": "Lament Rain",
+      "artist": "Ashrount vs. 打打だいず",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "⇆ Fixation",
+          "jacketDesigner": "ああもんど",
+          "rating": 6
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "⇆ Sublimation",
+          "jacketDesigner": "ああもんど",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "⇆ Separation",
+          "jacketDesigner": "ああもんど",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "chartDesigner": "⇆ Projection",
+          "jacketDesigner": "ああもんど",
+          "rating": 11,
+          "legacy11": true,
+          "hidden_until": "none"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 25702,
+          "sha256": "017cd89893796b2dc999168643caf491b2d9ffb3a99f7666c9be03c36c7af59f",
+          "note_commands": 714,
+          "parse_status": "unsupported",
+          "parse_error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/lamentrain-11/0.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+        },
+        {
+          "file": "1.aff",
+          "bytes": 41230,
+          "sha256": "8171e5ac945516f4c9fbb3fc10e45bedf4a8ed22a10b9ca8cc9eca8de4aacd99",
+          "note_commands": 908,
+          "parse_status": "unsupported",
+          "parse_error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/lamentrain-11/1.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+        },
+        {
+          "file": "2.aff",
+          "bytes": 69037,
+          "sha256": "ee65bfb35e71326812d3d6306753d3e351a68d2350993dcd81dca234b6d19ddd",
+          "note_commands": 1459,
+          "parse_status": "unsupported",
+          "parse_error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/lamentrain-11/2.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+        },
+        {
+          "file": "3.aff",
+          "bytes": 86182,
+          "sha256": "d8668206674aa975b772b26ec72a71fa6e143952e4e9b84f7093a262f6bdbb0b",
+          "note_commands": 1808,
+          "parse_status": "unsupported",
+          "parse_error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/lamentrain-11/3.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+        }
+      ],
+      "audio": [
+        "lament_rain_beep.wav",
+        "lament_rain_special.wav",
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "lamia-11",
+      "id": "lamia",
+      "title": "LAMIA",
+      "artist": "BlackY",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪「ノブレス・オブリージュ」",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "[漆黒の執行者] 夜浪",
+          "jacketDesigner": "",
+          "rating": 11,
+          "legacy11": false
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 13038,
+          "sha256": "2c4e0368d5ee926999fe2a446d9d23891aa2ce871bfdb2766933af7d5ab693e4",
+          "note_commands": 405,
+          "parse_status": "ok",
+          "event_count": 406
+        },
+        {
+          "file": "1.aff",
+          "bytes": 24676,
+          "sha256": "037e53d118abbd1d26a9bed4ab0fb5c640326cb1a8fc4443f61e304c20a53a25",
+          "note_commands": 602,
+          "parse_status": "ok",
+          "event_count": 851
+        },
+        {
+          "file": "2.aff",
+          "bytes": 119565,
+          "sha256": "448182bf7442340ff1f37d7ab3d5e5be70311270eec2093ad5608479f7602783",
+          "note_commands": 2160,
+          "parse_status": "ok",
+          "event_count": 2976
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "lilly-10+",
+      "id": "lilly",
+      "title": "Lilly",
+      "artist": "Juggernaut.",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "反水【天龍】",
+          "jacketDesigner": "イシダタツキ",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "反水【天龍】",
+          "jacketDesigner": "イシダタツキ",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "反水【天龍】",
+          "jacketDesigner": "イシダタツキ",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "瑞獣【応龍】",
+          "jacketDesigner": "イシダタツキ",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 16635,
+          "sha256": "dc812876728682e25ea85154775da6ef924e23fe94554dc7950540ff87d09e41",
+          "note_commands": 524,
+          "parse_status": "ok",
+          "event_count": 525
+        },
+        {
+          "file": "1.aff",
+          "bytes": 29080,
+          "sha256": "6d98d717ff3f7cd0c16405800fb046b32015fbde127452fc8e0b94ccb5cc478f",
+          "note_commands": 769,
+          "parse_status": "ok",
+          "event_count": 887
+        },
+        {
+          "file": "2.aff",
+          "bytes": 53087,
+          "sha256": "35d1e966e34057183c4b22bbb87fe501d382651288db4a4210c91a9226508a3d",
+          "note_commands": 1335,
+          "parse_status": "ok",
+          "event_count": 1524
+        },
+        {
+          "file": "4.aff",
+          "bytes": 63504,
+          "sha256": "592279bf604e4ff5825fa5c45c309f310a9bb4ff15f86ac4ce399a53d32e4177",
+          "note_commands": 1452,
+          "parse_status": "ok",
+          "event_count": 1918
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "marenyx-10+",
+      "id": "marenyx",
+      "title": "MARENYX",
+      "artist": "BlackY × Aoi",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "raycast against. 零下",
+          "jacketDesigner": "かえで《もみじの木》",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "raycast against. 零下",
+          "jacketDesigner": "かえで《もみじの木》",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "raycast against. 零下",
+          "jacketDesigner": "かえで《もみじの木》",
+          "rating": 9
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "raycast against. 零下",
+          "jacketDesigner": "かえで《もみじの木》",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 15749,
+          "sha256": "f2c30eff069d2a81207ab7e7ddc9a81dd4686320da735fe099a419cbe5e5da2a",
+          "note_commands": 496,
+          "parse_status": "ok",
+          "event_count": 497
+        },
+        {
+          "file": "1.aff",
+          "bytes": 24683,
+          "sha256": "cef9447ba0219ee17122c3a841a8584a5faecd78b6e216fbb248d011e3e82948",
+          "note_commands": 676,
+          "parse_status": "ok",
+          "event_count": 797
+        },
+        {
+          "file": "2.aff",
+          "bytes": 42479,
+          "sha256": "583ba7441a9b26ca3e238d9a4268be98b3647c3135bc0650f9a4f782bdf9f960",
+          "note_commands": 1049,
+          "parse_status": "ok",
+          "event_count": 1303
+        },
+        {
+          "file": "4.aff",
+          "bytes": 66520,
+          "sha256": "91f1c399998ea96d36027a2241547cb72b245768a0bc4ab2fd8e47c1a0fa54d8",
+          "note_commands": 1570,
+          "parse_status": "ok",
+          "event_count": 1946
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "megalovaniarmx-10+",
+      "id": "megalovaniarmx",
+      "title": "MEGALOVANIA (Camellia Remix)",
+      "artist": "Camellia",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "M理論",
+          "jacketDesigner": "夏生",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "M理論",
+          "jacketDesigner": "夏生",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "M理論",
+          "jacketDesigner": "夏生",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "* do you wanna have a bad time?",
+          "jacketDesigner": "夏生",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 17075,
+          "sha256": "cf0ac615a5d38ab76108df6f2bf27b441c1d6a39266d3bdfdcce084b53361405",
+          "note_commands": 548,
+          "parse_status": "ok",
+          "event_count": 549
+        },
+        {
+          "file": "1.aff",
+          "bytes": 29571,
+          "sha256": "08dec9e2e916f893e2291f719044b99f97f21dd537579194e1b0914298bf7b9b",
+          "note_commands": 805,
+          "parse_status": "ok",
+          "event_count": 942
+        },
+        {
+          "file": "2.aff",
+          "bytes": 105652,
+          "sha256": "4264d7d5cd214d2fc86f79d566d639f3a5275bdee223ca8d515fdd70fd2cde97",
+          "note_commands": 2154,
+          "parse_status": "ok",
+          "event_count": 2481
+        },
+        {
+          "file": "4.aff",
+          "bytes": 186423,
+          "sha256": "523a5b9468ace180806bd4ac5a47359c768bebbfec91ae2bd164e028e01dd778",
+          "note_commands": 3559,
+          "parse_status": "ok",
+          "event_count": 4091
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "metamysteria-10+",
+      "id": "metamysteria",
+      "title": "Meta-Mysteria",
+      "artist": "DJ Noriken",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "Taiyo Yamamoto",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "Taiyo Yamamoto",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "VII: THE CHARIOT/夜浪",
+          "jacketDesigner": "Taiyo Yamamoto",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 14009,
+          "sha256": "991bc0275ac376eb0de28adffa09dff1dc59ce76e998605c67cb11cb600044cf",
+          "note_commands": 495,
+          "parse_status": "ok",
+          "event_count": 496
+        },
+        {
+          "file": "1.aff",
+          "bytes": 26218,
+          "sha256": "9be459cc2397302d14f7b6f24efa9678e35ed6c4aa0f0a721478ee9e902afbdf",
+          "note_commands": 634,
+          "parse_status": "ok",
+          "event_count": 826
+        },
+        {
+          "file": "2.aff",
+          "bytes": 67077,
+          "sha256": "92eb302fd65693aa321184df4186038b2238a682c8d5a56542af78437e59b55a",
+          "note_commands": 1504,
+          "parse_status": "ok",
+          "event_count": 1876
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "nhelv-10+",
+      "id": "nhelv",
+      "title": "Nhelv",
+      "artist": "Silentroom",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Nitro「Katastrophe」",
+          "jacketDesigner": "駿",
+          "rating": 3
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Nitro「Katastrophe」",
+          "jacketDesigner": "駿",
+          "rating": 6
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Nitro「Katastrophe」",
+          "jacketDesigner": "駿",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 3,
+          "chartDesigner": "零下 -descent-",
+          "jacketDesigner": "shun yamaguchi",
+          "jacketOverride": true,
+          "rating": 10,
+          "ratingPlus": true,
+          "bg": "eden_conflict",
+          "date": 1745452804,
+          "version": "6.4",
+          "hidden_until": "difficulty"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 7629,
+          "sha256": "b054593b7d69a6454f05b454d524aabcabbc580281cb1799d3d5b739f0fc91d3",
+          "note_commands": 267,
+          "parse_status": "ok",
+          "event_count": 268
+        },
+        {
+          "file": "1.aff",
+          "bytes": 14288,
+          "sha256": "b0629fe663e5284188c6d9e4c8c00f7dfc047a41dc4ff94b5c8cec2c1beacd11",
+          "note_commands": 356,
+          "parse_status": "ok",
+          "event_count": 418
+        },
+        {
+          "file": "2.aff",
+          "bytes": 31115,
+          "sha256": "bcf32ec14b30cc30ca362b288ea7e34ba603441b7ce5c44784d7983a4a12b115",
+          "note_commands": 713,
+          "parse_status": "ok",
+          "event_count": 965
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "nightmare-10+",
+      "id": "nightmare",
+      "title": "Nightmare",
+      "artist": "M2U",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "零下",
+          "jacketDesigner": "",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "零下",
+          "jacketDesigner": "",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "零下",
+          "jacketDesigner": "",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "零下",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 8158,
+          "sha256": "8b2ac47ac058a4c3ee9eb64001495875fd80f3aa494e262ff89c989377d2101a",
+          "note_commands": 279,
+          "parse_status": "ok",
+          "event_count": 280
+        },
+        {
+          "file": "1.aff",
+          "bytes": 17109,
+          "sha256": "365d2c0b3e05460708ac08c1dd0a935ed5082339de3f2814224b2b115098ccc3",
+          "note_commands": 455,
+          "parse_status": "ok",
+          "event_count": 578
+        },
+        {
+          "file": "2.aff",
+          "bytes": 31826,
+          "sha256": "991b0c56d5c003891f8a75a180c66f2a2c9726c7a98c19ba5815d588a7a7c85c",
+          "note_commands": 790,
+          "parse_status": "ok",
+          "event_count": 953
+        },
+        {
+          "file": "4.aff",
+          "bytes": 47248,
+          "sha256": "e084aa259cd5d7d49342e9662051049b549e42d7ec628f314160d471da37ff87",
+          "note_commands": 1042,
+          "parse_status": "ok",
+          "event_count": 1332
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "nullapophenia-10+",
+      "id": "nullapophenia",
+      "title": "NULL APOPHENIA",
+      "artist": "N²",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "softmode",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "softmode",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "東星 vs 夜浪《APOPHÄNIE》",
+          "jacketDesigner": "softmode",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 17489,
+          "sha256": "39455dad53440b310566bc753ae50855a4272d2dd95139424364653b31fc48de",
+          "note_commands": 515,
+          "parse_status": "ok",
+          "event_count": 525
+        },
+        {
+          "file": "1.aff",
+          "bytes": 27072,
+          "sha256": "283f75e47f4b09acb2a38629a8ea142c4bc23f0093930b2a1a04fcdb71d08c8e",
+          "note_commands": 682,
+          "parse_status": "ok",
+          "event_count": 805
+        },
+        {
+          "file": "2.aff",
+          "bytes": 96181,
+          "sha256": "5b62e2da80734b6767deb95669ce7990d0d1d5f83a2ed0a8813883f1bab5df96",
+          "note_commands": 1903,
+          "parse_status": "ok",
+          "event_count": 2368
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "omegafour-10+",
+      "id": "omegafour",
+      "title": "ω4",
+      "artist": "穴山大輔 VS 光吉猛修 VS Kai",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "τ0",
+          "jacketDesigner": "",
+          "rating": 3
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "τ0",
+          "jacketDesigner": "",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "τ0",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 13053,
+          "sha256": "3084b0370ee7183cf65419024775a572784cfb0d27eefc95c0ce00894273728e",
+          "note_commands": 356,
+          "parse_status": "ok",
+          "event_count": 363
+        },
+        {
+          "file": "1.aff",
+          "bytes": 21921,
+          "sha256": "ec4788864e6b5068558b5d1a076977dc09d7f56211f6cef9a0afea04fd5923f5",
+          "note_commands": 569,
+          "parse_status": "ok",
+          "event_count": 662
+        },
+        {
+          "file": "2.aff",
+          "bytes": 177904,
+          "sha256": "0867e3ad84dbfd7d63ee5a1bfab339576751b9319ba4a6b0e056a6a6231c8ed3",
+          "note_commands": 3450,
+          "parse_status": "ok",
+          "event_count": 3929
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "ouroboros-10+",
+      "id": "ouroboros",
+      "title": "ouroboros -twin stroke of the end-",
+      "artist": "Cranky VS MASAKI",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Groove 東星",
+          "jacketDesigner": "",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Groove 東星",
+          "jacketDesigner": "",
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Groove 東星",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 11238,
+          "sha256": "5ae9a3b3e154fc451465c97a71d3c81d31ddc167dd8e6d5b33ac5fdb98a03c95",
+          "note_commands": 335,
+          "parse_status": "ok",
+          "event_count": 338
+        },
+        {
+          "file": "1.aff",
+          "bytes": 32465,
+          "sha256": "5fc16b3322becd2022df8f8e96d16a2090fdebb3cdb3b0cfdf18e7160a835380",
+          "note_commands": 769,
+          "parse_status": "ok",
+          "event_count": 828
+        },
+        {
+          "file": "2.aff",
+          "bytes": 59531,
+          "sha256": "23b6139165704c4040c4c8747af8899bdc760ebd55a8175275a7f36002bf9aae",
+          "note_commands": 1437,
+          "parse_status": "ok",
+          "event_count": 1719
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "pentiment-11",
+      "id": "pentiment",
+      "title": "Pentiment",
+      "artist": "Nothing But Requiem with Museo",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "jacketDesigner": "村カルキ",
+          "chartDesigner": "Paradox Blight",
+          "rating": 7
+        },
+        {
+          "ratingClass": 1,
+          "jacketDesigner": "村カルキ",
+          "chartDesigner": "Paradox Blight",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "jacketDesigner": "村カルキ",
+          "chartDesigner": "Paradox Blight",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "jacketDesigner": "村カルキ",
+          "chartDesigner": "Paradox Blight",
+          "rating": 11,
+          "legacy11": true,
+          "world_unlock": false,
+          "hidden_until": "none"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 19385,
+          "sha256": "a26bff387661bd5eb0cc5006057eeea47cfa0dccca2c275f739d89429929c18f",
+          "note_commands": 650,
+          "parse_status": "ok",
+          "event_count": 667
+        },
+        {
+          "file": "1.aff",
+          "bytes": 26353,
+          "sha256": "fde395b39005eb9afaa728d42bd50fc8f6c2f7c45b2915c8bd6b95c6cdbbd5ea",
+          "note_commands": 761,
+          "parse_status": "ok",
+          "event_count": 1005
+        },
+        {
+          "file": "2.aff",
+          "bytes": 65919,
+          "sha256": "8ae27e7776f3c1b138352d80c8ee315b3e0563d155dfc2593b46b87b528fca83",
+          "note_commands": 1512,
+          "parse_status": "ok",
+          "event_count": 1944
+        },
+        {
+          "file": "3.aff",
+          "bytes": 109168,
+          "sha256": "463f7756f37dcb1002576785b7e21f19c97da59ae3bd8acf7576f614a9bd675f",
+          "note_commands": 2457,
+          "parse_status": "ok",
+          "event_count": 3013
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "pragmatism-11",
+      "id": "pragmatism",
+      "title": "PRAGMATISM",
+      "artist": "Laur",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "東星",
+          "jacketDesigner": "シエラ",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "東星",
+          "jacketDesigner": "シエラ",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "東星",
+          "jacketDesigner": "シエラ",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "title_localized": {
+            "en": "PRAGMATISM -RESURRECTION-"
+          },
+          "audioOverride": true,
+          "chartDesigner": "THE LAST DREAM",
+          "jacketDesigner": "シエラ",
+          "jacketOverride": true,
+          "bg": "pragmatism3",
+          "rating": 11,
+          "legacy11": true,
+          "date": 1639008004,
+          "version": "3.10",
+          "hidden_until": "difficulty"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 5996,
+          "sha256": "660200177dd987f6bcc0084b44cc7bd97ed2f0d1e00cc605a420d21045e981aa",
+          "note_commands": 249,
+          "parse_status": "ok",
+          "event_count": 254
+        },
+        {
+          "file": "1.aff",
+          "bytes": 16071,
+          "sha256": "8eaafd569ec5b05037a9aebb3afede559d1d10be0eb8d0bccc2d481ba95d7771",
+          "note_commands": 604,
+          "parse_status": "ok",
+          "event_count": 622
+        },
+        {
+          "file": "2.aff",
+          "bytes": 24623,
+          "sha256": "1edcd502bb7ae7ec864ef02f52487c073de80c3ab6d5ff5efed8ae961d954c0b",
+          "note_commands": 750,
+          "parse_status": "ok",
+          "event_count": 914
+        },
+        {
+          "file": "3.aff",
+          "bytes": 68586,
+          "sha256": "af3761ab01a8391e681692be9c345720233fe606afb87630625a24bf8424c870",
+          "note_commands": 1459,
+          "parse_status": "ok",
+          "event_count": 2008
+        }
+      ],
+      "audio": [
+        "3.ogg",
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "primitivelights-10+",
+      "id": "primitivelights",
+      "title": "PRIMITIVE LIGHTS",
+      "artist": "TAG",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "東星※原初の灯",
+          "jacketDesigner": "Waterswing",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "東星※原初の灯",
+          "jacketDesigner": "Waterswing",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "東星※原初の灯",
+          "jacketDesigner": "Waterswing",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 17293,
+          "sha256": "7abf8b48ccb41fed00b73bba3cb6cf6d17d60607e2bb2e9b8d0020035567868d",
+          "note_commands": 526,
+          "parse_status": "ok",
+          "event_count": 531
+        },
+        {
+          "file": "1.aff",
+          "bytes": 33265,
+          "sha256": "023726406734d76ed58a621add303e9b5e3d466de1d45d0860a13407f2b7d7ee",
+          "note_commands": 942,
+          "parse_status": "ok",
+          "event_count": 1108
+        },
+        {
+          "file": "2.aff",
+          "bytes": 74877,
+          "sha256": "c07c2fbac5987cda0db71f622a9a8cb7afe88499fa12817444ffd96d21083aba",
+          "note_commands": 1679,
+          "parse_status": "ok",
+          "event_count": 2167
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "rekkaresonance-10+",
+      "id": "rekkaresonance",
+      "title": "REKKA RESONANCE",
+      "artist": "REDALiCE vs Kobaryo",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪 vs Nitro",
+          "jacketDesigner": "Nagu + yusi.",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪 vs Nitro",
+          "jacketDesigner": "Nagu + yusi.",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪 vs Nitro",
+          "jacketDesigner": "Nagu + yusi.",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 12807,
+          "sha256": "a3ac1545041bf24eea3e109d45260fa9e1980487e6bfacbb9c4184faac7988da",
+          "note_commands": 418,
+          "parse_status": "ok",
+          "event_count": 419
+        },
+        {
+          "file": "1.aff",
+          "bytes": 27025,
+          "sha256": "df759a1eeb1927837602b19a1a82bb2c7ff37af4a196c3554ca312af624a2cd8",
+          "note_commands": 698,
+          "parse_status": "ok",
+          "event_count": 840
+        },
+        {
+          "file": "2.aff",
+          "bytes": 42704,
+          "sha256": "6bad6c94108c1f637f0c30f6b9b5ac6551a6e579c485c73138d4bfcd1dbccf6d",
+          "note_commands": 1086,
+          "parse_status": "ok",
+          "event_count": 1398
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "ringedgenesis-10+",
+      "id": "ringedgenesis",
+      "title": "Ringed Genesis",
+      "artist": "Edelritter",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪 vs Nitro",
+          "jacketDesigner": "シエラ",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪 vs Nitro",
+          "jacketDesigner": "シエラ",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪 vs Nitro",
+          "jacketDesigner": "シエラ",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 8732,
+          "sha256": "243163943a4cc7e9b40e5b9720a29aff01f4d62e1fb98dddd74cdfd0e1f97a6e",
+          "note_commands": 322,
+          "parse_status": "ok",
+          "event_count": 323
+        },
+        {
+          "file": "1.aff",
+          "bytes": 13943,
+          "sha256": "e3f09133cd0a6028452a8b94bed63f12ef7bc3daafaca75d31cfd2e708587f1f",
+          "note_commands": 494,
+          "parse_status": "ok",
+          "event_count": 583
+        },
+        {
+          "file": "2.aff",
+          "bytes": 33409,
+          "sha256": "4a26823c8256e261189000288f92a21de21ae7516613411b09dd472015de025e",
+          "note_commands": 945,
+          "parse_status": "ok",
+          "event_count": 1205
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "rivenpilgrim-11",
+      "id": "rivenpilgrim",
+      "title": "Riven Pilgrimage",
+      "artist": "rejection & Supire feat. eili",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "零下「kuratoro」",
+          "jacketDesigner": "雨儀",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "零下「kuratoro」",
+          "jacketDesigner": "雨儀",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "零下「kuratoro」",
+          "jacketDesigner": "雨儀",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "ratingClassAlias": 1,
+          "chartDesigner": "零下 vs 夜浪「gardantoj」",
+          "jacketDesigner": "雨儀",
+          "rating": 11,
+          "hidden_until": "difficulty",
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 21437,
+          "sha256": "b012aca2305b30b755cbf16d9e578b86e0783786ccbb8b31bec57260dbe54ed2",
+          "note_commands": 524,
+          "parse_status": "ok",
+          "event_count": 572
+        },
+        {
+          "file": "1.aff",
+          "bytes": 28291,
+          "sha256": "0f6031db8687ba83f29e392f53093edb448af3634919723114cc200471bf3d9a",
+          "note_commands": 686,
+          "parse_status": "ok",
+          "event_count": 867
+        },
+        {
+          "file": "2.aff",
+          "bytes": 78189,
+          "sha256": "b1bc090498598967095faaa54bf47d91d4c9c6fb4798a7a3182597ac14bc8b7e",
+          "note_commands": 1446,
+          "parse_status": "ok",
+          "event_count": 2044
+        },
+        {
+          "file": "3.aff",
+          "bytes": 111727,
+          "sha256": "73b7ca430ccf5fab8f0e62c5ed5fe3df1754a436f2c643eb6add585ac03b7c23",
+          "note_commands": 1824,
+          "parse_status": "ok",
+          "event_count": 2769
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "sacrosanct-10+",
+      "id": "sacrosanct",
+      "title": "⊥⊬",
+      "artist": "Silentroom Dismantled XOR かたぎり",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "▯",
+          "jacketDesigner": "春昼京芒",
+          "rating": 6,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "▯",
+          "jacketDesigner": "春昼京芒",
+          "rating": 9,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "▯",
+          "jacketDesigner": "春昼京芒",
+          "rating": 10,
+          "ratingPlus": true,
+          "hidden_until_unlocked": true,
+          "hidden_until": "song"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 29903,
+          "sha256": "8ad28a312cc849ca69cde1e7b0e7bee5904cb0cf2ade3dc20e9269e43b28b25a",
+          "note_commands": 796,
+          "parse_status": "ok",
+          "event_count": 805
+        },
+        {
+          "file": "1.aff",
+          "bytes": 46015,
+          "sha256": "d017c80ae46dcf8e935feb1b90d16d9f538a64bcad27101827c56340e7b6d3d9",
+          "note_commands": 1114,
+          "parse_status": "ok",
+          "event_count": 1259
+        },
+        {
+          "file": "2.aff",
+          "bytes": 171529,
+          "sha256": "d71b3a755d45ffbcca8fdc1fc5f268e5c4f20d5e9795a583f59ae990d82b0382",
+          "note_commands": 2733,
+          "parse_status": "ok",
+          "event_count": 4115
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "saikyostronger-11",
+      "id": "saikyostronger",
+      "title": "SAIKYO STRONGER",
+      "artist": "REDALiCE vs USAO",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "最強FUMEN (夜浪 ft. 東星)",
+          "jacketDesigner": "KEI",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "最強FUMEN (夜浪 ft. 東星)",
+          "jacketDesigner": "KEI",
+          "rating": 9
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "最強FUMEN (夜浪 ft. 東星)",
+          "jacketDesigner": "KEI",
+          "rating": 11,
+          "legacy11": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 9411,
+          "sha256": "c8ba1a9424f4e35228462608b3a6b60e78491f85aae76675cf5288917dcb03c3",
+          "note_commands": 377,
+          "parse_status": "ok",
+          "event_count": 378
+        },
+        {
+          "file": "1.aff",
+          "bytes": 25338,
+          "sha256": "37ba44987456abdbec3c406bffde745ba8b5a549c52f874f54d2350ac7389792",
+          "note_commands": 839,
+          "parse_status": "ok",
+          "event_count": 993
+        },
+        {
+          "file": "2.aff",
+          "bytes": 59597,
+          "sha256": "c4ba65f844a44901d29d4c2b33e72ac03b7005df535ca6955d997b58726ea51e",
+          "note_commands": 1421,
+          "parse_status": "ok",
+          "event_count": 1822
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "signal-10+",
+      "id": "signal",
+      "title": "Signal",
+      "artist": "rejection feat. Such",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "én",
+          "jacketDesigner": "Poyoshi",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "én",
+          "jacketDesigner": "Poyoshi",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "én",
+          "jacketDesigner": "Poyoshi",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "Poyoshi",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 12235,
+          "sha256": "3613751491081fdac3f384b7cd4bb84b6a8704fdd126a9a20f35c82449de7cf1",
+          "note_commands": 358,
+          "parse_status": "ok",
+          "event_count": 359
+        },
+        {
+          "file": "1.aff",
+          "bytes": 23158,
+          "sha256": "74d55516dd6aedaf7637659a93a076ad7ccba7468e12145ecc34d6aea6b4ea77",
+          "note_commands": 621,
+          "parse_status": "ok",
+          "event_count": 666
+        },
+        {
+          "file": "2.aff",
+          "bytes": 51428,
+          "sha256": "4cec496b9756a65a70a2d5b1a35835764767ce8ae5ea42e98b9cfad1e202d6d9",
+          "note_commands": 1090,
+          "parse_status": "ok",
+          "event_count": 1358
+        },
+        {
+          "file": "4.aff",
+          "bytes": 67085,
+          "sha256": "0dd98948a33718c521e22d9d182864c06c4aa3ecdecf3e48accb80014c292e2b",
+          "note_commands": 1453,
+          "parse_status": "ok",
+          "event_count": 1802
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "spidersthread-10+",
+      "id": "spidersthread",
+      "title": "Spider's Thread",
+      "artist": "きくお×cosMo＠暴走P feat.影縫英",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪 <->",
+          "jacketDesigner": "",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪 <->",
+          "jacketDesigner": "",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "夜浪 <->",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 12868,
+          "sha256": "4598a83b47571b94942c1d023866a213d9c1f61e50f89eec621ef1bf03aa21c3",
+          "note_commands": 353,
+          "parse_status": "ok",
+          "event_count": 354
+        },
+        {
+          "file": "1.aff",
+          "bytes": 22185,
+          "sha256": "205847ab531f647bd516caee570d4d70a6b27777c265105f42e99065e084367b",
+          "note_commands": 588,
+          "parse_status": "ok",
+          "event_count": 688
+        },
+        {
+          "file": "2.aff",
+          "bytes": 157378,
+          "sha256": "ba77b1dc8709b375a674eb3ba086eac6da781392c74f2a2df5be17cb643760ad",
+          "note_commands": 3095,
+          "parse_status": "ok",
+          "event_count": 3618
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "stasis-10+",
+      "id": "stasis",
+      "title": "Stasis",
+      "artist": "Maozon",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "東星",
+          "jacketDesigner": "",
+          "jacketOverride": true,
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "東星",
+          "jacketDesigner": "",
+          "jacketOverride": true,
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "東星",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 15343,
+          "sha256": "9dc27e8b4a8e421194d1aaeed984e425941938127c152dc286dca2b74015bad6",
+          "note_commands": 430,
+          "parse_status": "ok",
+          "event_count": 431
+        },
+        {
+          "file": "1.aff",
+          "bytes": 26139,
+          "sha256": "acb0b0ff220943d1a360415a3c970b49ef3f7fbc3c5945d4e5edea60713a4ae0",
+          "note_commands": 711,
+          "parse_status": "ok",
+          "event_count": 760
+        },
+        {
+          "file": "2.aff",
+          "bytes": 69851,
+          "sha256": "5bb51fbb4ad5779ff6885cb62d426dfbd3faa54a403275209e5df73f10f9c26a",
+          "note_commands": 1482,
+          "parse_status": "ok",
+          "event_count": 1912
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "tempestissimo-11",
+      "id": "tempestissimo",
+      "title": "Tempestissimo",
+      "artist": "t+pazolite",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Prelude - Ouverture",
+          "jacketDesigner": "シエラ",
+          "rating": 7
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Convergence - Intermezzo",
+          "jacketDesigner": "シエラ",
+          "rating": 9
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Onslaught - Crescendo",
+          "jacketDesigner": "シエラ",
+          "rating": 10,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 3,
+          "chartDesigner": "Finale - The Tempest",
+          "jacketDesigner": "シエラ",
+          "rating": 11,
+          "legacy11": true,
+          "jacketOverride": true,
+          "hidden_until_unlocked": true,
+          "hidden_until": "difficulty"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 17650,
+          "sha256": "a17c98ad3344e1951ee61a3022e25a909ce2a3108d650c7fb5c875e4c0a0f0ac",
+          "note_commands": 622,
+          "parse_status": "ok",
+          "event_count": 640
+        },
+        {
+          "file": "1.aff",
+          "bytes": 30882,
+          "sha256": "24995ea13e43e9a1ed47470286c59676970797c1654ad9b78ca891fdb1da0909",
+          "note_commands": 817,
+          "parse_status": "ok",
+          "event_count": 1118
+        },
+        {
+          "file": "2.aff",
+          "bytes": 37592,
+          "sha256": "5bcbbd78b1943e85b43b432bd28716fdef286094d3cbc46d87e40f2c7e34b855",
+          "note_commands": 1049,
+          "parse_status": "ok",
+          "event_count": 1356
+        },
+        {
+          "file": "3.aff",
+          "bytes": 70052,
+          "sha256": "63b1770e6ae61ecbc4196fd62374d9eaf1b7069e2783dd7749138e18d51ff118",
+          "note_commands": 1672,
+          "parse_status": "ok",
+          "event_count": 2122
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "temptation-10+",
+      "id": "temptation",
+      "title": "TEmPTaTiON",
+      "artist": "かねこちはる",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "EXtINcTiON",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "EXtINcTiON",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "EXtINcTiON",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 15120,
+          "sha256": "a159313beebf6f07ece5df597f9efe0ecbff0dc921800a54c2255617396be632",
+          "note_commands": 426,
+          "parse_status": "ok",
+          "event_count": 429
+        },
+        {
+          "file": "1.aff",
+          "bytes": 22955,
+          "sha256": "c50faf7ab609365486002950b56b17520aa392c49c48b35b11ac778b268c9852",
+          "note_commands": 638,
+          "parse_status": "ok",
+          "event_count": 803
+        },
+        {
+          "file": "2.aff",
+          "bytes": 80008,
+          "sha256": "a0a7e89468ec9139408fcbe2797e2819a335c816ecba7266611a9b45e5cc0414",
+          "note_commands": 1590,
+          "parse_status": "ok",
+          "event_count": 2084
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "teravolt-10+",
+      "id": "teravolt",
+      "title": "TeraVolt",
+      "artist": "Katali",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "hiro",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "夜浪",
+          "jacketDesigner": "hiro",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "超東星 × 雷夜浪",
+          "jacketDesigner": "hiro",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 16468,
+          "sha256": "ecdb949c07190bc98049c8ef41606c59a27d4bbe93ccb1bdf2e428187b999ea7",
+          "note_commands": 498,
+          "parse_status": "ok",
+          "event_count": 503
+        },
+        {
+          "file": "1.aff",
+          "bytes": 23244,
+          "sha256": "18758692fa764558a497044623585433525cf5ab5ec04467680df615d49b2266",
+          "note_commands": 579,
+          "parse_status": "ok",
+          "event_count": 787
+        },
+        {
+          "file": "2.aff",
+          "bytes": 64060,
+          "sha256": "500f9ca820b7839fa249f1fe9c4904aab84e537c33f7e638b51fde5b6e85cf32",
+          "note_commands": 1323,
+          "parse_status": "ok",
+          "event_count": 1697
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "testify-12",
+      "id": "testify",
+      "title": "Testify",
+      "artist": "void (Mournfinale) feat. 星熊南巫",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "jacketDesigner": "シエラ",
+          "chartDesigner": "Eternal¦PAST",
+          "rating": 7,
+          "ratingPlus": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 1,
+          "jacketDesigner": "シエラ",
+          "chartDesigner": "Adverse¦PRESENT",
+          "rating": 9,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 2,
+          "jacketDesigner": "シエラ",
+          "chartDesigner": "Black¦FUTURE",
+          "rating": 10,
+          "ratingPlus": true,
+          "hidden_until": "song"
+        },
+        {
+          "ratingClass": 3,
+          "jacketDesigner": "シエラ",
+          "chartDesigner": "Silent¦END",
+          "rating": 12,
+          "legacy11": true,
+          "world_unlock": false,
+          "hidden_until": "song"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 18456,
+          "sha256": "5052af14297fab160f5f14a437a655eb83e0e3925c6abb9f69e32e9ea29d5401",
+          "note_commands": 727,
+          "parse_status": "ok",
+          "event_count": 745
+        },
+        {
+          "file": "1.aff",
+          "bytes": 27178,
+          "sha256": "153f25a32fd59ea89ff10cc4c3fbb9388482985444d3b3af2f77d73bb45b168c",
+          "note_commands": 966,
+          "parse_status": "ok",
+          "event_count": 1120
+        },
+        {
+          "file": "2.aff",
+          "bytes": 72721,
+          "sha256": "415aa466491adedb8fbcb90b2c391f758b938c0e065827787cb47e817a8d1a04",
+          "note_commands": 1733,
+          "parse_status": "ok",
+          "event_count": 2135
+        },
+        {
+          "file": "3.aff",
+          "bytes": 104081,
+          "sha256": "54a0da93147bfeb522f8bb9713b9e085aaa0dc1e200a4a917638c263e7191c3c",
+          "note_commands": 2324,
+          "parse_status": "ok",
+          "event_count": 2871
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "un-10+",
+      "id": "un",
+      "title": "un",
+      "artist": "黒魔",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "én「The Resolute」",
+          "jacketDesigner": "_ziro",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "én「The Resolute」",
+          "jacketDesigner": "_ziro",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "én「The Resolute」",
+          "jacketDesigner": "_ziro",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "NITRO「The Absolute」",
+          "jacketDesigner": "_ziro",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 12022,
+          "sha256": "5ee94d36cf1135c9b8d5e87afe606e11ff0853bd8a99d0cc7812e105415667a6",
+          "note_commands": 401,
+          "parse_status": "ok",
+          "event_count": 402
+        },
+        {
+          "file": "1.aff",
+          "bytes": 24061,
+          "sha256": "8d436d9ec11229063d589d5b2d2fb1adbba12ef134ffc39a2cf6aaf6d46f95f4",
+          "note_commands": 654,
+          "parse_status": "ok",
+          "event_count": 777
+        },
+        {
+          "file": "2.aff",
+          "bytes": 76477,
+          "sha256": "d56356bb71eeefa76a9d01f6255c40c9b389aa12218b44f7a1a1da77eb654453",
+          "note_commands": 1537,
+          "parse_status": "ok",
+          "event_count": 2051
+        },
+        {
+          "file": "4.aff",
+          "bytes": 115249,
+          "sha256": "da04a835eb2d5fca6d6c259824a58d1a227fe57aaa58d062c85ada35d90d12f0",
+          "note_commands": 1962,
+          "parse_status": "ok",
+          "event_count": 3047
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "undyingmacula-11",
+      "id": "undyingmacula",
+      "title": "Undying Macula",
+      "artist": "Ashrount",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "PHOTONSPHERE",
+          "jacketDesigner": "すずなし",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "ERGOSPHERE",
+          "jacketDesigner": "すずなし",
+          "rating": 8,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "EVENTHORIZON",
+          "jacketDesigner": "すずなし",
+          "rating": 10
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "M/V_BRIDGE",
+          "jacketDesigner": "すずなし",
+          "legacy11": true,
+          "rating": 11
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 17207,
+          "sha256": "db76034ba06554c305ccdceb1794b39af3a93d0434adc93ca8d5c7e048ec5750",
+          "note_commands": 500,
+          "parse_status": "ok",
+          "event_count": 503
+        },
+        {
+          "file": "1.aff",
+          "bytes": 27443,
+          "sha256": "67d690ba71df57717ae186b851876919acb594d79e1339b2d9eec793de0bad9f",
+          "note_commands": 600,
+          "parse_status": "ok",
+          "event_count": 779
+        },
+        {
+          "file": "2.aff",
+          "bytes": 60928,
+          "sha256": "f5eb90abfe150a2a06197b1bb7c8ca24cb6dadc9c815e9e86df7458fc9131f82",
+          "note_commands": 1226,
+          "parse_status": "ok",
+          "event_count": 1598
+        },
+        {
+          "file": "4.aff",
+          "bytes": 101696,
+          "sha256": "a40f84fa9707c30c69a3b38d937b0b9d98e00f86cfc7496f7478f0b9b29498f7",
+          "note_commands": 1982,
+          "parse_status": "ok",
+          "event_count": 2447
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "viciousheroism-11",
+      "id": "viciousheroism",
+      "title": "Vicious Heroism",
+      "artist": "Kobaryo",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Nitro vanquish Toaster.",
+          "jacketDesigner": "吠L",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Nitro vanquish Toaster.",
+          "jacketDesigner": "吠L",
+          "rating": 7
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Nitro vanquish Toaster.",
+          "jacketDesigner": "吠L",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "title_localized": {
+            "en": "Vicious [ANTi] Heroism"
+          },
+          "artist": "Kobaryo",
+          "bpm": "271",
+          "bpm_base": 271,
+          "audioOverride": true,
+          "chartDesigner": "[FUTiLE] Defiance",
+          "jacketDesigner": "陽葉ヨウ",
+          "jacketOverride": true,
+          "bg": "viciousheroism3",
+          "rating": 11,
+          "legacy11": true,
+          "date": 1706140806,
+          "version": "5.3",
+          "hidden_until": "difficulty"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 10109,
+          "sha256": "018765ddd1d1c7b93541e96e3ae6306f81303047e3dffa3e43848cbb853b34eb",
+          "note_commands": 339,
+          "parse_status": "ok",
+          "event_count": 340
+        },
+        {
+          "file": "1.aff",
+          "bytes": 27770,
+          "sha256": "3f16a9d8bff990912442ea55c1e897509b4bb1c7341b579c0718e477eec4491f",
+          "note_commands": 716,
+          "parse_status": "ok",
+          "event_count": 784
+        },
+        {
+          "file": "2.aff",
+          "bytes": 47155,
+          "sha256": "f3451f0dab6d3eb34d1f64e192f60771b488c30abdd858e419979f4da6db06e4",
+          "note_commands": 1160,
+          "parse_status": "ok",
+          "event_count": 1392
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "virtus-10+",
+      "id": "virtus",
+      "title": "ViRTUS",
+      "artist": "Hiro",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "NiTRO",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "NiTRO",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "NiTRO",
+          "jacketDesigner": "",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "NiTRO",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 13711,
+          "sha256": "8dcf25195cd14fa74a4d1614462b058a4425d9399714e9ae10ffb727a54d96bd",
+          "note_commands": 447,
+          "parse_status": "ok",
+          "event_count": 448
+        },
+        {
+          "file": "1.aff",
+          "bytes": 24755,
+          "sha256": "ad015596eb131da4fb50e0566315a77252e8622b62619d11acfb2926a76f0c58",
+          "note_commands": 682,
+          "parse_status": "ok",
+          "event_count": 845
+        },
+        {
+          "file": "2.aff",
+          "bytes": 42932,
+          "sha256": "a4e66b57630686a224adb3e36bb5abc80fac2764547671b285397843a04f8399",
+          "note_commands": 1008,
+          "parse_status": "ok",
+          "event_count": 1274
+        },
+        {
+          "file": "4.aff",
+          "bytes": 50557,
+          "sha256": "07748ae6e6aed048b775d565b98dcf67b17c311cf8a8278b78fb4c9f2885cf1e",
+          "note_commands": 1233,
+          "parse_status": "ok",
+          "event_count": 1509
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "vulcanus-10+",
+      "id": "vulcanus",
+      "title": "Vulcānus",
+      "artist": "Team Grimoire vs Aoi",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Volution",
+          "jacketDesigner": "月裏",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Volution CCCLX",
+          "jacketDesigner": "月裏",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Volution IV",
+          "jacketDesigner": "月裏",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 15366,
+          "sha256": "32b8ce690c2caf78642ac09534e6758c0853eca35bebefcc127e4258b4bff189",
+          "note_commands": 483,
+          "parse_status": "ok",
+          "event_count": 486
+        },
+        {
+          "file": "1.aff",
+          "bytes": 26567,
+          "sha256": "c8243233c34c7dc2e46373b1468f9e31028c8295c4041ba674d11fc1bce8b29b",
+          "note_commands": 701,
+          "parse_status": "ok",
+          "event_count": 850
+        },
+        {
+          "file": "2.aff",
+          "bytes": 79916,
+          "sha256": "dd4f46b211e41909505fe78c88961abfbfb8306e47038beab1facf690ba5ffe1",
+          "note_commands": 1621,
+          "parse_status": "ok",
+          "event_count": 2072
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "welcomequeen-10+",
+      "id": "welcomequeen",
+      "title": "Welcome, Queen of Fiction.",
+      "artist": "打打だいず",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "ようこそ、瑞獣。",
+          "jacketDesigner": "あらへなす",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "ようこそ、瑞獣。",
+          "jacketDesigner": "あらへなす",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "ようこそ、瑞獣。",
+          "jacketDesigner": "あらへなす",
+          "rating": 10
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "虚偽の玉座【夜浪】",
+          "jacketDesigner": "あらへなす",
+          "rating": 10,
+          "ratingPlus": true,
+          "hidden_until": "unlockconditions"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 11372,
+          "sha256": "46249e1184a04b72ebb8bdc7351f9185145d79cfc98d1455df3af32f3c9e9b2c",
+          "note_commands": 374,
+          "parse_status": "ok",
+          "event_count": 405
+        },
+        {
+          "file": "1.aff",
+          "bytes": 18833,
+          "sha256": "5f8961060ca5dd19e77ffa7f8dec296acd08e143cdc3ec22aff9e25b186baa33",
+          "note_commands": 687,
+          "parse_status": "ok",
+          "event_count": 818
+        },
+        {
+          "file": "2.aff",
+          "bytes": 50640,
+          "sha256": "9c4ce219cfb967e5e5394fef760c144a21bd7aaac5f5ece9cd6f564b0c94d2f4",
+          "note_commands": 1221,
+          "parse_status": "ok",
+          "event_count": 1542
+        },
+        {
+          "file": "4.aff",
+          "bytes": 61907,
+          "sha256": "361c33808d7d30dcecb9c432d265496382a787edd3bb7081484fa927b96ed439",
+          "note_commands": 1491,
+          "parse_status": "ok",
+          "event_count": 1894
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "wereallgonnadie-10+",
+      "id": "wereallgonnadie",
+      "title": "We're All Gonna Die",
+      "artist": "Paul Bazooka",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "",
+          "rating": 10
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "絶滅",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 18798,
+          "sha256": "023f2b7c7e1537e8bcafaa037b5896672d0873e4bb68f2d6fa52aeaa4dff142f",
+          "note_commands": 469,
+          "parse_status": "ok",
+          "event_count": 470
+        },
+        {
+          "file": "1.aff",
+          "bytes": 27349,
+          "sha256": "cb1c3fe8548cebd7169362d1cabd563932b9589015acf46241ea1d75ac0c5cc2",
+          "note_commands": 575,
+          "parse_status": "ok",
+          "event_count": 670
+        },
+        {
+          "file": "2.aff",
+          "bytes": 37804,
+          "sha256": "134b895671b40ffbbb67db6c6b89b627e82b19c88b9569a24724554bb40f77be",
+          "note_commands": 974,
+          "parse_status": "ok",
+          "event_count": 1253
+        },
+        {
+          "file": "4.aff",
+          "bytes": 76586,
+          "sha256": "e748ed6d52d545bec67e6fa5aaa59c7f330df7e23e234c2daecc57ef40e87df7",
+          "note_commands": 1483,
+          "parse_status": "ok",
+          "event_count": 2133
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "worldender-11",
+      "id": "worldender",
+      "title": "World Ender",
+      "artist": "sasakure.UK × TJ.hangneil",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "jacketDesigner": "米室",
+          "chartDesigner": "Imaginary Sky",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "jacketDesigner": "米室",
+          "chartDesigner": "Imaginary Sky",
+          "rating": 7,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 2,
+          "jacketDesigner": "米室",
+          "chartDesigner": "Imaginary Sky",
+          "rating": 10
+        },
+        {
+          "ratingClass": 3,
+          "jacketDesigner": "米室",
+          "chartDesigner": "Imaginary Sky",
+          "rating": 11,
+          "legacy11": true,
+          "world_unlock": false,
+          "hidden_until": "none"
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 15422,
+          "sha256": "2c43db952ea6d3839679afb6d68ba0a8706cf2bc268036459bca76663ffb2cab",
+          "note_commands": 433,
+          "parse_status": "ok",
+          "event_count": 462
+        },
+        {
+          "file": "1.aff",
+          "bytes": 22664,
+          "sha256": "2f9b139e07cdaba25a0a0eb49cd4934bbc550fa1d8c87f82252bbaf54bdd6e53",
+          "note_commands": 635,
+          "parse_status": "ok",
+          "event_count": 821
+        },
+        {
+          "file": "2.aff",
+          "bytes": 62972,
+          "sha256": "419c9176e51d45817ac71d3337914dfbe94404cba4e0119973edd86d7e03ff96",
+          "note_commands": 1305,
+          "parse_status": "ok",
+          "event_count": 1727
+        },
+        {
+          "file": "3.aff",
+          "bytes": 89446,
+          "sha256": "6917cb665f35b2a5abcfe09434ce94edcd9c532c16e2934efaa93f8a991ae558",
+          "note_commands": 1919,
+          "parse_status": "ok",
+          "event_count": 2431
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "worldvanquisher-10+",
+      "id": "worldvanquisher",
+      "title": "World Vanquisher",
+      "artist": "void (Mournfinale)",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "処刑人【東星】",
+          "jacketDesigner": "",
+          "rating": 2
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "処刑人【東星】",
+          "jacketDesigner": "",
+          "rating": 5
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "処刑人【東星】",
+          "jacketDesigner": "",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 6656,
+          "sha256": "53f0f101a3f93bd62eb7ef2ffc912670092619cb29c132686e00baf2bf1d0347",
+          "note_commands": 212,
+          "parse_status": "ok",
+          "event_count": 213
+        },
+        {
+          "file": "1.aff",
+          "bytes": 12303,
+          "sha256": "bad175ef1b64b022c76be3a9890bc6cf296d79170b77c2b3fc23175e653b4d2d",
+          "note_commands": 333,
+          "parse_status": "ok",
+          "event_count": 374
+        },
+        {
+          "file": "2.aff",
+          "bytes": 78760,
+          "sha256": "8bf981fda0e1bdafe91dc1b10734f5499f21ee5a4c9980af1d69e3d2aab5024c",
+          "note_commands": 1697,
+          "parse_status": "ok",
+          "event_count": 1998
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    },
+    {
+      "folder": "xterfusion-10+",
+      "id": "xterfusion",
+      "title": "Xterfusion",
+      "artist": "REDALiCE × t+pazolite",
+      "difficulties": [
+        {
+          "ratingClass": 0,
+          "chartDesigner": "Nitro -fuze- 夜浪",
+          "jacketDesigner": "すずなし + Vormis.",
+          "rating": 4
+        },
+        {
+          "ratingClass": 1,
+          "chartDesigner": "Nitro -fuze- 夜浪",
+          "jacketDesigner": "すずなし + Vormis.",
+          "rating": 8
+        },
+        {
+          "ratingClass": 2,
+          "chartDesigner": "Nitro -fuze- 夜浪",
+          "jacketDesigner": "すずなし + Vormis.",
+          "rating": 9,
+          "ratingPlus": true
+        },
+        {
+          "ratingClass": 4,
+          "chartDesigner": "Nitro -fuze- 夜浪",
+          "jacketDesigner": "すずなし + Vormis.",
+          "rating": 10,
+          "ratingPlus": true
+        }
+      ],
+      "charts": [
+        {
+          "file": "0.aff",
+          "bytes": 20111,
+          "sha256": "0c336fd7c3cfde7d8c375e0da69c73d6d73163543724e028463fa488c8e79fec",
+          "note_commands": 505,
+          "parse_status": "ok",
+          "event_count": 532
+        },
+        {
+          "file": "1.aff",
+          "bytes": 25747,
+          "sha256": "7e7ebd2548692b1c1bda8b516f17d42d5f1dcf93b3ad17a2aa224c8b659ad2df",
+          "note_commands": 708,
+          "parse_status": "ok",
+          "event_count": 912
+        },
+        {
+          "file": "2.aff",
+          "bytes": 43391,
+          "sha256": "f217621a53176d4b157da3d52ffd6a70450afeb6662b3d38ef89d1cd0eb54116",
+          "note_commands": 1018,
+          "parse_status": "ok",
+          "event_count": 1304
+        },
+        {
+          "file": "4.aff",
+          "bytes": 80837,
+          "sha256": "b318c1d9d3132d95fc6fbb3b13c7ff0d0ffe7a50f9e74b4f0d6f21a27593ed07",
+          "note_commands": 1733,
+          "parse_status": "ok",
+          "event_count": 2177
+        }
+      ],
+      "audio": [
+        "base.ogg"
+      ]
+    }
+  ],
+  "song_count": 77,
+  "aff_count": 268,
+  "empty_aff_count": 0,
+  "unique_song_ids": 77,
+  "parser_check": {
+    "parsed_aff_count": 260,
+    "failed_aff_count": 8,
+    "parsed_event_count": 321371,
+    "diagnostic_counts": {
+      "arc_connection_scope": 260,
+      "scenecontrol_hidegroup_scope": 44,
+      "unsupported_arc_resolution": 466,
+      "unsupported_ground_lane": 831,
+      "unsupported_arc_effect": 12,
+      "unsupported_scenecontrol": 536,
+      "unsupported_timinggroup_attributes": 27,
+      "reversed_arc_duration": 2,
+      "unsupported_timing_divisor": 1
+    },
+    "failures": [
+      {
+        "file": "imported/10plus-import-novedio/designant-11+/0.aff",
+        "error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/designant-11+/0.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+      },
+      {
+        "file": "imported/10plus-import-novedio/designant-11+/1.aff",
+        "error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/designant-11+/1.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+      },
+      {
+        "file": "imported/10plus-import-novedio/designant-11+/2.aff",
+        "error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/designant-11+/2.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+      },
+      {
+        "file": "imported/10plus-import-novedio/designant-11+/3.aff",
+        "error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/designant-11+/3.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+      },
+      {
+        "file": "imported/10plus-import-novedio/lamentrain-11/0.aff",
+        "error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/lamentrain-11/0.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+      },
+      {
+        "file": "imported/10plus-import-novedio/lamentrain-11/1.aff",
+        "error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/lamentrain-11/1.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+      },
+      {
+        "file": "imported/10plus-import-novedio/lamentrain-11/2.aff",
+        "error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/lamentrain-11/2.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+      },
+      {
+        "file": "imported/10plus-import-novedio/lamentrain-11/3.aff",
+        "error": "prototypes/ipad-rhythm/charts/imported/10plus-import-novedio/lamentrain-11/3.aff: the chart could not be parsed (invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false; invalid_aff_arguments: arc argument 10 must be true or false)"
+      }
+    ]
+  }
+}

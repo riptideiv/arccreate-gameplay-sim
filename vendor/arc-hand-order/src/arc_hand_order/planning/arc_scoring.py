@@ -30,13 +30,14 @@ def trace_position(item, frame, offset, projection):
     return result
 
 
-def trace_cells(items, offset):
-    """Partition each snake's visual lifetime between its tick jobs.
+def trace_cells(items, offset, *, include_tail=True):
+    """Partition each snake's trace window between its tick jobs.
 
-    Each frame is charged once, independent of tick density. Untraced gaps,
-    heads and tails count too, rather than rewarding two-frame tick taps.
+    Each frame is counted once, including the head and gaps between ticks.
+    Without the visual tail, price tracing through the first frame on which
+    the last required contact can score. A later catch can still satisfy it.
     """
-    from .two_finger import frame_at_or_after
+    from .two_finger import frame_at_or_after, frame_ms
 
     parents = {}
     for item in items:
@@ -53,9 +54,14 @@ def trace_cells(items, offset):
             (a.last_tick.time_ms + b.first_tick.time_ms) / 2
             for a, b in zip(jobs, jobs[1:])
         )
-        boundaries.append(jobs[0].end_ms + 1)
+        end = jobs[0].end_ms
+        if not include_tail:
+            opening = max(point.contact_window.earliest_ms
+                          for job in jobs for point in job.score_points)
+            end = min(end, frame_ms(frame_at_or_after(opening, offset), offset))
+        boundaries.append(end + 1)
         boundaries = [
-            min(jobs[0].end_ms + 1, max(jobs[0].start_ms, t)) for t in boundaries
+            min(end + 1, max(jobs[0].start_ms, t)) for t in boundaries
         ]
         for job, first, stop in zip(jobs, boundaries, boundaries[1:]):
             cells[job.occupation_id] = (
@@ -68,14 +74,14 @@ def trace_cells(items, offset):
 class TracePreference:
     """Deviation-seconds of actual composed touches, cached across extensions."""
 
-    def __init__(self, groups, projection, offset):
+    def __init__(self, groups, projection, offset, *, include_tail):
         items = {
             c.occupation.occupation_id: c.occupation
             for group in groups
             for c in group
             if c.occupation.kind == "chain"
         }
-        self.cells = trace_cells(items.values(), offset)
+        self.cells = trace_cells(items.values(), offset, include_tail=include_tail)
         self.centres = {
             key: tuple(
                 trace_position(item, f, offset, projection)
@@ -84,17 +90,23 @@ class TracePreference:
             for key, item in items.items()
         }
         self.values = {}
+        self.jobs = {}
+
+    def _jobs(self, touch):
+        if touch.id not in self.jobs:
+            # Retain the original set construction and iteration order: it
+            # determines the floating-point accumulation order below.
+            self.jobs[touch.id] = {
+                p.candidate.occupation.occupation_id for p in touch.parts
+            } & self.cells.keys()
+        return self.jobs[touch.id]
 
     def distance(self, touch):
-        if touch is None or not any(
-            p.candidate.occupation.occupation_id in self.cells for p in touch.parts
-        ):
+        if touch is None or not self._jobs(touch):
             return 0.0
         if "_trace_distance" not in touch.__dict__:
             prefix = touch.__dict__.get("_native_prefix")
-            if prefix is not None and any(
-                p.candidate.occupation.occupation_id in self.cells for p in prefix.parts
-            ):
+            if prefix is not None and self._jobs(prefix):
                 value = self.distance(prefix)
                 path = touch.path[len(prefix.path) - 1 :]
             else:
@@ -109,12 +121,10 @@ class TracePreference:
             return 0.0
         if touch.id in self.values:
             return self.values[touch.id]
-        jobs = {
-            p.candidate.occupation.occupation_id for p in touch.parts
-        } & self.cells.keys()
+        jobs = self._jobs(touch)
         prefix = touch.__dict__.get("_native_prefix")
         old_jobs = (
-            ({p.candidate.occupation.occupation_id for p in prefix.parts} & jobs)
+            (self._jobs(prefix) & jobs)
             if prefix
             else set()
         )
@@ -337,7 +347,7 @@ def native_occupations(
                 ),
             )
         )
-    items.sort(key=lambda o: (o.start_ms, o.end_ms, o.occupation_id))
+    items.sort(key=lambda o: (o.start_ms, o.end_ms, o.is_red, o.occupation_id))
     return replace(
         occupations,
         items=tuple(items),
@@ -360,7 +370,7 @@ def world(projection, xy):
     return cache[xy]
 
 
-def hit(note, xy, time_ms):
+def hit(note, xy, time_ms, *, fractions=None):
     t = min(max(time_ms, note.start), note.end)
     cache = getattr(note, "_scoring_positions", None)
     if cache is None:
@@ -370,11 +380,13 @@ def hit(note, xy, time_ms):
         cache[t] = note.position(t)
     x, y = cache[t]
     if hasattr(xy, 'collides'):
+        if fractions is not None and not xy.in_contact_rectangle("chain", x, y, fractions):
+            return False
         return xy.collides(x, y, certain=True, inset=8)
     return abs(xy[0] - x) <= HALF_X and abs(xy[1] - y) <= HALF_Y
 
 
-def covers(item, path, down, offset, projection, points=None):
+def covers(item, path, down, offset, projection, points=None, *, fractions=None):
     """Actual path samples, never an averaged or time-collapsed swept hitbox."""
     from .two_finger import frame_ms, frame_at_or_after
 
@@ -391,7 +403,7 @@ def covers(item, path, down, offset, projection, points=None):
             (
                 f
                 for f in range(first, last)
-                if hit(note, world(projection, path[f - down]), frame_ms(f, offset))
+                if hit(note, world(projection, path[f - down]), frame_ms(f, offset), fractions=fractions)
             ),
             None,
         )
@@ -431,7 +443,7 @@ def anchors(item, projection):
     return tuple(pool)
 
 
-def profile(item, projection, max_speed, offset):
+def profile(item, projection, max_speed, offset, *, fractions=None):
     """Bounded single-chain search; return a fully covered path or None.
 
     First try stable anchors. Otherwise visit tick regions with a small beam,
@@ -468,7 +480,7 @@ def profile(item, projection, max_speed, offset):
             (
                 f
                 for f, t in zip(frames, times)
-                if any(n.start <= t <= n.end and hit(n, xy, t) for n in item.notes)
+                if any(n.start <= t <= n.end and hit(n, xy, t, fractions=fractions) for n in item.notes)
             ),
             None,
         )
@@ -484,7 +496,7 @@ def profile(item, projection, max_speed, offset):
                     f
                     for f in fs
                     if f >= bound
-                    and hit(source_note(item, point), xy, frame_ms(f, offset))
+                    and hit(source_note(item, point), xy, frame_ms(f, offset), fractions=fractions)
                 ),
                 None,
             )
@@ -506,7 +518,7 @@ def profile(item, projection, max_speed, offset):
             for anchor in (*pool, *((p,) if p is not None else ())):
                 xy = world(projection, anchor)
                 possible = [
-                    f for f in fs if f >= previous and hit(n, xy, frame_ms(f, offset))
+                    f for f in fs if f >= previous and hit(n, xy, frame_ms(f, offset), fractions=fractions)
                 ]
                 if possible:
                     for f in (possible[0], possible[len(possible) // 2], possible[-1]):
@@ -557,7 +569,7 @@ def profile(item, projection, max_speed, offset):
                 path.append((p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
             else:
                 path.append(route[k][1])
-        caught = covers(item, path, a, offset, projection)
+        caught = covers(item, path, a, offset, projection, fractions=fractions)
         if caught is not None:
             return a, tuple(path), tuple(caught)
     return None

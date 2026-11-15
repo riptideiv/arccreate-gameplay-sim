@@ -2,7 +2,7 @@
 
 **简体中文** · [English](README.en.md)
 
-这是一个模拟双手打 AFF 谱面的工具。程序会规划两根食指的落点和移动路线，用 ArcCreate 回放并记录判定，再把手部动作做成三维动画。整理出来分享给对手序规划或打谱动画感兴趣的朋友。
+这是一个模拟双手打 AFF 谱面的工具。程序会规划手指的落点和移动路线，用 ArcCreate 回放并记录判定，再把手部动作做成三维动画。整理出来分享给对手序规划或打谱动画感兴趣的朋友。
 
 可以生成整首或其中一段，调整连打、交叉、描蛇和松手设置，再用慢放查看动作。工作台会分别显示规划时跳过的音符和 ArcCreate 实际回放的命中、漏键与分数。预览里可以调整相机，也可以用 Blender 导出带游戏音频的 30 fps MP4。
 
@@ -33,11 +33,11 @@ ditto -x -k .tools/ArcCreate/StandaloneOSX.zip .tools/ArcCreate/build
 ./arc-create-export/setup.sh
 ```
 
-脚本会创建用于回放的 `.tools/ArcCreate/ArcCreate-export.app`。如果 Mono.Cecil 不在 Mono 的默认安装目录，先把 `MONO_CECIL_DLL` 设为 0.11 版 DLL 的完整路径。
+脚本会创建用于回放的 `.tools/ArcCreate/ArcCreate-media.app`。如果 Mono.Cecil 不在 Mono 的默认安装目录，先把 `MONO_CECIL_DLL` 设为 0.11 版 DLL 的完整路径。
 
 ### 放入谱面工程
 
-这个版本的工作台支持 Ex-Otogibanashi 和 BIBBIDIBA。谱面和音频需自行准备，把对应的 ArcCreate 工程放到下面的目录。
+谱面和音频需自行准备。两个示例工程使用下表中的目录。导入更多谱面可参考[曲库导入说明](charts/README.md)。
 
 | 曲目 | 工程目录 |
 | --- | --- |
@@ -62,12 +62,12 @@ BLENDER_BIN="/Applications/Blender.app/Contents/MacOS/Blender" ./dashboard.sh
 
 ## 使用方法
 
-1. 选择谱面并划定范围。第一次可以先试几秒钟。
+1. 选择谱面并划定范围。「整首」会选中从头到尾的范围。第一次可以先试几秒钟。
 2. 保留默认设置，点击「生成实时预览」。等触点规划、手部动画和 ArcCreate 回放生成完成。
 3. 播放、拖动进度或慢放检查手序。修改相机可以直接看效果，改动谱面或动作设置后需要重新生成。
 4. 要保存视频时，点击「导出 MP4」，等 Blender 渲染完后下载。也可以仅下载游戏画面。
 
-已生成的演奏会保存在 `output/runs/`，可以在「最近的演奏」中打开。每只手使用一根食指，遇到动作限制较紧的片段时，规划器可能跳过部分音符。
+已生成的演奏会保存在 `output/runs/`，可以在「最近的演奏」中打开。遇到动作限制较紧的片段时，规划器可能跳过部分音符。想试四指段，可以在「触点位置」勾选「试验性食指与拇指规划」。多指模式使用较大的平板，每只手用食指和拇指演奏。
 
 ## 只运行规划器
 
@@ -76,6 +76,12 @@ BLENDER_BIN="/Applications/Blender.app/Contents/MacOS/Blender" ./dashboard.sh
 ```sh
 mkdir -p output
 .venv/bin/python plan_excerpt.py charts/desk-study.aff 0 10000 output/excerpt.plan.json
+```
+
+命令行加上 `--multifinger` 就能试用多指规划。装好 Rust 工具链后，可以用以下命令安装可选的 Rust 搜索扩展。按判定规划时会自动使用兼容的扩展。加上 `--search-backend native` 可指定使用 Rust。
+
+```sh
+uv pip install --python .venv/bin/python ./native-search
 ```
 
 ## 参与贡献

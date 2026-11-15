@@ -1,6 +1,7 @@
 import { setText, setAttributeText, initI18n } from './i18n.js';
 import { RhythmPreview } from './live-preview.js';
 import { ChartRange } from './chart-range.js';
+import { PreviewRecorder } from './preview-recorder.js';
 
 initI18n();
 
@@ -12,17 +13,65 @@ const byName = name => fields.find(field => field.name === name);
 const $ = id => document.getElementById(id);
 let bootstrap, selected, lastHistory = "", lastTerminal = "", currentJob;
 let pollTimer;
+let generationSubmitting = false;
+let lastQueue = "";
+const cancelling = new Set();
 let exportSubmitting = false;
 let sceneSubmitting = false;
 const chartRange = new ChartRange(form, () => markDirty());
-let live;
+let live, recorder, deferredTake, webglDownload, webglResult;
 try { live = new RhythmPreview($("live-scene"), video, $("live-performance")); }
 catch (error) { setText($("live-performance"), "Live 3D unavailable: " + error.message); }
+
+recorder = new PreviewRecorder(live, video, state => {
+  setText($('webgl-export-hint'), state.message);
+  $('webgl-export-progress').hidden = !state.active;
+  $('webgl-export-progress').value = state.progress;
+});
+function lockRecording(locked) {
+  form.inert = locked;
+  $('export-fps').disabled = locked;
+  for (const element of document.querySelectorAll('#live-transport button, #live-transport input, #playback-speed, #history button')) element.disabled = locked;
+  $('cancel-webgl').hidden = !locked;
+  $('webgl-export-progress').hidden = !locked;
+  setRenderDisabled();
+  updateExportControls();
+}
+$('cancel-webgl').addEventListener('click', () => recorder.cancel());
+let endingCapture = false;
+$('export-ending').addEventListener('click', () => { endingCapture = true; $('export-webgl').click(); });
+$('export-webgl').addEventListener('click', async () => {
+  if (!selected?.live || recorder.active) return;
+  $('error').hidden = true;
+  const savedSpeed = $('playback-speed').value;
+  try {
+    // record() starts synchronously inside this user gesture, then awaits media.
+    const startTime = endingCapture ? selected.ending.start_s : 0; endingCapture = false;
+    const task = recorder.record({fps: Number($('export-fps').value), startTime}); $('playback-speed').value = '1'; lockRecording(true);
+    const result = await task;
+    if (webglDownload) URL.revokeObjectURL(webglDownload);
+    webglDownload = URL.createObjectURL(result.blob);
+    webglResult = {width:result.width, height:result.height, fps:result.fps, startTime:result.startTime, media:selected.video, id:selected.id, scene:selected.live.scene, view:JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, settings()[name]])))};
+    $('download-webgl').href = webglDownload;
+    Object.assign($('download-webgl').dataset, {mimeType:result.mimeType,width:result.width,height:result.height,fps:result.fps,startTime:result.startTime,wallSeconds:result.wallSeconds,durationSeconds:result.duration});
+    $('download-webgl').download = `${selected.settings.chart}-${selected.settings.start_s}-${selected.settings.end_s}-${result.startTime ? "ending-" + result.startTime : "preview"}-${result.width}x${result.height}-${result.fps}fps.${result.extension}`;
+    setText($('download-webgl'), `Download ${result.extension.toUpperCase()}`);
+    $('download-webgl').hidden = false;
+    setText($('webgl-export-hint'), `Video ready · ${result.width} × ${result.height} · ${result.fps} fps target with game audio.`);
+  } catch (error) {
+    setText($('webgl-export-hint'), error.message);
+    if (!error.message.startsWith('Export cancelled')) showError(error.message);
+  } finally {
+    $('playback-speed').value = savedSpeed;
+    lockRecording(false);
+    if (deferredTake) { const pending = deferredTake; deferredTake = null; showTake(...pending); }
+  }
+});
 
 const cameraFields = new Set(['camera_distance_m', 'camera_elevation_deg', 'camera_yaw_deg', 'camera_lens_mm', 'quality']);
 const clock = value => Math.floor(value / 60) + ':' + String(Math.floor(value % 60)).padStart(2, '0');
 $("play-preview").addEventListener('click', async () => {
-  try { if (video.paused) await video.play(); else video.pause(); }
+  try { if (video.paused) { await recorder.resumeAudio(); await video.play(); } else video.pause(); }
   catch (error) { showError('Could not play the preview: ' + error.message); }
 });
 $("seek-preview").addEventListener('input', event => { video.currentTime = Number(event.target.value); live?.pose(video.currentTime); });
@@ -36,9 +85,11 @@ function updateTransport() {
 }
 for (const event of ['timeupdate', 'loadedmetadata', 'play', 'pause', 'seeked']) video.addEventListener(event, updateTransport);
 
-function setRenderDisabled(disabled) {
-  renderButton.disabled = disabled;
-  $("mobile-render").disabled = disabled;
+function setRenderDisabled() {
+  renderButton.disabled = $("mobile-render").disabled = generationSubmitting || !!recorder?.active;
+  const busy = currentJob?.status === "running";
+  setText($("render-label"), busy ? "Add to generation queue" : "Build live preview");
+  setText($("mobile-render"), busy ? "Queue build" : "Generate");
 }
 
 for (const field of fields.filter(field => field.type === "number")) {
@@ -50,12 +101,17 @@ function normalizeRun(run) {
   const saved = run.settings;
   const oldRepeat = saved.prefer_same_hand ? 0 : 5;
   const oldJack = saved.prefer_same_hand ? 0 : 20;
-  return { ...run, legacyArcTrace: !("prefer_arc_trace" in saved), legacyArcPaths: !("arc_path_mode" in saved), legacyReleasePolicy: !("full_arc_hold" in saved),
+  return { ...run, savedSettings: saved, legacyArcTrace: !("prefer_arc_trace" in saved), legacyArcPaths: !("arc_path_mode" in saved), legacyReleasePolicy: !("full_arc_hold" in saved),
+    legacyContactOffsets: !("contact_offset_x_percent" in saved) || !("contact_offset_y_percent" in saved),
     settings: { ...bootstrap.defaults, ...saved,
     arc_path_mode: saved.arc_path_mode ?? run.planning?.arc_path_mode ?? 'trace',
     prefer_arc_trace: saved.prefer_arc_trace ?? false,
+    note_center_weight: saved.note_center_weight ?? 0,
+    note_center_free_mm: saved.note_center_free_mm ?? 5,
     full_arc_hold: saved.full_arc_hold ?? true,
     full_ground_hold: saved.full_ground_hold ?? true,
+    allow_clipping: saved.allow_clipping ?? false,
+    tap_interval_ms: saved.tap_interval_ms ?? 0,
     repeat_weight: saved.repeat_weight ?? oldRepeat,
     jack_weight: saved.jack_weight ?? oldJack } };
 }
@@ -77,11 +133,12 @@ function updateClickInterval() {
   $("jack-disabled").hidden = Number(byName("jack_weight").value) !== 0;
   const down = byName("point_contact_frames");
   const air = byName("min_air_frames");
-  if (!down.value || !air.value || !down.validity.valid || !air.validity.valid) {
+  const interval = byName("tap_interval_ms");
+  if (!down.value || !air.value || !interval.value || !down.validity.valid || !air.validity.valid || !interval.validity.valid) {
     setText($("click-interval"), "");
     return;
   }
-  const frames = Number(down.value) + Number(air.value);
+  const frames = Math.max(Number(down.value) + Number(air.value), Math.ceil(Number(interval.value) * 60 / 1000));
   setText($("click-interval"), "Point taps require at least " + (frames * 1000 / 60).toFixed(1) +
     " ms between presses, at most " + (60 / frames).toFixed(1) + " taps/s per hand before movement is considered.");
 }
@@ -98,10 +155,52 @@ function fill(values) {
     else field.value = values[field.name];
   }
   syncSliders();
+  updateChartCompatibility();
+  updateRedNotes();
   updateClickInterval();
   updateReleasePolicy();
   live?.setCamera(settings());
   markDirty();
+}
+
+function updateRedNotes() {
+  $('target-red').disabled = !byName('enable_red_notes').checked;
+}
+
+function populateCharts() {
+  const select = byName('chart');
+  select.replaceChildren();
+  const groups = new Map();
+  const entries = Object.entries(bootstrap.charts);
+  for (const [key, chart] of entries) {
+    const groupName = chart.group || 'Original projects';
+    let group = groups.get(groupName);
+    if (!group) {
+      group = document.createElement('optgroup');
+      if (chart.group) group.label = chart.group;
+      else setAttributeText(group, 'label', groupName);
+      groups.set(groupName, group); select.append(group);
+    }
+    const option = document.createElement('option');
+    option.value = key;
+    if (chart.available === false) setText(option, chart.title + ' · unavailable');
+    else option.textContent = chart.title;
+    option.disabled = chart.available === false;
+    if (chart.unavailable_reason) setAttributeText(option, 'title', chart.unavailable_reason);
+    group.append(option);
+  }
+  const unavailable = entries.filter(([, chart]) => chart.available === false).length;
+  setText($('chart-library-info'), `${entries.length} charts · grouped by song and difficulty` +
+    (unavailable ? ` · ${unavailable} require newer chart-format support.` : '.'));
+}
+
+function updateChartCompatibility() {
+  const chart = bootstrap?.charts[byName('chart').value];
+  const warnings = Object.entries(chart?.warnings || {});
+  $('chart-compatibility').hidden = !warnings.length && !chart?.unavailable_reason;
+  setText($('chart-compatibility'), chart?.unavailable_reason || (warnings.length ?
+    'Compatibility notice: this chart uses features the planner may not fully model (' +
+    warnings.map(([code]) => code.replace(/^unsupported_/, '').replaceAll('_', ' ')).join(', ') + ').' : ''));
 }
 
 function syncSliders() {
@@ -124,7 +223,12 @@ function markDirty() {
 function updateExportControls() {
   if (!selected) return;
   const current = settings();
-  const running = currentJob?.status === 'running' || exportSubmitting || sceneSubmitting;
+  const running = currentJob?.status === 'running' || exportSubmitting || sceneSubmitting || recorder?.active;
+  const crossings = selected.metrics?.arm_crossings;
+  const crossingStatus = !crossings ? 'Generate a new preview to apply planned arm crossings to this take.'
+    : crossings.verified ? `Verified arm crossing routes: ${crossings.routes}.`
+    : `Clipping allowed · ${crossings.clearance_shortfall_samples} samples below arm clearance.`;
+  setText($('crossing-status'), crossingStatus);
   const currentSet = selected.presentation?.revision === bootstrap.presentation_revision;
   $('presentation-set').hidden = !selected.live;
   $('refresh-scene').disabled = running || currentSet;
@@ -133,16 +237,26 @@ function updateExportControls() {
   const dirty = !sameSettings(current, selected.settings);
   const invalidCamera = [...cameraFields].some(name => !byName(name).validity.valid || byName(name).value === '');
   const saved = selected.export_video || (!selected.live ? selected.video : null);
+  $('webgl-export').hidden = !selected.live;
+  $('add-ending').hidden = selected.ending?.flow === 'arccreate-native-v1';
+  setText($('add-ending'), selected.ending ? 'Update results flow' : 'Add results ending');
+  $('add-ending').disabled = running || selected.settings.start_s !== 0;
+  $('export-ending').hidden = !selected.ending;
+  $('export-ending').disabled = !!recorder?.active || !live?.enabled;
+  if (!recorder?.supported()) setText($('webgl-export-hint'), 'This browser cannot record a canvas with audio. Use Blender MP4 export below.');
+  $('export-webgl').disabled = !!recorder?.active || !recorder?.supported() || !live?.enabled || invalidCamera;
+  $('download-webgl').hidden = !webglResult || webglResult.id !== selected.id || webglResult.scene !== selected.live?.scene || webglResult.media !== selected.video;
+  if (webglResult && webglResult.id === selected.id && webglResult.media === selected.video && !recorder.active) setText($('webgl-export-hint'), webglResult.view !== JSON.stringify(Object.fromEntries([...cameraFields].map(name => [name, current[name]]))) ? 'The saved preview video uses an earlier view. Export again to record the displayed view.' : `Video ready · ${webglResult.width} × ${webglResult.height} · ${webglResult.fps} fps target with game audio.`);
   $('video-export').hidden = false;
   $('export-video').hidden = !selected.live;
-  $('export-video').disabled = running || dirty || invalidCamera;
+  $('export-video').disabled = running || dirty || invalidCamera || !!selected.ending;
   const ownExport = currentJob?.export_only && currentJob.id === selected.id;
-  setText($('export-video'), exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export MP4');
+  setText($('export-video'), exportSubmitting ? 'Starting export…' : running && ownExport ? 'Exporting…' : 'Export Blender MP4');
   $('download-export').hidden = !saved;
   if (saved) $('download-export').href = saved;
   const oldCamera = selected.export_view && [...cameraFields].some(name => current[name] !== selected.export_view[name]);
   const dimensions = current.quality === 'final' ? '1024 × 768' : '640 × 480';
-  let message = !selected.live ? 'The saved 3D video is ready to download.'
+  let message = selected.ending ? 'Results endings export through the WebGL preview.' : !selected.live ? 'The saved 3D video is ready to download.'
     : exportSubmitting ? 'Starting your video export…'
     : running && ownExport ? (currentJob.stage + ' · ' + Math.round(currentJob.progress) + '%')
     : running ? 'The renderer is busy. Export will be available when it finishes.'
@@ -157,6 +271,7 @@ for (const slider of form.querySelectorAll("[data-for]")) {
     slider.addEventListener("input", () => { byName(slider.dataset.for).value = slider.value; live?.setCamera(settings()); markDirty(); });
 }
 form.addEventListener("input", event => {
+  updateRedNotes();
   if (event.target.name) syncSliders();
   updateClickInterval();
   updateReleasePolicy();
@@ -169,6 +284,7 @@ byName("chart").addEventListener("change", () => {
   byName("start_s").value = chart.start_s;
   byName("end_s").value = chart.end_s;
   chartRange.sync(chart.duration);
+  updateChartCompatibility();
   markDirty();
 });
 $("reset").addEventListener("click", () => fill(bootstrap.defaults));
@@ -189,32 +305,45 @@ function showError(message, log) {
 
 form.addEventListener("submit", async event => {
   event.preventDefault();
+  if (generationSubmitting || recorder?.active) return;
   $("error").hidden = true;
-  setRenderDisabled(true);
+  generationSubmitting = true;
+  setRenderDisabled();
   try {
-    if (selected?.live && sameSettings(settings(), selected.settings)) {
-      live?.setCamera(settings()); setRenderDisabled(false); return;
-    }
     const run = await api("/api/render", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings())
     });
-    displayJob(normalizeRun(run));
-    if (matchMedia("(max-width: 700px)").matches) $("preview").scrollIntoView({ block: "start" });
-    schedulePoll(300);
+    if (run.status === "running") displayJob(normalizeRun(run));
+    setText($("queue-count"), run.status === "queued" ? "Added to queue" : "Generation started");
+    if (matchMedia("(max-width: 700px)").matches) $("generation").scrollIntoView({ block: "start" });
+    schedulePoll(100);
   } catch (error) {
     showError(error.message);
-    setRenderDisabled(false);
+  } finally {
+    generationSubmitting = false;
+    setRenderDisabled();
   }
 });
-$("cancel").addEventListener("click", async () => {
-  if (!currentJob) return;
-  $("cancel").disabled = true;
+
+async function cancelRun(id, button, queuedOnly = false) {
+  if (cancelling.has(id)) return;
+  cancelling.add(id);
+  button.disabled = true;
   try {
     await api("/api/cancel", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: currentJob.id })
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, queued_only: queuedOnly })
     });
-    setText($("job-stage"), "Stopping render…");
-  } catch (error) { showError(error.message); }
+    if (currentJob?.id === id) setText($("job-stage"), "Stopping render…");
+    schedulePoll(100);
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    cancelling.delete(id);
+    button.disabled = false;
+  }
+}
+$("cancel").addEventListener("click", () => {
+  if (currentJob) cancelRun(currentJob.id, $("cancel"));
 });
 $("playback-speed").addEventListener("change", () => { video.playbackRate = Number($("playback-speed").value); });
 $("export-video").addEventListener('click', async () => {
@@ -226,6 +355,10 @@ $("export-video").addEventListener('click', async () => {
   try { displayJob(normalizeRun(await api('/api/export', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:selected.id,view})}))); schedulePoll(300); }
   catch (error) { showError(error.message); }
   finally { exportSubmitting = false; updateExportControls(); }
+});
+$('add-ending').addEventListener('click', async () => {
+  try { displayJob(normalizeRun(await api('/api/ending', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:selected.id})}))); schedulePoll(300); }
+  catch(error) { showError(error.message); }
 });
 $('refresh-scene').addEventListener('click', async () => {
   if (!selected?.live || $('refresh-scene').disabled) return;
@@ -246,28 +379,42 @@ video.addEventListener("timeupdate", () => {
 function displayJob(run) {
   currentJob = run;
   const running = run?.status === "running";
-  setRenderDisabled(running);
+  setRenderDisabled();
   updateExportControls();
   $("job").hidden = !running;
   if (!run) return;
   if (running) {
-    $("cancel").disabled = false;
+    $("cancel").disabled = cancelling.has(run.id);
     setText($("job-stage"), run.stage);
     $("progress").value = run.progress;
-    const planning = run.planning_progress;
+    const pose = run.pose_progress;
+    const planning = pose || run.planning_progress;
     $("planning-status").hidden = !planning;
     if (planning) {
-      const labels = {loading: 'Reading chart', preparing: 'Preparing touchpoint search',
+      const labels = {backend: 'Preparing touchpoint search', loading: 'Reading chart', preparing: 'Preparing touchpoint search',
         geometry: 'Checking arc input regions', arc_profiles: 'Preparing snake paths',
         candidates: 'Generating touchpoint candidates', graph: 'Preparing search constraints',
-        search: 'Searching touchpoint plans', finalizing: 'Reconstructing hand contacts',
-        done: 'Touchpoint search complete', writing: 'Saving contact plan'};
+        validation: 'Verifying contact plan', search: 'Searching touchpoint plans', finalizing: 'Reconstructing hand contacts',
+        done: 'Touchpoint search complete', writing: 'Saving contact plan',
+        pose_preparing: 'Preparing hand poses', pose_elbows: 'Adjusting elbows',
+        pose_travel: 'Checking clearance along hand paths', pose_wrists: 'Orienting hands',
+        pose_validation: 'Verifying hand motion', pose_done: 'Hand orientation complete'};
       const known = planning.total > 0;
       const percent = known ? Math.min(100, 100 * planning.completed / planning.total) : null;
+      const retry = {checkpoint: 'resuming near the failure with FAR timing',
+        checkpoint_misses: 'resuming near the failure with FAR timing and misses',
+        sky_requests: 'retry with overlapping sky notes',
+        split: 'retry with individual scoring ticks', intact: 'retry with intact arcs and FAR timing'};
+      const retryLabel = retry[planning.retry];
+      const units = {arc_profiles: 'snakes', pose_elbows: 'windows',
+        pose_travel: 'travel spans', pose_wrists: 'pose intervals'};
+      setAttributeText($("planning-progress"), 'aria-label',
+        pose ? 'Hand orientation progress' : 'Touchpoint planning progress');
       setText($("planning-label"), (labels[planning.phase] || planning.phase)
-        + (known ? ' · ' + percent.toFixed(1) + '% · ' + planning.completed.toLocaleString() + ' / '
-          + planning.total.toLocaleString() + (planning.phase === 'arc_profiles' ? ' snakes' : ' items') : '')
-        + (planning.attempt > 1 ? ' · retry with individual scoring ticks' : ''));
+        + (known ? ' · ' + percent.toFixed(1) + '%'
+          + (planning.phase === 'pose_done' ? '' : ' · ' + planning.completed.toLocaleString() + ' / '
+            + planning.total.toLocaleString() + ' ' + (units[planning.phase] || 'items')) : '')
+        + (retryLabel ? ' · ' + retryLabel : ''));
       if (known) $("planning-progress").value = percent;
       else $("planning-progress").removeAttribute('value');
       const elapsed = Math.max(0, Math.floor((planning.elapsed_s || 0)
@@ -281,8 +428,8 @@ function displayJob(run) {
     const chart = bootstrap.charts[run.settings.chart];
     setText($("job-detail"), chart.title + " · " + run.settings.start_s + "–" + run.settings.end_s +
       " s. The previous take stays available while this renders.");
-  } else if (run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') !== lastTerminal) {
-    lastTerminal = run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '');
+  } else if (run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') + (run.video || '') + (run.ending_error || '') !== lastTerminal) {
+    lastTerminal = run.id + run.status + (run.export_video || '') + (run.export_error || '') + (run.live?.scene || '') + (run.scene_error || '') + (run.video || '') + (run.ending_error || '');
     if (run.status === "complete") {
       if (selected?.id === run.id && run.live?.scene !== selected.live?.scene) {
         showTake(run);
@@ -290,7 +437,8 @@ function displayJob(run) {
         selected = run;
         updateExportControls();
       } else if (!selected || run.created >= selected.created) showTake(run);
-      if (run.scene_error) showError('The scene update stopped: ' + run.scene_error + ' The previous scene remains available.');
+      if (run.ending_error) showError(run.ending_error);
+      else if (run.scene_error) showError('The scene update stopped: ' + run.scene_error + ' The previous scene remains available.');
       else if (run.export_error) showError('The MP4 export stopped: ' + run.export_error + ' The live preview remains available.');
       else $("error").hidden = true;
     } else if (run.status === "failed") {
@@ -300,6 +448,7 @@ function displayJob(run) {
 }
 
 function showTake(run, restoreControls = false) {
+  if (recorder?.active) { deferredTake = [run, restoreControls]; return; }
   selected = run;
   $("error").hidden = true;
   if (restoreControls) fill(run.settings);
@@ -314,7 +463,7 @@ function showTake(run, restoreControls = false) {
   $("live-transport").hidden = !run.live;
   $("export-video").hidden = !run.live;
   if (run.live && !live) showError('This browser cannot start WebGL. Try Safari or Chrome with WebGL enabled.');
-  live?.load(run).then(() => { if (selected?.id === run.id && run.live) live.setCamera(settings()); })
+  live?.load(run).then(() => { if (selected?.id === run.id && run.live) { live.setCamera(settings()); updateExportControls(); } })
     .catch(error => showError('Live preview could not load: ' + error.message));
   $("judgement-report").hidden = !run.judgements;
   $("arc-tick-summary").hidden = !run.arc_tick_validation;
@@ -328,13 +477,20 @@ function showTake(run, restoreControls = false) {
   }
   if (run.judgements) {
     const j = run.judgements;
+    $('hit-audio-report').hidden = !run.audio_stems?.hits;
+    if (run.audio_stems?.hits) {
+      $('hit-audio-download').href = run.audio_stems.hits;
+      setText($('hit-audio-counts'), `${run.sound_events.block_hits} block clicks · ${run.sound_events.arc_tick_hits} snake tick clicks from actual catches.`);
+    }
     setText($("judgement-summary"), j.hits + ' hits · ' + j.misses + ' misses · score ' + j.score.toLocaleString()
+      + ((j.red_hits || j.red_misses) ? ` · red: ${j.red_hits || 0} caught / ${j.red_misses || 0} missed (no score)` : '')
       + (run.planning?.arc_reacquisitions ? ' · ' + run.planning.arc_reacquisitions + ' planned arc reacquisitions' : ''));
     $("skipped-targets").replaceChildren();
     for (const miss of run.planned_misses || []) {
       const li = document.createElement('li'), button = document.createElement('button');
       button.type = 'button';
-      setText(button, (run.settings.start_s + miss.start_ms / 1000).toFixed(2) + ' s · ' + (miss.kind === 'arc_tick' ? 'arc tick' : miss.kind) + ' · ' + miss.scoring_ticks + ' scoring tick' + (miss.scoring_ticks === 1 ? '' : 's'));
+      setText(button, (run.settings.start_s + miss.start_ms / 1000).toFixed(2) + ' s · ' +
+        (miss.kind === 'red_sky' ? 'red sky note · no score' : (miss.kind === 'arc_tick' ? 'arc tick' : miss.kind) + ' · ' + miss.scoring_ticks + ' scoring tick' + (miss.scoring_ticks === 1 ? '' : 's')));
       setAttributeText(button, 'title', miss.reason || '');
       button.addEventListener('click', () => { video.currentTime = Math.max(0, miss.start_ms / 1000 - 1); $("preview").scrollIntoView({block:'start'}); });
       li.append(button); $("skipped-targets").append(li);
@@ -356,6 +512,7 @@ function showTake(run, restoreControls = false) {
   setText($("gap"), fitted || !collisionsOff ? metrics.minimum_clearance_mm.toFixed(1) + " mm" : "Disabled");
   setText($("gap-note"), fitted ? (metrics.minimum_clearance_mm < 0 ? "Residual overlap · playback continues" : "Contact pivots · quarter-step samples") : collisionsOff ? "Touch points preserved" : "Sampled at quarter steps");
   setText($("contacts"), metrics.contacts);
+  setText($("contact-digits"), metrics.multifinger ? "Index and thumb per hand" : "Single index per hand");
   $("blend-link").href = run.blend;
   $("video-link").href = run.video;
   setText($("video-link"), 'Download gameplay only');
@@ -378,37 +535,183 @@ function showTake(run, restoreControls = false) {
   lastHistory = "";
 }
 
+const cardSettings = [
+  ["Planning and timing", [
+    ["search_width", "Search width"], ["tap_interval_ms", "Minimum tap interval", "ms"],
+    ["repeat_comfort_ms", "Comfortable repeat gap", "ms"], ["repeat_weight", "Fast-repeat cost"],
+    ["jack_gap_ms", "Fast-run gap", "ms"], ["jack_free", "Unpenalized taps per run"], ["jack_weight", "Extra cost per tap"],
+    ["point_contact_frames", "Tap duration", "frames"], ["min_air_frames", "Minimum release gap", "frames"],
+    ["held_release_air_frames", "Release gap after a hold or arc", "frames"],
+    ["contact_offset_x_percent", "Horizontal offset limit", "%"], ["contact_offset_y_percent", "Vertical offset limit", "%"],
+    ["note_center_weight", "Note center cost"], ["note_center_free_mm", "Free center radius", "mm"],
+    ["allow_misses", "Allow misses"], ["enable_red_notes", "Enable red notes"], ["target_all_red_notes", "Target every red note"],
+  ]],
+  ["Arcs and holds", [
+    ["multifinger", "Experimental index and thumb"],
+    ["arc_path_mode", "Arc path mode"], ["prefer_arc_trace", "Prefer tracing arc geometry"], ["arc_trace_weight", "Geometry deviation cost"],
+    ["full_arc_hold", "Prefer holding arcs to the visual end"], ["partial_hold_weight", "Early arc-release cost"],
+    ["full_ground_hold", "Prefer holding ground holds to the visual end"], ["partial_ground_hold_weight", "Early ground-release cost"],
+  ]],
+  ["Motion and playback", [
+    ["max_speed_m_s", "Max move speed", "m/s"], ["idle_speed_m_s", "Idle / detour speed", "m/s"],
+    ["comfort_speed_m_s", "Comfort speed", "m/s"], ["planner_accel_m_s2", "Acceleration preference", "m/s²"],
+    ["crossing_weight", "Crossing cost per second"], ["angular_limit_deg_s", "Max wrist turn", "°/s"],
+    ["lift_mm", "Finger lift", "mm"], ["clearance_mm", "Preferred hand clearance", "mm"], ["allow_clipping", "Allow 3D clipping"],
+    ["scroll_speed", "Chart scroll speed", "×"], ["song_delay_ms", "Song audio delay", "ms"], ["hit_sounds", "Hit sounds"],
+    ["quality", "Preview quality"], ["camera_elevation_deg", "View angle", "°"],
+    ["camera_yaw_deg", "Horizontal angle", "°"], ["camera_distance_m", "Distance", "m"], ["camera_lens_mm", "Lens", "mm"],
+  ]],
+];
+const cardValues = {score: "Score-aware", trace: "Trace", draft: "Draft", final: "High"};
+
+function cardText(tag, value, className) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  setText(element, value);
+  return element;
+}
+
+function runCard(run, listName, status, action) {
+  const saved = run.savedSettings || run.settings;
+  const card = document.createElement("details");
+  card.className = "take-card" + (run.id === selected?.id ? " selected" : "");
+  card.name = listName;
+  card.dataset.runId = run.id;
+  const summary = document.createElement("summary");
+  summary.className = "take";
+  const info = document.createElement("span");
+  info.className = "take-info";
+  const title = document.createElement("strong");
+  title.textContent = bootstrap.charts[saved.chart]?.title || saved.chart;
+  const quick = [saved.start_s + "–" + saved.end_s + " s"];
+  if (saved.search_width != null) quick.push("Width " + saved.search_width);
+  if (saved.tap_interval_ms != null) quick.push("Tap ≥ " + saved.tap_interval_ms + " ms");
+  if (saved.max_speed_m_s != null) quick.push(saved.max_speed_m_s + " m/s");
+  info.append(title, cardText("small", quick.join(" · ")));
+  const meta = document.createElement("span");
+  meta.className = "take-meta";
+  if (status) meta.append(cardText("span", status, "take-status"));
+  else meta.append(cardText("time", new Date(run.created * 1000).toLocaleString([], {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  }), "take-time"));
+  const chevron = document.createElement("span");
+  chevron.className = "take-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  summary.append(info, meta, chevron);
+  card.append(summary);
+
+  const details = document.createElement("div");
+  details.className = "take-details";
+  const toolbar = document.createElement("div");
+  toolbar.className = "take-actions";
+  if (action) toolbar.append(action);
+  if (run.judgements) toolbar.append(cardText("span",
+    run.judgements.hits + " hits · " + run.judgements.misses + " misses", "take-time"));
+  if (status) {
+    const formatTime = seconds => new Date(seconds * 1000).toLocaleTimeString([], {
+      hour: "2-digit", minute: "2-digit",
+    });
+    toolbar.append(cardText("time", "Added " + formatTime(run.created), "take-time"));
+    if (run.started) toolbar.append(cardText("time", "Started " + formatTime(run.started), "take-time"));
+  }
+  if (run.source_revision || run.metrics?.solver) {
+    toolbar.append(cardText("span", run.source_revision || run.metrics.solver, "take-id"));
+  }
+  toolbar.append(cardText("span", run.id, "take-id"));
+  details.append(toolbar);
+  if (run.status === "running") details.append($("job"));
+  const groups = document.createElement("div");
+  groups.className = "take-settings";
+  for (const [heading, settings] of cardSettings) {
+    const section = document.createElement("div");
+    const values = document.createElement("dl");
+    for (const [key, label, unit] of settings) {
+      const value = saved[key];
+      if (value == null) continue;
+      values.append(cardText("dt", label), cardText("dd",
+        typeof value === "boolean" ? (value ? "On" : "Off") : unit ? value + " " + unit : cardValues[value] ?? value));
+    }
+    if (values.childElementCount) section.append(cardText("h3", heading), values);
+    if (section.childElementCount) groups.append(section);
+  }
+  details.append(groups);
+  card.append(details);
+  return card;
+}
+
+function replaceCards(container, cards, defaultOpen) {
+  const open = container.querySelector(".take-card[open]")?.dataset.runId;
+  const focus = container.contains(document.activeElement) ? document.activeElement.closest(".take-card")?.dataset.runId : null;
+  container.replaceChildren(...cards);
+  const expanded = cards.find(card => card.dataset.runId === open) ||
+    (defaultOpen ? cards.find(card => card.dataset.runId === defaultOpen) : null);
+  if (expanded) expanded.open = true;
+  if (focus) cards.find(card => card.dataset.runId === focus)?.querySelector("summary")?.focus();
+}
+
 function history(runs) {
-  const identity = JSON.stringify(runs.map(run => [run.id, run.status])) + selected?.id;
+  const takes = runs.filter(run => run.status === "complete" || run.status === "failed");
+  const identity = JSON.stringify(takes.map(run => [run.id, run.status])) + selected?.id;
   if (identity === lastHistory) return;
   lastHistory = identity;
   const container = $("history");
-  const takes = runs.filter(run => run.status === "complete");
-  setText($("take-count"), takes.length ? takes.length + " saved locally" : "Saved locally");
-  if (!takes.length) return;
-  container.replaceChildren();
-  for (const run of takes.slice(0, 8)) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "take" + (run.id === selected?.id ? " selected" : "");
-    button.setAttribute("aria-pressed", String(run.id === selected?.id));
-    const mark = document.createElement("span");
-    mark.className = "take-mark";
-    setText(mark, "▷");
-    const info = document.createElement("span");
-    info.className = "take-info";
-    const title = document.createElement("strong");
-    title.textContent = bootstrap.charts[run.settings.chart].title;
-    const description = document.createElement("small");
-    setText(description, run.settings.start_s + "–" + run.settings.end_s + " s · " +
-      run.settings.max_speed_m_s + " m/s · lift " + run.settings.lift_mm + " mm");
-    info.append(title, description);
-    const timestamp = document.createElement("span");
-    timestamp.className = "take-time";
-    setText(timestamp, new Date(run.created * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-    button.append(mark, info, timestamp);
-    button.addEventListener("click", () => { showTake(run, true); history(runs); });
-    container.append(button);
+  const savedCount = takes.filter(run => run.status === "complete").length;
+  setText($("take-count"), savedCount ? savedCount + " saved locally" : "Saved locally");
+  const cards = takes.slice(0, 8).map(run => {
+    if (run.status === "failed") {
+      const card = runCard(run, "recent-takes", "Generation failed");
+      const details = card.querySelector(".take-details");
+      if (run.error) details.prepend(cardText("p", run.error, "hint"));
+      if (run.log) {
+        const log = cardText("a", "View build log");
+        log.href = run.log;
+        log.target = "_blank";
+        log.rel = "noopener";
+        details.querySelector(".take-actions").prepend(log);
+      }
+      return card;
+    }
+    const play = cardText("button", "Open replay", "take-action");
+    play.type = "button";
+    play.disabled = !!recorder?.active;
+    play.addEventListener("click", () => {
+      showTake(run, true);
+      history(runs);
+    });
+    return runCard(run, "recent-takes", null, play);
+  });
+  replaceCards(container, cards);
+  if (!cards.length) container.append(cardText("p", "Completed previews will appear here for comparison.", "hint"));
+}
+
+function generationQueue(state) {
+  const waiting = state.queue || [];
+  const active = state.active?.status === "running" ? state.active : null;
+  const identity = JSON.stringify([active?.id, active?.kind, waiting.map(run => run.id)]);
+  const container = $("queue");
+  if (identity !== lastQueue) {
+    const previousActive = container.querySelector(".take-card[data-active]")?.dataset.runId;
+    lastQueue = identity;
+    const job = $("job");
+    if (!active) $("generation").append(job);
+    const cards = waiting.map((run, index) => {
+      const remove = cardText("button", "Remove from queue", "take-action");
+      remove.type = "button";
+      remove.addEventListener("click", () => cancelRun(run.id, remove, true));
+      return runCard(run, "generation-jobs", "Waiting · Position " + (index + 1), remove);
+    });
+    if (active) {
+      const card = runCard(active, "generation-jobs", active.stage);
+      card.dataset.active = "";
+      cards.unshift(card);
+    }
+    replaceCards(container, cards, active?.id !== previousActive && active?.id);
+    if (!cards.length) container.append(cardText("p", "No generation tasks queued.", "hint"));
+  }
+  setText($("queue-count"), waiting.length + " waiting" + (active ? " · 1 running" : ""));
+  if (active) {
+    const status = container.querySelector(".take-card .take-status");
+    setText(status, active.stage + " · " + Math.round(active.progress || 0) + "%");
   }
 }
 
@@ -421,6 +724,7 @@ async function poll() {
   try {
     const state = await api("/api/state");
     displayJob(normalizeRun(state.active));
+    generationQueue(state);
     history(state.history.map(normalizeRun));
     schedulePoll(state.active?.status === "running" ? 1000 : 3000);
   } catch (error) {
@@ -432,18 +736,19 @@ async function poll() {
 async function start() {
   try {
     bootstrap = await api("/api/bootstrap");
+    populateCharts();
     bootstrap.history = bootstrap.history.map(normalizeRun);
     fill(bootstrap.defaults);
     const latest = bootstrap.history.find(run => run.status === "complete");
     if (latest) {
       showTake(latest, true);
-      // Keep old takes faithful when restored, but start new work with early arc release.
-      if (latest.legacyReleasePolicy || latest.legacyArcPaths || latest.legacyArcTrace) fill({ ...latest.settings,
-        prefer_arc_trace: latest.legacyArcTrace ? bootstrap.defaults.prefer_arc_trace : latest.settings.prefer_arc_trace,
-        full_arc_hold: latest.legacyReleasePolicy ? bootstrap.defaults.full_arc_hold : latest.settings.full_arc_hold,
-        arc_path_mode: latest.legacyArcPaths ? bootstrap.defaults.arc_path_mode : latest.settings.arc_path_mode });
+      // Apply newly requested preferences once when migrating older takes.
+      // Explicit saved-take selection still restores its historical settings.
+      if (latest.defaults_revision !== bootstrap.defaults_revision) fill({ ...latest.settings,
+        ...Object.fromEntries(bootstrap.startup_preferences.map(name => [name, bootstrap.defaults[name]])) });
     }
     displayJob(normalizeRun(bootstrap.active));
+    generationQueue(bootstrap);
     history(bootstrap.history);
     schedulePoll(1000);
   } catch (error) {

@@ -40,6 +40,8 @@ def main(argv=None) -> int:
     plan.add_argument("--device", type=Path, default=api.DEFAULT_DEVICE, help="device profile JSON")
     plan.add_argument("--set", action="append", metavar="NAME=VALUE", help="a MultiFingerOptions field")
     plan.add_argument("--planner-set", action="append", metavar="NAME=VALUE", help="a PlannerOptions field")
+    plan.add_argument('--search-backend', choices=('auto', 'python', 'native'), default='auto')
+    plan.add_argument('--search-workers', type=int, default=0)
     options = commands.add_parser("options", help="print a preset's options as JSON")
     options.add_argument("--preset", choices=list(PRESETS), default="on5")
     args = parser.parse_args(argv)
@@ -51,7 +53,8 @@ def main(argv=None) -> int:
         return 0
     try:
         chart = api.load_chart(args.chart)
-        result = api.plan_chart(chart, args.device, args.preset, _pairs(args.set), _pairs(args.planner_set))
+        result = api.plan_chart(chart, args.device, args.preset, _pairs(args.set), _pairs(args.planner_set),
+                                search_backend=args.search_backend, search_workers=args.search_workers)
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

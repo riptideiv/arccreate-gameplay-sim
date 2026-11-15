@@ -104,14 +104,17 @@ def options_for(preset: str = "on5", multi: dict | None = None, planner: dict | 
 
 def plan_chart(chart: LoadedChart, device_path=DEFAULT_DEVICE, preset: str = "on5", multi: dict | None = None,
                planner: dict | None = None, occupation_set: OccupationSet | None = None,
-               progress=None) -> PlanResult:
+               progress=None, *, keep_checkpoints=False, checkpoint=None, search_backend='auto', search_workers=0) -> PlanResult:
     """Plan ``chart`` with the preset and overrides."""
+    from .planning.execution import validate_execution
+    validate_execution(search_backend, search_workers)
     device = load_device(device_path)
     projection = GameplayProjection(device)
     options, multi_options = options_for(preset, multi, planner)
     began = time.perf_counter()
     occupations = occupation_set if occupation_set is not None else occupations_from_chart(chart.chart)
-    plan = mf.plan_multi_finger(occupations, projection, options, multi_options, progress=progress)
+    plan = mf.plan_multi_finger(occupations, projection, options, multi_options, progress=progress,
+                                keep_checkpoints=keep_checkpoints, checkpoint=checkpoint, search_backend=search_backend, search_workers=search_workers)
     return PlanResult(chart, str(device_path), device, preset, occupations, plan,
                       round(time.perf_counter() - began, 1))
 
@@ -130,6 +133,8 @@ def _json(value):
 def _occupation(o) -> dict:
     out = {"kind": o.kind, "occupation_id": o.occupation_id, "events": list(o.source_event_ids),
            "start_ms": o.start_ms, "end_ms": o.end_ms, "colour": o.colour, "lane": o.lane}
+    if o.is_red:
+        out['non_scoring_red'] = True
     if o.parent_occupation_id or o.native_scoring:
         out.update(parent_occupation_id=o.parent_occupation_id,
                    scoring_ticks=[{"id": f"arcTick:{p.source_event_id}:{p.tick_index}", "time_ms": p.time_ms, "weight": p.weight,
@@ -203,6 +208,13 @@ def plan_to_dict(result: PlanResult) -> dict:
         "multi_finger_options": asdict(plan.multi),
         "frame_rate_hz": 60,
         "touches": touches,
+        **({"arm_crossings": {
+            "last_frame": plan.crossing_last_frame,
+            "hold_end": True,
+            "travel": plan.crossing_travel,
+            "routes": [{"start_frame": c.start_frame, "end_frame": c.end_frame, "top": c.top}
+                       for c in plan.arm_crossings],
+        }} if plan.crossing_last_frame is not None else {}),
         "covered": covered,
         "notes": [{**note, "hands": sorted(note["hands"])}
                   for note in sorted(notes.values(), key=lambda n: (n["start_ms"], n["end_ms"], n["event_id"]))],

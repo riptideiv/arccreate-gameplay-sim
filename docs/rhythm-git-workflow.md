@@ -1,0 +1,49 @@
+# 模拟器 Git 工作流
+
+这是独立本地仓库，父 `dafeiyu-3d-room` 负责房间、角色与椅子动画，并忽略此目录。模拟器 Git 命令只在本目录运行。
+
+## 2026-11-07：已有工作按功能并入 main
+
+原功能分支彼此叠加，因此按依赖顺序使用 `--no-ff` 合并，保留原提交和分支，未压缩或改写历史。
+
+| main 合并提交 | 来源分支 | 功能块 |
+| --- | --- | --- |
+| `d2d9ca4` | `feature/webgl-video-export` | 同 WebGL 画面与游戏音频录制 |
+| `253f754` | `perf/contact-planner` | 搜索记忆化、完成规划缓存及可重复基准 |
+| `86b3bdd` | `chore/standalone-repository` | 独立仓库、维护记录与曲包清点；保留原 integration 分支 |
+| `882a871` | `feature/chart-library` | 全量曲库导入、分组选择与兼容性提示 |
+| `7ae1168` | `feature/red-notes` | 零分红键显示与追打两个开关 |
+| `90df2c9` | `feature/scroll-audio-settings` | 流速、歌曲延迟与实际命中音效 |
+| `838ea6f` | `fix/idle-detour-speed` | 新默认值、Arghena 调查及可选移动限速 |
+| `fbc66da` | `fix/shared-hand-pose-cache` | 跨演奏复用已验证姿态 |
+
+合并后 main 与合并前最后工作分支 `fix/shared-hand-pose-cache` 文件树完全一致。没有把父仓库的房间／椅子修改带入，也没有创建远端或执行推送。旧基线是 `2aa579c`，原父仓库提交映射见[拆分记录](repository-separation.md)。
+
+## 中文化分支
+
+`feature/zh-cn-i18n` 从上述 main 创建，单独维护简体中文默认界面、无重载 English／中文切换、中文文档及 `README.en.md`。不与规划／姿态实现混在同一功能块，不改变计分规则和缓存键。
+
+项目自有文档用中文，技术标识、命令、数据报告保留原值。第三方说明和许可证不改写。维护与验证见[中文化说明](i18n.md)。
+
+## 后续开发与运行
+
+未来可从本仓库创建分支／worktree；父项目 `work/branches/` 的旧 worktree 是父历史快照，不是当前模拟器规范工作区。运行规划／导出时不要切换实时工作区。已打开页面保留原内存代码，重新加载页面后才使用新的 UI。
+
+下载工具、虚拟环境、导入媒体、演奏与缓存忽略于 Git；清单与可复现源码／配置提交。交互签名提示在当前执行环境不可用，任务提交按命令使用 `commit.gpgsign=false`，未修改全局签名或身份。
+
+## 工作台部署
+
+模拟器更新提交后，在提供工作台的 Mac 上运行部署脚本。脚本运行 Python 和 JavaScript 测试，更新独立的工作台源码目录，重启 LaunchAgent，并验证 loopback 和 Tailscale 两个入口。已有演奏、曲库、虚拟环境和缓存保存在部署目录中。服务重启前检查活动任务，有任务时等它结束再重试。
+
+在主工作区的 `output/dashboard-deploy.json` 保存本机配置。键 `launchd_plist` 指向工作台的 plist，`loopback_url` 填本机后端，`dashboard_url` 填 `tailscale serve status` 显示的 HTTPS 地址。`output/` 下的配置由 Git 忽略。
+
+```sh
+git_dir=$(git rev-parse --path-format=absolute --git-common-dir)
+.venv/bin/python tools/deploy_dashboard.py --config "$git_dir/../output/dashboard-deploy.json"
+```
+
+## 后续修复分支
+
+`fix/negative-audio-start-60fps` 从中文化分支创建，包含 Arghena 负音频起点修复、真正保留原生 60 fps、浏览器 30／60 fps 导出选项及完整重跑验证。未改 main，也未改动保存的规划设置；详见[调查记录](arghena-negative-offset-60fps.md)。
+
+`feature/native-results-ending` 基于上述修复分支，单独加入原生结果场景、Pure Memory 判定、局部导出和不重渲染正文的拼接流程。

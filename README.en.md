@@ -2,7 +2,7 @@
 
 [简体中文](README.md) · **English**
 
-A tool for simulating two-finger play on AFF charts. It plans where each index finger presses and how it moves, replays those touches in ArcCreate to record judgements, and generates a 3D hand animation. I’m sharing it for anyone interested in hand-order planning or gameplay animation.
+A tool for simulating two-handed play on AFF charts. It plans where the fingers press and how they move, replays those touches in ArcCreate to record judgements, and generates a 3D hand animation. I’m sharing it for anyone interested in hand-order planning or gameplay animation.
 
 You can build a full chart or a short section, adjust repeated taps, crossings, arc tracing, and release timing, then slow down the preview to see what the hands are doing. The workbench shows planned skips separately from hits, misses, and score in the ArcCreate replay. You can adjust the preview camera and use Blender to export a 30 fps MP4 with gameplay audio.
 
@@ -33,11 +33,11 @@ ditto -x -k .tools/ArcCreate/StandaloneOSX.zip .tools/ArcCreate/build
 ./arc-create-export/setup.sh
 ```
 
-The script creates `.tools/ArcCreate/ArcCreate-export.app` for replay. If Mono.Cecil is outside the default Mono installation, set `MONO_CECIL_DLL` to the absolute path of the 0.11 DLL first.
+The script creates `.tools/ArcCreate/ArcCreate-media.app` for replay. If Mono.Cecil is outside the default Mono installation, set `MONO_CECIL_DLL` to the absolute path of the 0.11 DLL first.
 
 ### Add chart projects
 
-This version of the workbench supports Ex-Otogibanashi and BIBBIDIBA. Supply your own charts and audio, and put the corresponding ArcCreate projects in these directories.
+Supply your own charts and audio. The two sample projects use the directories below. To add a collection of charts, follow the [chart import guide](charts/README.md).
 
 | Chart | Project directory |
 | --- | --- |
@@ -62,12 +62,12 @@ BLENDER_BIN="/Applications/Blender.app/Contents/MacOS/Blender" ./dashboard.sh
 
 ## Using it
 
-1. Select a chart and a time range. Start with a few seconds for a first try.
+1. Select a chart and a time range. **Full chart** sets the whole song. A few seconds is a good first try.
 2. Keep the default motion settings and click **Build live preview**. Wait for the touch plan, hand animation, and ArcCreate replay.
 3. Play, seek, or slow down the preview to inspect the hand order. Camera changes appear immediately. Build again after changing the chart or motion settings.
 4. Click **Export MP4** to render the current view in Blender, then download the video. You can also download the gameplay footage on its own.
 
-Takes are saved under `output/runs/` and can be reopened from **Recent takes**. The planner uses one index finger per hand and may skip notes when the motion limits are restrictive.
+Takes are saved under `output/runs/` and can be reopened from **Recent takes**. The planner may skip notes when the motion limits are restrictive. For four-finger chords, enable **Experimental index and thumb** under **Contact position**. Multifinger mode uses the larger tablet and gives each hand an index and a thumb.
 
 ## Running only the planner
 
@@ -76,6 +76,12 @@ The Python dependencies are enough to try the planner with the included test cha
 ```sh
 mkdir -p output
 .venv/bin/python plan_excerpt.py charts/desk-study.aff 0 10000 output/excerpt.plan.json
+```
+
+To try index-and-thumb planning, add `--multifinger`. To install the optional Rust search, install a Rust toolchain and run the command below. The score-mode planner automatically uses a compatible native extension when available. Use `--search-backend native` to require it.
+
+```sh
+uv pip install --python .venv/bin/python ./native-search
 ```
 
 ## Contributing

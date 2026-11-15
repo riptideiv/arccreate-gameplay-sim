@@ -21,7 +21,7 @@ def test_shared_contact_does_not_allow_a_speed_spike_on_return_to_a_bridge():
         return N(
             start=start,
             stop=stop,
-            candidate=N(id=i, occupation=N(kind="chain", points=points)),
+            candidate=N(id=i, contact_path=None, occupation=N(kind="chain", points=points)),
         )
 
     parts = (

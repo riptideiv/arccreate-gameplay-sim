@@ -16,12 +16,13 @@ const $ = id => {
 const context = vm.createContext({$, Date, Math, String,
   bootstrap: {charts: {bibideba: {title: 'BIBBIDIBA'}}},
   setText(element, text) { element.textContent = text; },
-  setRenderDisabled() {}, updateExportControls() {}, currentJob: null,
+  setAttributeText(element, name, value) { element[name] = value; },
+  setRenderDisabled() {}, updateExportControls() {}, currentJob: null, cancelling: new Set(),
 });
 vm.runInContext(functionSource, context);
 const run = {status: 'running', stage: 'Planning contacts', progress: 12,
   settings: {chart: 'bibideba', start_s: 65, end_s: 75},
-  planning_progress: {phase: 'search', completed: 42, total: 100, attempt: 2,
+  planning_progress: {phase: 'search', completed: 42, total: 100, attempt: 2, retry: 'split',
     elapsed_s: 130, updated_at: Date.now()/1000, chart_ms: 4000, states: 256}};
 context.displayJob(run);
 assert.equal($('planning-status').hidden, false);
@@ -34,6 +35,14 @@ context.displayJob(run);
 assert.equal($('planning-progress').value, undefined); // indeterminate work
 assert.match($('planning-label').textContent, /Checking arc input regions/);
 run.planning_progress = null;
+run.pose_progress = {phase: 'pose_wrists', completed: 18, total: 40, elapsed_s: 83, updated_at: Date.now()/1000};
+context.displayJob(run);
+assert.equal($('planning-status').hidden, false);
+assert.equal($('planning-progress').value, 45);
+assert.equal($('planning-progress')['aria-label'], 'Hand orientation progress');
+assert.match($('planning-label').textContent, /^Orienting hands · 45\.0% · 18 \/ 40 pose intervals$/);
+assert.match($('planning-detail').textContent, /^1:23 elapsed$/);
+run.pose_progress = null;
 context.displayJob(run);
 assert.equal($('planning-status').hidden, true);
-console.log('Dashboard planning progress: counts, elapsed time, retry, indeterminate phase, and stage transition passed.');
+console.log('Dashboard progress: planning, retry, hand orientation, and stage transition passed.');

@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=1.10,<2"]
+build-backend = "maturin"
+
+[project]
+name = "arc-hand-order-native"
+version = "0.2.4"
+requires-python = ">=3.12"
+description = "Optional native search backend for arc-hand-order"
+license = { text = "GPL-3.0-only" }
+
+[tool.maturin]
+features = ["extension-module"]

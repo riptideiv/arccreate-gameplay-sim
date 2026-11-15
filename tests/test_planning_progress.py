@@ -43,6 +43,71 @@ def test_retry_is_identified_and_counts_individual_scoring_ticks(tmp_path):
     assert [e for e in events if e['phase'] == 'search'][-1]['completed'] == 4
 
 
+def test_far_retry_reuses_the_perfect_beam_and_retimes_the_lead_in(tmp_path, monkeypatch):
+    source = chart(
+        tmp_path, '(1000,1);arc(1800,2600,.5,.5,s,1,1,0,none,false);'
+        '(3200,1);(4200,2);arc(4600,5400,.5,.5,s,1,1,1,none,false);'
+        '(5200,3);(6000,1);(6017,4);(6033,1);(6050,4);(6700,4);',
+    )
+    events = []
+    plan = create_plan(source, 0, 7200, {'arc_path_mode': 'score', 'max_speed_m_s': 4,
+                                         'tap_interval_ms': 150, 'search_width': 128}, progress=events.append)
+    resumed = next(event for event in events if event.get('resumed_from'))
+    assert resumed['attempt'] == 2
+    assert resumed['completed'] == resumed['resumed_from'] == 3
+    assert resumed['chart_ms'] == 4200
+    assert resumed['blocked_ms'] == 6033
+    assert plan['misses'] == []
+    assert plan['planning']['planned_far_taps'] == 2
+    arc_parts = [part for touch in plan['touches'] for part in touch['parts'] if part['kind'] == 'chain']
+    assert sum(part.get('parent_occupation_id') is None for part in arc_parts) == 1
+    assert any(part.get('parent_occupation_id') for part in arc_parts)
+
+    from arc_hand_order import api
+    from arc_hand_order.planning.multi_finger import NoCandidatePath
+    plan_chart = api.plan_chart
+
+    def fail_local_retry(*args, **kwargs):
+        if kwargs.get('checkpoint') is not None:
+            raise NoCandidatePath('no candidate path from this checkpoint', None)
+        return plan_chart(*args, **kwargs)
+
+    monkeypatch.setattr(api, 'plan_chart', fail_local_retry)
+    events.clear()
+    fallback = create_plan(source, 0, 7200, {'arc_path_mode': 'score', 'max_speed_m_s': 4,
+                                             'tap_interval_ms': 150, 'search_width': 128}, progress=events.append)
+    retry_start = next(event for event in events if event['retry'] == 'split' and event['phase'] == 'search')
+    assert retry_start['attempt'] == 4
+    assert retry_start['completed'] == 0
+    assert fallback['misses'] == []
+
+
+def test_miss_retry_can_keep_a_better_checkpoint_prefix(tmp_path, monkeypatch):
+    from arc_hand_order import api
+
+    source = chart(tmp_path, '(1000,1);arc(1800,2600,.5,.5,s,1,1,0,none,false);'
+                   '(3200,1);(4200,2);(6000,1);(6000,2);(6000,3);(6700,4);')
+    events = []
+    plan_chart = api.plan_chart
+
+    def discard_a_contact_in_the_full_split(*args, **kwargs):
+        items = kwargs['occupation_set'].items
+        if not kwargs.get('checkpoint') and any(item.parent_occupation_id for item in items):
+            first = items[0]
+            kwargs['multi'] = {**kwargs['multi'], 'forced_misses': (first.occupation_id,)}
+        return plan_chart(*args, **kwargs)
+
+    monkeypatch.setattr(api, 'plan_chart', discard_a_contact_in_the_full_split)
+    plan = create_plan(source, 0, 7200, {'arc_path_mode': 'score', 'max_speed_m_s': 4,
+                                         'tap_interval_ms': 150, 'search_width': 64}, progress=events.append)
+    resumed = next(event for event in events if event['retry'] == 'checkpoint_misses' and event.get('resumed_from'))
+    assert resumed['completed'] == resumed['resumed_from'] > 0
+    assert any(event['retry'] == 'split' for event in events)
+    assert plan['planning']['skipped_ticks'] == 1
+    assert plan['misses'][0]['start_ms'] == 6000
+    assert any(note['start_ms'] == 6700 and note['hands'] for note in plan['notes'])
+
+
 def test_throttling_keeps_phase_boundaries_but_not_every_state(tmp_path, monkeypatch):
     now = [0.0]
     monkeypatch.setattr(progress_module.time, 'monotonic', lambda: now[0])
@@ -82,3 +147,20 @@ def test_cli_progress_reaches_dashboard_and_clears_for_next_stage(tmp_path, monk
     assert 'PLANNER_PROGRESS ' in (directory / 'render.log').read_text()
     queue.command([sys.executable, '-c', 'pass'], directory, 'Next stage', 20)
     assert queue.active['planning_progress'] is None
+
+
+def test_orientation_progress_reaches_dashboard_and_clears_for_next_stage(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, 'RUNS', tmp_path)
+    queue = server.RenderQueue()
+    directory = tmp_path / 'test'
+    directory.mkdir()
+    queue.active = {'id': 'test', 'status': 'running'}
+    event = {'phase': 'pose_wrists', 'completed': 4, 'total': 10, 'elapsed_s': 3}
+    script = f"print('POSE_PROGRESS invalid'); print({('POSE_PROGRESS ' + json.dumps(event))!r})"
+    queue.command([sys.executable, '-c', script], directory, 'Posing gloves around fixed touch points', 19)
+    pose = json.loads((directory / 'run.json').read_text())['pose_progress']
+    assert (pose['phase'], pose['completed'], pose['total'], pose['elapsed_s']) == ('pose_wrists', 4, 10, 3)
+    assert pose['updated_at'] > 0
+    assert queue.active['planning_progress'] is None
+    queue.command([sys.executable, '-c', 'pass'], directory, 'Next stage', 35)
+    assert queue.active['pose_progress'] is None
