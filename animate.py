@@ -426,7 +426,8 @@ def main():
         thumb_length = calibration["thumb_length_mm"] / 1000
         thumbs = {side: samples(fingers[(side, 2)], hand_scale) for side in SIDES}
         index, active_samples, physical = index_paths(
-            contacts, thumbs, SIDES, last_frame, lift, max_speed, idle_speed, scale=hand_scale, length=thumb_length)
+            contacts, thumbs, SIDES, last_frame, lift, max_speed, idle_speed,
+            scale=hand_scale, length=thumb_length, angular_limit=angular_limit)
         paths = [[Vector(p) for p in path] for path in index]
         physical_samples = [set(np.flatnonzero(physical[:, h])) for h in range(2)]
     else:

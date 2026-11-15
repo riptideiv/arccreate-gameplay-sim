@@ -121,7 +121,54 @@ def samples(touches, scale=1.):
             for frame, (x, y) in enumerate(touch["path_mm"], touch["down_frame"])}
 
 
-def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed, *, scale, length):
+def offset_turn(start, end):
+    direction = np.arctan2(start[1], start[0])
+    turn = (np.arctan2(end[1], end[0]) - direction + np.pi) % (2*np.pi) - np.pi
+    return direction, turn
+
+
+def eased_offset(start, end, progress):
+    """Interpolate the azimuth and span within the reachable annulus."""
+    blend = progress**3 * (10 - 15*progress + 6*progress**2)
+    direction, turn = offset_turn(start, end)
+    angle = direction + blend*turn
+    radius = (1-blend)*np.linalg.norm(start[:2]) + blend*np.linalg.norm(end[:2])
+    return np.array([radius*np.cos(angle), radius*np.sin(angle),
+                     (1-blend)*start[2] + blend*end[2]])
+
+
+def thumb_only_anchors(index, thumb, idle_offset, angular_limit):
+    """Prepare and release a chord while the thumb stays on the glass."""
+    frames = sorted(thumb)
+    groups = np.split(frames, np.flatnonzero(np.diff(frames) > 1) + 1)
+    result = {}
+    for group in groups:
+        shared = [frame for frame in group if frame in index]
+        offsets = {frame: thumb[frame] - index[frame] for frame in shared}
+        # The derivative of the rest-to-rest quintic peaks at 1.875.
+        # Allow preparation to begin earlier when the wrist has farther to turn.
+        lead = {frame: max(9, int(np.ceil(
+            60 * 1.875 * abs(np.degrees(offset_turn(idle_offset, offset)[1]))
+            / (.75 * angular_limit)
+        ))) for frame, offset in offsets.items()}
+        for frame in group:
+            if frame in index:
+                continue
+            offset = idle_offset
+            insertion = bisect_left(shared, frame)
+            before = shared[insertion-1] if insertion else None
+            after = shared[insertion] if insertion < len(shared) else None
+            if before is not None and after is not None and after-before < lead[before]+lead[after]:
+                offset = eased_offset(offsets[before], offsets[after], (frame-before)/(after-before))
+            elif after is not None and after-frame < lead[after]:
+                offset = eased_offset(idle_offset, offsets[after], 1-(after-frame)/lead[after])
+            elif before is not None and frame-before < lead[before]:
+                offset = eased_offset(offsets[before], idle_offset, (frame-before)/lead[before])
+            result[frame] = thumb[frame] - offset
+    return result
+
+
+def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed, *, scale, length, angular_limit=360):
     """Anchor the hand with the thumb when its index is free."""
     paths = []
     fixed = []
@@ -138,28 +185,7 @@ def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed
         thumb_offset = base + np.r_[outward * .45 * length, -index_lift - base[2]]
         index = samples(contacts[side], scale)
         physical[list(index), h] = True
-        shared = sorted(index.keys() & thumbs[side].keys())
-        for frame, point in thumbs[side].items():
-            if frame in index:
-                continue
-            offset = thumb_offset
-            insertion = bisect_left(shared, frame)
-            nearby = shared[max(0, insertion-1):insertion+1]
-            if nearby:
-                chord = min(nearby, key=lambda other: abs(other-frame))
-                # Approach the chord while the thumb is already down. The
-                # free index can line up with its next contact before landing.
-                blend = max(0., 1. - abs(chord-frame) / 9)
-                target = thumbs[side][chord] - index[chord]
-                # Keep the intermediate offsets inside the thumb's reachable
-                # annulus even when the two index positions have different bearings.
-                start_angle = np.arctan2(thumb_offset[1], thumb_offset[0])
-                turn = (np.arctan2(target[1], target[0]) - start_angle + np.pi) % (2*np.pi) - np.pi
-                angle = start_angle + blend*turn
-                radius = (1-blend)*np.linalg.norm(thumb_offset[:2]) + blend*np.linalg.norm(target[:2])
-                offset = np.array([radius*np.cos(angle), radius*np.sin(angle),
-                                   (1-blend)*thumb_offset[2] + blend*target[2]])
-            anchors[frame] = point - offset
+        anchors.update(thumb_only_anchors(index, thumbs[side], thumb_offset, angular_limit))
         anchors.update(index)
         if len(anchors) > 1 and 0 not in index and 0 not in thumbs[side]:
             first = min(frame for frame in anchors if frame > 0)
