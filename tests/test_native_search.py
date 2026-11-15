@@ -452,3 +452,17 @@ def test_native_empty_window_has_a_finished_arm_route(tmp_path):
     reference=create_plan(path,0,1500,BASE,search_backend='python')
     actual=native_plan(path,BASE,end=1500)
     assert comparable(actual)==comparable(reference)
+
+
+@pytest.mark.parametrize('workers', [1, 4])
+def test_native_multifinger_staggered_chord_matches_reference(tmp_path, workers):
+    path = chart(tmp_path,
+                 'hold(800,2100,2);hold(800,2100,3);'
+                 'arc(1100,2400,0,.25,si,1,1,0,none,false);'
+                 'arc(1450,2400,1,.75,si,1,1,1,none,false);(2650,2);')
+    settings = {**BASE, 'multifinger': True, 'tap_interval_ms': 130}
+    reference = create_plan(path, 0, 3500, settings, search_backend='python')
+    actual = native_plan(path, settings, workers=workers)
+    assert_equivalent(reference, actual)
+    assert {touch['hand'] for touch in actual['touches'] if touch['finger'] == 2} == {'left', 'right'}
+    assert not actual['misses']

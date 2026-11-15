@@ -219,6 +219,10 @@ def pose_sequence(paths, active_samples, max_speed=1.6, angular_limit=360, gap=0
     except (RuntimeError, ValueError) as error:
         solved, angles, output = points, neutral, paths
         if thumb_targets is not None:
+            # The neutral fallback must also respect the flat wrist needed
+            # by thumb contacts near the limits of the hand's reach.
+            angles = angles.copy()
+            angles[:, (pitch_ceiling == 0).any(axis=0), 0] = 0.
             angles = fit_thumb_yaw(output, angles, thumb_targets, SIDES, hand_scale, angular_limit,
                                    max_speed, hand_radius, length=thumb_length)
         report = motion_report(output, angles, max_speed, angular_limit, gap, hand_radius)

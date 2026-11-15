@@ -22,7 +22,7 @@ export const zhCN = {
   "Chart end slider": "谱面终点滑块",
   "Start": "开始",
   "End": "结束",
-  "Any window within the chart, including the full song. One index finger per hand.": "可选择任意片段或整首谱面，每只手仅使用一根食指。",
+  "Any window within the chart, including the full song.": "可选择任意片段或整首谱面。",
   "Allow missed notes when a perfect path is infeasible": "无法全连时允许漏键",
   "Search effort": "搜索规模",
   "Search width": "保留的搜索状态数",

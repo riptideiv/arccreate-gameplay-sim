@@ -46,7 +46,7 @@ def _load_extension():
     if (
         not isinstance(identity, str)
         or not identity.startswith("arc-hand-order-native/")
-        or identity.rsplit(";", 1)[-1] != "schema=7"
+        or identity.rsplit(";", 1)[-1] != "schema=8"
     ):
         raise NativeUnsupported(
             "native extension has an incompatible input schema; rebuild native-search"
@@ -78,8 +78,6 @@ def unsupported_reasons(occupations, projection, options, multi):
     if not options.scoring_arcs:
         reasons.append("native search currently requires score-mode arc judgement")
     for name in (
-        "second_finger",
-        "second_finger_again",
         "meeting_swaps",
         "covered_holds",
         "covered_arcs",
@@ -88,6 +86,8 @@ def unsupported_reasons(occupations, projection, options, multi):
     ):
         if getattr(multi, name):
             reasons.append(f"{name} requires the Python reference backend")
+    if multi.second_finger and multi.arm_crossing_travel is not None:
+        reasons.append("arm routes currently require one fingertip per hand")
     if multi.preference_weight:
         reasons.append("learned preference models require the Python reference backend")
     if options.handovers or options.swaps:
@@ -253,6 +253,7 @@ def _prepared(occupations, projection, options, multi, reporter, checkpoint=None
                 held_to_end=c.held_to_end,
                 held_release=graph.held_release(t),
                 share_only=c.share_only,
+                dense=graph.dense(c) if multi.second_finger else False,
                 untouched=c.untouched_s,
                 part_base=[
                     list(asdict(graph.part_cost(c, h)).values()) for h in mf.HANDS
@@ -409,11 +410,27 @@ def _validate(result, graph, items, candidates, reporter):
             hand = mf.HANDS[step["hand"]]
             match = None
             for next_state, increment, changes in graph.steps(state, chosen, hand):
-                if len(changes) != 1:
+                partner = step.get("partner")
+                shortened = step.get("shortened")
+                if len(changes) != 1 + int(partner is not None) + int(shortened is not None):
                     continue
-                slot, touch, kind = changes[0]
-                if slot != 2 * step["hand"] or (kind == "extend") != step["extension"]:
+                slot, touch, kind = changes[-1]
+                if slot != 2 * step["hand"] + step.get("digit", 0) or (
+                    (kind == "extend") != step["extension"]
+                ):
                     continue
+                if shortened is not None:
+                    shortened_slot, shortened_touch, shortened_kind = changes[0]
+                    if shortened_slot != slot or shortened_kind != "extend" or not _matches(
+                        shortened_touch, shortened, candidates
+                    ):
+                        continue
+                if partner is not None:
+                    partner_slot, partner_touch, partner_kind = changes[-2]
+                    if partner_slot != (slot ^ 1) or partner_kind != "extend" or not _matches(
+                        partner_touch, partner, candidates
+                    ):
+                        continue
                 if _matches(touch, record, candidates):
                     match = next_state, increment, changes
                     break

@@ -6,7 +6,7 @@
 
 默认 beam width 为 **256**。原生实现保留最小连击间隔、独立 XY 接触偏移、Perfect → 检查点 FAR → 分割 arc → 完整 arc 的重试顺序、FAR / 非 MAX 排名、释放时序多样性，以及最终路径恢复。计划中的 `arm_crossings` 和 `travel` 仍交给该分支原有的手套／肘部动画流程。
 
-`create_plan`、`api.plan_chart`、`plan_multi_finger` 及两个 CLI 支持 `search_backend=auto|python|native` 和 `search_workers=0|N`。0 默认保留一个 CPU、最多四个 worker；少于 32 个状态时串行扩展。worker 数不改变搜索宽度，执行方式通过进度诊断报告。缺少扩展、不支持的多指或 trace 模式显式回退 Python。
+`create_plan`、`api.plan_chart`、`plan_multi_finger` 及两个 CLI 支持 `search_backend=auto|python|native` 和 `search_workers=0|N`。0 默认保留一个 CPU、最多四个 worker；少于 32 个状态时串行扩展。worker 数不改变搜索宽度，执行方式通过进度诊断报告。缺少扩展或遇到不支持的配置时会明确回退 Python。食指与拇指的按判定规划支持原生搜索，双臂交叉路径仍使用每手一个触点的模式。
 
 `auto` 已启用原生搜索；未安装扩展或配置不受支持时回退 Python，并在进度诊断中说明原因。原生扩展独立安装，Python 包仍可单独使用。目前原生数值兼容范围为 CPython 3.13，其他解释器版本显式回退：
 
@@ -16,7 +16,7 @@ uv pip install --python .venv/bin/python ./native-search
   --settings SETTINGS.json --search-backend native --search-workers 4 --no-plan-cache
 ```
 
-本次扩展为 0.2.0，输入 schema 4。旧 schema 3 不会被误用。完成规划缓存包含原生源码和二进制身份。检查点保留原生前沿、祖先触点、手臂状态和累计代价；恢复时重新映射当前图的触点。取消会终止未完成层并阻止发布部分规划。
+合入多指搜索后的输入 schema 为 8。需要重新构建扩展，防止载入旧版。完成规划缓存包含原生源码和二进制身份。检查点保留原生前沿、祖先触点、手臂状态和累计代价；恢复时重新映射当前图的触点。取消会终止未完成层并阻止发布部分规划。
 
 ## 精简验证
 

@@ -79,8 +79,8 @@ fn event(engine: &Engine, new: Arc<Touch>, old: Arc<Touch>) -> ExpansionEvent {
     before[33] = old_measures[1];
     let state = State {
         arms: None,
-        hands: [Some(new.clone()), None],
-        last_point_press: [None; 2],
+        hands: [Some(new.clone()), None, None, None],
+        last_point_press: [None; 4],
         runs: [0; 2],
         owned: [None, None],
         locks: [-1; 4],
@@ -88,8 +88,10 @@ fn event(engine: &Engine, new: Arc<Touch>, old: Arc<Touch>) -> ExpansionEvent {
         node: Some(Arc::new(Node {
             previous: None,
             item: 1,
-            hand: 0,
+            slot: 0,
             touch: Some(new),
+            adjusted_partner: None,
+            shortened: None,
             extension: true,
             increment: zero(),
         })),

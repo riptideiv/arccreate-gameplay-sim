@@ -49,6 +49,17 @@ def hand_calibration(tablet_height_m):
     }
 
 
+def thumb_contact_span():
+    """Feasible fingertip separation on the glass with a flat wrist, in metres."""
+    calibration = hand_calibration(HAND_REFERENCE_DEPTH_M)
+    base = THUMB_BASE * calibration["scale"]
+    length = calibration["thumb_length_mm"] / 1000
+    radius = float(np.linalg.norm(base[:2]))
+    reach = float(np.sqrt(length**2 - base[2]**2))
+    # Exported touch positions are rounded to .01 mm along each axis.
+    return radius - reach + .00002, radius + reach - .00002
+
+
 def assign_digits(touches, tap_interval_ms, min_air_frames, max_speed):
     """Orient each connected set of interchangeable planner slots anatomically."""
     for side in ("left", "right"):
@@ -139,7 +150,15 @@ def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed
                 # Approach the chord while the thumb is already down. The
                 # free index can line up with its next contact before landing.
                 blend = max(0., 1. - abs(chord-frame) / 9)
-                offset = (1-blend)*thumb_offset + blend*(thumbs[side][chord] - index[chord])
+                target = thumbs[side][chord] - index[chord]
+                # Keep the intermediate offsets inside the thumb's reachable
+                # annulus even when the two index positions have different bearings.
+                start_angle = np.arctan2(thumb_offset[1], thumb_offset[0])
+                turn = (np.arctan2(target[1], target[0]) - start_angle + np.pi) % (2*np.pi) - np.pi
+                angle = start_angle + blend*turn
+                radius = (1-blend)*np.linalg.norm(thumb_offset[:2]) + blend*np.linalg.norm(target[:2])
+                offset = np.array([radius*np.cos(angle), radius*np.sin(angle),
+                                   (1-blend)*thumb_offset[2] + blend*target[2]])
             anchors[frame] = point - offset
         anchors.update(index)
         if len(anchors) > 1 and 0 not in index and 0 not in thumbs[side]:
@@ -161,16 +180,29 @@ def index_paths(contacts, thumbs, sides, last_frame, lift, max_speed, idle_speed
 def thumb_pitch_ceiling(points, thumbs, sides, scale, length):
     """Find where a thumb contact needs a flatter wrist than the neutral pose."""
     ceiling = np.full(points.shape[:2], np.inf)
+    failures = []
     for h, side in enumerate(sides):
         if not thumbs[side]:
             continue
         frames = list(thumbs[side])
         delta = np.array(list(thumbs[side].values())) - points[frames, h]
         sign = 1 if side == "left" else -1
-        base = bases(NEUTRAL[h]) @ (THUMB_BASE * [sign, 1, 1] * scale)
-        reach = np.hypot(np.linalg.norm(delta[:, :2], axis=1) - np.linalg.norm(base[:2]),
-                         delta[:, 2] - base[2])
-        ceiling[frames, h] = np.where(reach > length, 0., NEUTRAL[h, 0])
+        flat = THUMB_BASE * [sign, 1, 1] * scale
+        neutral = bases(NEUTRAL[h]) @ flat
+        radius = np.linalg.norm(delta[:, :2], axis=1)
+
+        def required(base):
+            return np.hypot(radius - np.linalg.norm(base[:2]), delta[:, 2] - base[2])
+
+        needs_flat = required(neutral) > length
+        impossible = needs_flat & (required(flat) > length + 1e-7)
+        if np.any(impossible):
+            failures.append((min(np.asarray(frames)[impossible]), side))
+        ceiling[frames, h] = np.where(needs_flat, 0., NEUTRAL[h, 0])
+    if failures:
+        frame, side = min(failures)
+        raise ValueError(f"{side.title()} thumb is out of reach at {frame/60:.3f} s")
+
     return ceiling
 
 
@@ -253,7 +285,15 @@ def fit_thumb_yaw(paths, poses, thumbs, sides, scale, angular_limit, max_speed, 
         if comfort is None:
             comfort = feasible_yaw(preferred, lower, upper, budget)
         if comfort is None:
-            raise ValueError(f"{side.title()} wrist cannot turn fast enough to reach the thumb contacts")
+            lo, hi = lower[0], upper[0]
+            blocked = len(yaw) - 1
+            for frame, step in enumerate(budget, 1):
+                lo = max(lower[frame], lo-step)
+                hi = min(upper[frame], hi+step)
+                if lo > hi + 1e-7:
+                    blocked = frame
+                    break
+            raise ValueError(f"{side.title()} wrist cannot reach its next thumb contact at {blocked/60:.3f} s")
         yaw[:] = comfort
         smooth_thumb_yaw(yaw, preferred, lower, upper, budget, thumbs[side])
     return result

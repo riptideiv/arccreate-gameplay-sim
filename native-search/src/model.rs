@@ -92,6 +92,8 @@ pub struct Candidate {
     pub fixed: Option<usize>,
     #[serde(default)]
     pub share_only: bool,
+    #[serde(default)]
+    pub dense: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Part {
@@ -148,8 +150,9 @@ impl Touch {
 }
 #[derive(Clone)]
 pub struct State {
-    pub hands: [Option<Arc<Touch>>; 2],
-    pub last_point_press: [Option<i32>; 2],
+    // Primary slots are 0/1 and secondary slots are 2/3, in left/right order.
+    pub hands: [Option<Arc<Touch>>; 4],
+    pub last_point_press: [Option<i32>; 4],
     pub runs: [i32; 2],
     pub owned: [Option<Arc<Touch>>; 2],
     pub locks: [i64; 4],
@@ -161,8 +164,10 @@ pub struct State {
 pub struct Node {
     pub previous: Option<Arc<Node>>,
     pub item: usize,
-    pub hand: usize,
+    pub slot: usize,
     pub touch: Option<Arc<Touch>>,
+    pub adjusted_partner: Option<(Arc<Touch>, Arc<Touch>)>,
+    pub shortened: Option<Arc<Touch>>,
     pub extension: bool,
     pub increment: Cost,
 }

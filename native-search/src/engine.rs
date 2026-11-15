@@ -18,11 +18,15 @@ mod pricing_tests;
 // Workers construct canonical geometry; only the ordered reducer can establish
 // mutable prefix provenance or initialize a cost cache. This includes events
 // emitted by branches which later fail a hard constraint.
+#[path = "multifinger.rs"]
+mod multifinger;
+
 enum ExpansionEvent {
     Arrival(Arc<Touch>),
     Price(Arc<Touch>, Option<Arc<Touch>>),
     Prefix(Arc<Touch>, Arc<Touch>),
     Transition(State, Cost, Option<Arc<Touch>>),
+    Takeovers(Vec<State>, Cost, Arc<Touch>),
     Routed(State, Cost, Option<Arc<Touch>>, Arc<crate::arms::ArmState>),
 }
 
@@ -39,7 +43,8 @@ pub struct Engine {
     final_alternatives: Vec<State>,
     singles: Vec<Arc<Touch>>,
     extensions: Mutex<HashMap<(usize, usize), Vec<Arc<Touch>>>>,
-    shares: Mutex<HashMap<(usize, usize), Option<Arc<Touch>>>>,
+    shares: Mutex<HashMap<(usize, usize, Option<usize>), Option<Arc<Touch>>>>,
+    paired_presses: Mutex<HashMap<(usize, usize), Option<Arc<Touch>>>>,
     pairs: Mutex<HashMap<(usize, usize), [f64; 7]>>,
     next_id: AtomicUsize,
     // Worker-assigned IDs identify equality classes only, never ordering.
@@ -212,8 +217,8 @@ impl Engine {
         let mut e = Self {
             input,
             states: vec![State {
-                hands: [None, None],
-                last_point_press: [None; 2],
+                hands: [None, None, None, None],
+                last_point_press: [None; 4],
                 runs: [0, 0],
                 owned: [None, None],
                 locks: [-1; 4],
@@ -232,6 +237,7 @@ impl Engine {
             singles: vec![],
             extensions: Mutex::new(HashMap::new()),
             shares: Mutex::new(HashMap::new()),
+            paired_presses: Mutex::new(HashMap::new()),
             pairs: Mutex::new(HashMap::new()),
             next_id: AtomicUsize::new(0),
             interned,
@@ -764,11 +770,58 @@ impl Engine {
             self.candidate_point(&self.input.candidates[*ci], f),
         ))
     }
+    fn reachable_point(
+        &self,
+        xy: XY,
+        live: &[usize],
+        frame: i32,
+        partner: XY,
+        previous: Option<XY>,
+    ) -> Option<XY> {
+        if self.shape_ok(xy, partner) {
+            return Some(xy);
+        }
+        let poly = self.shared(live, frame);
+        if poly.is_empty() {
+            return None;
+        }
+        if let Some(q) = previous.filter(|&q| nearest(&poly, q) == q && self.shape_ok(q, partner)) {
+            return Some(q);
+        }
+        let anchor = previous.unwrap_or(xy);
+        let mut low = [f64::INFINITY; 2];
+        let mut high = [f64::NEG_INFINITY; 2];
+        for p in &poly {
+            for k in 0..2 {
+                low[k] = low[k].min(p[k]);
+                high[k] = high[k].max(p[k]);
+            }
+        }
+        let mut best = None;
+        let mut best_distance = f64::INFINITY;
+        let mut y = low[1];
+        while y <= high[1] {
+            let mut x = low[0];
+            while x <= high[0] {
+                let q = [x, y];
+                let distance = dist(q, anchor);
+                if distance < best_distance && self.shape_ok(q, partner) && nearest(&poly, q) == q {
+                    best = Some(q);
+                    best_distance = distance;
+                }
+                x += 0.004;
+            }
+            y += 0.004;
+        }
+        best
+    }
+
     fn compose(
         &self,
         mut parts: Vec<Part>,
         bridges: Vec<[i32; 2]>,
         prefix: Option<&Touch>,
+        partner: Option<&Touch>,
     ) -> Option<Arc<Touch>> {
         if self.cancellation.load(Ordering::Relaxed) {
             return None;
@@ -777,7 +830,11 @@ impl Engine {
         if parts.len() == 1 && bridges.is_empty() {
             let p = &parts[0];
             let c = &self.input.candidates[p.candidate];
-            if p.start == c.down && p.stop == c.up {
+            if p.start == c.down
+                && p.stop == c.up
+                && partner
+                    .is_none_or(|t| self.finger_overlap(&self.singles[p.candidate], t).is_some())
+            {
                 return Some(self.singles[p.candidate].clone());
             }
         }
@@ -811,7 +868,10 @@ impl Engine {
                 served.clear();
                 continue;
             }
-            let p = self.anchor(&live, f)?;
+            let mut p = self.anchor(&live, f)?;
+            if let Some(t) = partner.filter(|t| t.active(f)) {
+                p = self.reachable_point(p, &live, f, t.xy(f), previous)?;
+            }
             if let Some(old) = previous {
                 if dist(old, p) * 60. > self.opt("speed_max_m_s") * 1.0001 {
                     return None;
@@ -838,7 +898,9 @@ impl Engine {
             for k in 1..path.len() {
                 let before = &lives[k - 1];
                 let now = &lives[k];
-                if before.is_empty() || now.is_empty() || before == now {
+                let f = down + k as i32;
+                let reach_changed = partner.is_some_and(|t| t.active(f) != t.active(f - 1));
+                if before.is_empty() || now.is_empty() || (before == now && !reach_changed) {
                     continue;
                 }
                 let kept: Vec<usize> = now.iter().filter(|i| before.contains(i)).copied().collect();
@@ -882,6 +944,9 @@ impl Engine {
                         let poly = self.shared(&lives[j], down + j as i32);
                         !poly.is_empty()
                             && dist(nearest(&poly, trial[j]), trial[j]) <= 1e-6
+                            && partner
+                                .filter(|t| t.active(down + j as i32))
+                                .is_none_or(|t| self.shape_ok(trial[j], t.xy(down + j as i32)))
                             && [j, j + 1].iter().all(|&i| {
                                 i == 0
                                     || i >= trial.len()
@@ -1089,8 +1154,8 @@ impl Engine {
         }
         true
     }
-    fn share(&self, t: &Arc<Touch>, ci: usize) -> Option<Arc<Touch>> {
-        let key = (t.uid, ci);
+    fn share(&self, t: &Arc<Touch>, ci: usize, partner: Option<&Touch>) -> Option<Arc<Touch>> {
+        let key = (t.uid, ci, partner.map(|t| t.uid));
         if let Some(v) = self.shares.lock().unwrap().get(&key) {
             return v.clone();
         }
@@ -1101,10 +1166,23 @@ impl Engine {
             start: c.down,
             stop: c.up,
         });
-        let result = self.compose(parts, t.bridges.clone(), Some(t));
+        let result = self.compose(parts, t.bridges.clone(), Some(t), partner);
         self.shares.lock().unwrap().insert(key, result.clone());
         result
     }
+    fn paired_press(&self, ci: usize, partner: &Touch) -> Option<Arc<Touch>> {
+        let key = (ci, partner.uid);
+        if let Some(value) = self.paired_presses.lock().unwrap().get(&key) {
+            return value.clone();
+        }
+        let result = self.compose(self.singles[ci].parts.clone(), vec![], None, Some(partner));
+        self.paired_presses
+            .lock()
+            .unwrap()
+            .insert(key, result.clone());
+        result
+    }
+
     fn jump_slide(&self, t: &Touch, ci: usize) -> Option<(Vec<XY>, i32)> {
         if !b(&self.input.multi, "jump_slides") {
             return None;
@@ -1264,9 +1342,37 @@ impl Engine {
             ))
         }
     }
-    fn new_cost(&self, state: &State, hand: usize, new: &Touch) -> Option<Cost> {
-        let prev = state.hands[hand].as_deref();
-        let other = state.hands[1 - hand].as_deref();
+    fn shape_ok(&self, a: XY, b: XY) -> bool {
+        let dx = (a[0] - b[0]).abs();
+        let dy = (a[1] - b[1]).abs();
+        let d = dist(a, b);
+        d >= self.multi("pair_min_m")
+            && d <= self.multi("pair_max_m")
+            && (dy >= self.multi("side_by_side_max_dy_m")
+                || dx <= self.multi("side_by_side_max_dx_m"))
+    }
+    fn finger_overlap(&self, a: &Touch, b: &Touch) -> Option<[f64; 2]> {
+        let first = a.down.max(b.down);
+        let end = a.up().min(b.up());
+        let mut side = 0;
+        for f in first..end {
+            let (a, b) = (a.xy(f), b.xy(f));
+            if !self.shape_ok(a, b) {
+                return None;
+            }
+            side += i32::from((a[1] - b[1]).abs() < self.multi("side_by_side_max_dy_m"));
+        }
+        Some([f64::from((end - first).max(0)) / 60., f64::from(side) / 60.])
+    }
+
+    fn new_cost(&self, state: &State, slot: usize, new: &Touch) -> Option<Cost> {
+        let hand = slot % 2;
+        let prev = state.hands[slot].as_deref();
+        let other = [1 - hand, 3 - hand]
+            .into_iter()
+            .filter_map(|slot| state.hands[slot].as_deref().map(|touch| (slot, touch)))
+            .max_by_key(|(slot, touch)| (touch.down, Reverse(*slot)))
+            .map(|(_, touch)| touch);
         let mut v = zero();
         v[2] = self.movement(prev, new)?;
         if let Some(t) = prev {
@@ -1398,25 +1504,169 @@ impl Engine {
         }
         Some(v)
     }
+    fn touches_clash(&self, new: &Touch, other: &Touch) -> bool {
+        for (colour, frames) in &new.bindings {
+            if other
+                .bindings
+                .get(colour)
+                .is_some_and(|fs| !fs.is_disjoint(frames))
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn touch_steals(&self, new: &Touch, other: &Touch) -> bool {
+        for (colour, frames) in &new.bindings {
+            for &f in frames {
+                if frames.contains(&(f - 1)) {
+                    continue;
+                }
+                let span = new.parts.iter().find(|p| {
+                    self.item(p).kind == "chain"
+                        && self.item(p).colour == *colour
+                        && p.start <= f
+                        && f < p.stop
+                });
+                let Some(p) = span else {
+                    continue;
+                };
+                if other.down >= new.down
+                    || !other.active(f)
+                    || other.bindings.values().any(|fs| fs.contains(&f))
+                {
+                    continue;
+                }
+                let poly = self.item(p).polygon(f);
+                if !poly.is_empty() && nearest(poly, other.xy(f)) == other.xy(f) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn update_owned(&self, out: &mut State, hand: usize, now: i64) {
+        if self.multi("arc_takeover_weight") != 0. {
+            if let Some(held) = [hand, hand + 2]
+                .into_iter()
+                .filter_map(|i| out.hands[i].as_ref())
+                .filter(|t| t.parts.iter().any(|p| self.item(p).contested))
+                .rev()
+                .max_by_key(|t| t.up())
+            {
+                out.owned[hand] = Some(held.clone());
+            } else if let Some(t) = &out.owned[hand] {
+                let latest = [hand, hand + 2]
+                    .into_iter()
+                    .rev()
+                    .filter_map(|i| out.hands[i].as_ref())
+                    .max_by_key(|t| t.down);
+                if let Some(latest) = latest.filter(|latest| {
+                    self.ms(latest.down) >= self.ms(t.up()) - 1
+                        && dist(latest.first(), t.last()) < self.multi("trade_m")
+                }) {
+                    out.owned[hand] = Some(latest.clone());
+                }
+            }
+            for h in 0..2 {
+                if out.owned[h]
+                    .as_ref()
+                    .is_some_and(|t| self.ms(t.up()) + self.window(t) <= now)
+                {
+                    out.owned[h] = None;
+                }
+            }
+        }
+    }
+
+    fn add_opponent_delta(
+        &self,
+        hand: usize,
+        other: &Touch,
+        after: Option<&Touch>,
+        before: Option<&Touch>,
+        increment: &mut Cost,
+    ) {
+        let pair_with = |touch: &Touch| {
+            if hand == 0 {
+                self.pair(touch, other)
+            } else {
+                self.pair(other, touch)
+            }
+        };
+        let after = after.map(pair_with).unwrap_or([0.; 7]);
+        let before = before.map(pair_with).unwrap_or([0.; 7]);
+        let pair: [f64; 7] = std::array::from_fn(|i| after[i] - before[i]);
+        increment[1] += pair[0];
+        if self.multi("crossing_depth_weight") != 0. {
+            increment[31] += pair[1];
+        }
+        let record = b(&self.input.multi, "geometry_features")
+            || [
+                "crossing_level_weight",
+                "crossing_near_weight",
+                "crossing_clear_weight",
+                "collision_s_weight",
+            ]
+            .iter()
+            .any(|k| self.multi(k) != 0.);
+        if record {
+            for j in 0..3 {
+                increment[20 + j] += pair[2 + j];
+            }
+            increment[27] += pair[5];
+        }
+        if self.wrist.is_some() {
+            increment[37] += pair[6];
+        }
+    }
+
+    fn charge_jack(&self, old: &State, out: &mut State, hand: usize, down: i32) -> f64 {
+        if self.multi("jack_weight") == 0. {
+            return 0.;
+        }
+        let fast = [hand, hand + 2]
+            .into_iter()
+            .filter_map(|i| old.hands[i].as_deref())
+            .any(|t| self.ms(down) - self.ms(t.down) < self.multi("jack_gap_ms") as i64);
+        out.runs[hand] = if fast {
+            (old.runs[hand] + 1).min(self.multi("jack_free") as i32 + 1)
+        } else {
+            1
+        };
+        f64::from(out.runs[hand] > self.multi("jack_free") as i32)
+    }
+
     fn finish(
         &self,
         state: &State,
         ci: usize,
-        hand: usize,
+        slot: usize,
         new: Arc<Touch>,
         old: Option<&Touch>,
         mut increment: Cost,
+        adjusted_partner: Option<Arc<Touch>>,
         share: bool,
         bridge: bool,
         events: &mut Vec<ExpansionEvent>,
     ) -> Option<State> {
+        let hand = slot % 2;
+        let partner_slot = (slot + 2) % 4;
+        let partner_change =
+            adjusted_partner.map(|new| (new, state.hands[partner_slot].as_ref().unwrap().clone()));
+        let partner = partner_change
+            .as_ref()
+            .map(|(new, _)| new.as_ref())
+            .or(state.hands[partner_slot].as_deref());
         let c = &self.input.candidates[ci];
         let o = &self.input.items[c.item];
         let point_press = self.multi("tap_interval_ms") != 0.
             && old.is_none()
             && matches!(o.kind.as_str(), "tap" | "sky");
         if point_press
-            && state.last_point_press[hand].is_some_and(|previous| {
+            && state.last_point_press[slot].is_some_and(|previous| {
                 f64::from(new.down - previous) * 1000. < self.multi("tap_interval_ms") * 60.
             })
         {
@@ -1451,7 +1701,7 @@ impl Engine {
         if old.is_some_and(|old| new.down == old.down && new.path.starts_with(&old.path)) {
             events.push(ExpansionEvent::Prefix(
                 new.clone(),
-                state.hands[hand].as_ref().unwrap().clone(),
+                state.hands[slot].as_ref().unwrap().clone(),
             ));
         }
         for p in &new.parts {
@@ -1466,120 +1716,55 @@ impl Engine {
                 return None;
             }
         }
-        if let Some(other) = state.hands[1 - hand].as_deref() {
-            for (colour, frames) in &new.bindings {
-                if other
-                    .bindings
-                    .get(colour)
-                    .is_some_and(|fs| !fs.is_disjoint(frames))
-                {
-                    return None;
-                }
-            }
-            for (colour, frames) in &new.bindings {
-                for &f in frames {
-                    if frames.contains(&(f - 1)) {
-                        continue;
-                    }
-                    let span = new.parts.iter().find(|p| {
-                        self.item(p).kind == "chain"
-                            && self.item(p).colour == *colour
-                            && p.start <= f
-                            && f < p.stop
-                    });
-                    let Some(p) = span else {
-                        continue;
-                    };
-                    if other.down >= new.down
-                        || !other.active(f)
-                        || other.bindings.values().any(|fs| fs.contains(&f))
-                    {
-                        continue;
-                    }
-                    let poly = self.item(p).polygon(f);
-                    if !poly.is_empty() && nearest(poly, other.xy(f)) == other.xy(f) {
-                        increment[15] = 1.;
-                        break;
-                    }
-                }
-            }
-            let now = if hand == 0 {
-                self.pair(&new, other)
-            } else {
-                self.pair(other, &new)
+        if let Some(partner) = partner {
+            let pair = self.finger_overlap(&new, partner)?;
+            let previous = old
+                .and_then(|old| self.finger_overlap(old, partner))
+                .unwrap_or([0.; 2]);
+            increment[11] = pair[0] - previous[0];
+            increment[12] = pair[1] - previous[1];
+        }
+        for other_slot in [partner_slot, 1 - hand, 3 - hand] {
+            let Some(other) = state.hands[other_slot].as_deref() else {
+                continue;
             };
-            let was = old
-                .map(|t| {
-                    if hand == 0 {
-                        self.pair(t, other)
-                    } else {
-                        self.pair(other, t)
-                    }
-                })
-                .unwrap_or([0.; 7]);
-            increment[1] = now[0] - was[0];
-            if self.multi("crossing_depth_weight") != 0. {
-                increment[31] = now[1] - was[1];
+            if self.touches_clash(&new, other) {
+                return None;
             }
-            let record = b(&self.input.multi, "geometry_features")
-                || [
-                    "crossing_level_weight",
-                    "crossing_near_weight",
-                    "crossing_clear_weight",
-                    "collision_s_weight",
-                ]
-                .iter()
-                .any(|k| self.multi(k) != 0.);
-            if record {
-                for j in 0..3 {
-                    increment[20 + j] = now[2 + j] - was[2 + j];
-                }
-                increment[27] = now[5] - was[5];
+            if increment[15] == 0. && self.touch_steals(&new, other) {
+                increment[15] = 1.;
             }
-            if self.wrist.is_some() {
-                increment[37] = now[6] - was[6];
+            if other_slot == partner_slot {
+                continue;
+            }
+            self.add_opponent_delta(hand, other, Some(&new), old, &mut increment);
+            if let Some((after, before)) = &partner_change {
+                self.add_opponent_delta(hand, other, Some(after), Some(before), &mut increment);
             }
         }
         if self.multi("accel_max_m_s2") != 0. {
             increment[30] += new.over - old.map_or(0., |t| t.over);
+            if let Some((after, before)) = &partner_change {
+                increment[30] += after.over - before.over;
+            }
         }
         increment[9] = f64::from(share);
         increment[14] = f64::from(bridge);
         let mut out = state.clone();
         if point_press {
-            out.last_point_press[hand] = Some(new.down);
+            out.last_point_press[slot] = Some(new.down);
         }
-        if old.is_none() && self.multi("jack_weight") != 0. {
-            let fast = state.hands[hand].as_ref().is_some_and(|t| {
-                self.ms(new.down) - self.ms(t.down) < self.multi("jack_gap_ms") as i64
-            });
-            out.runs[hand] = if fast {
-                (state.runs[hand] + 1).min(self.multi("jack_free") as i32 + 1)
-            } else {
-                1
-            };
-            increment[16] = f64::from(out.runs[hand] > self.multi("jack_free") as i32);
+        if old.is_none() {
+            increment[16] = self.charge_jack(state, &mut out, hand, new.down);
         }
-        out.hands[hand] = Some(new.clone());
-        if self.multi("arc_takeover_weight") != 0. {
-            if new.parts.iter().any(|p| self.item(p).contested) {
-                out.owned[hand] = Some(new.clone());
-            } else if let Some(t) = &out.owned[hand] {
-                if self.ms(new.down) >= self.ms(t.up()) - 1
-                    && dist(new.first(), t.last()) < self.multi("trade_m")
-                {
-                    out.owned[hand] = Some(new.clone());
-                }
-            }
-            for h in 0..2 {
-                if out.owned[h]
-                    .as_ref()
-                    .is_some_and(|t| self.ms(t.up()) + self.window(t) <= self.ms(new.down))
-                {
-                    out.owned[h] = None;
-                }
-            }
+        if old.is_none() && !partner.is_some_and(|t| t.active(new.down)) {
+            out.hands[partner_slot] = None;
         }
+        out.hands[slot] = Some(new.clone());
+        if let Some((after, _)) = &partner_change {
+            out.hands[partner_slot] = Some(after.clone());
+        }
+        self.update_owned(&mut out, hand, self.ms(new.down));
         if b(&self.input.multi, "tick_contacts") {
             for &colour in new.bindings.keys() {
                 if (0..4).contains(&colour) {
@@ -1596,13 +1781,15 @@ impl Engine {
         out.node = Some(Arc::new(Node {
             previous: state.node.clone(),
             item: c.item,
-            hand,
+            slot,
             touch: Some(new),
+            adjusted_partner: partner_change,
+            shortened: None,
             extension: old.is_some(),
             increment,
         }));
         if b(&self.input.options, "full_point_window") && !o.continuous {
-            let error = self.ms(out.hands[hand].as_ref().unwrap().down) - o.start;
+            let error = self.ms(out.hands[slot].as_ref().unwrap().down) - o.start;
             let node = Arc::make_mut(out.node.as_mut().unwrap());
             node.increment[38] = f64::from(!(-50..50).contains(&error));
             node.increment[39] = f64::from(!(-25..25).contains(&error));
@@ -1626,8 +1813,10 @@ impl Engine {
             skipped.node = Some(Arc::new(Node {
                 previous: state.node.clone(),
                 item: group,
-                hand: 0,
+                slot: 0,
                 touch: None,
+                adjusted_partner: None,
+                shortened: None,
                 extension: false,
                 increment,
             }));
@@ -1642,143 +1831,252 @@ impl Engine {
             }
             let c = &self.input.candidates[ci];
             let item = &self.input.items[c.item];
+            let latest = state
+                .hands
+                .iter()
+                .flatten()
+                .map(|t| self.latest(t))
+                .min_by_key(|c| Reverse(c.item));
+            let press_ok = latest.map_or(true, |l| {
+                let prev = &self.input.items[l.item];
+                let relaxed = item.parent.is_some()
+                    || prev.parent.is_some()
+                    || (b(&self.input.options, "full_arc_hold")
+                        && (item.kind == "chain" || prev.kind == "chain"));
+                c.down >= l.down || relaxed
+            });
+            let multifinger = b(&self.input.multi, "second_finger");
             for hand in 0..2 {
                 if c.fixed.is_some_and(|h| h != hand) {
                     continue;
                 }
-                let old = state.hands[hand].as_ref();
-                let latest = state
-                    .hands
-                    .iter()
-                    .filter_map(|t| t.as_ref())
-                    .map(|t| self.latest(t))
-                    .min_by_key(|c| Reverse(c.item));
-                let press_ok = latest.map_or(true, |l| {
-                    let prev = &self.input.items[l.item];
-                    let relaxed = item.parent.is_some()
-                        || prev.parent.is_some()
-                        || (b(&self.input.options, "full_arc_hold")
-                            && (item.kind == "chain" || prev.kind == "chain"));
-                    c.down >= l.down || relaxed
-                });
+                let slots: &[usize] = if multifinger {
+                    &[hand, hand + 2]
+                } else {
+                    &[hand]
+                };
                 let mut base = zero();
                 base[..9].copy_from_slice(&c.part_base[hand]);
-                if let Some(t) = old {
-                    if item.parent.is_some()
-                        && c.down >= t.down
-                        && self.item(self.end(t)).parent == item.parent
-                    {
-                        for new in self.extension_variants(t, ci) {
-                            if let Some(s) = self.finish(
-                                state,
-                                ci,
-                                hand,
-                                new,
-                                Some(t),
-                                base,
-                                false,
-                                true,
-                                &mut out,
-                            ) {
-                                out.push(ExpansionEvent::Transition(s, state.cost, old.cloned()));
+                let mut bridged = [false; 4];
+                if item.parent.is_some() {
+                    for &slot in slots {
+                        let Some(t) = state.hands[slot].as_ref() else {
+                            continue;
+                        };
+                        if c.down >= t.down && self.item(self.end(t)).parent == item.parent {
+                            for new in self.extension_variants(t, ci) {
+                                if let Some(s) = self.finish(
+                                    state,
+                                    ci,
+                                    slot,
+                                    new,
+                                    Some(t),
+                                    base,
+                                    None,
+                                    false,
+                                    true,
+                                    &mut out,
+                                ) {
+                                    out.push(ExpansionEvent::Transition(
+                                        s,
+                                        state.cost,
+                                        Some(t.clone()),
+                                    ));
+                                }
                             }
                         }
                     }
                 }
-                let mut bridged = false;
                 if self.multi("bridge_max_gap_ms") != 0.
                     && item.kind == "chain"
                     && item.parent.is_none()
                     && press_ok
                 {
-                    if let Some(t) = old {
-                        if !t.active(c.down) {
-                            if let Some((new, mut increment)) = self.bridge(t, ci) {
-                                increment[0] = base[0];
-                                increment[3] = base[3];
-                                increment[7] = base[7];
-                                increment[8] = base[8];
-                                if b(&self.input.multi, "jump_slides") {
-                                    increment[7] = (increment[7]
-                                        - (self.ms(c.down)
-                                            - self.ms(frame_after(item.start, self.input.offset)))
-                                        .max(0) as f64
-                                            / 1000.)
-                                        .max(0.);
-                                }
-                                if let Some(s) = self.finish(
-                                    state,
-                                    ci,
-                                    hand,
-                                    new,
-                                    Some(t),
-                                    increment,
-                                    false,
-                                    true,
-                                    &mut out,
-                                ) {
-                                    out.push(ExpansionEvent::Transition(
-                                        s,
-                                        state.cost,
-                                        old.cloned(),
-                                    ));
-                                    bridged = true;
-                                }
-                            }
+                    for &slot in slots {
+                        let Some(t) = state.hands[slot].as_ref() else {
+                            continue;
+                        };
+                        if t.active(c.down) {
+                            continue;
+                        }
+                        let Some((new, mut increment)) = self.bridge(t, ci) else {
+                            continue;
+                        };
+                        for i in [0, 3, 7, 8] {
+                            increment[i] = base[i];
+                        }
+                        if b(&self.input.multi, "jump_slides") {
+                            increment[7] = (increment[7]
+                                - (self.ms(c.down)
+                                    - self.ms(frame_after(item.start, self.input.offset)))
+                                .max(0) as f64
+                                    / 1000.)
+                                .max(0.);
+                        }
+                        if let Some(s) = self.finish(
+                            state,
+                            ci,
+                            slot,
+                            new,
+                            Some(t),
+                            increment,
+                            None,
+                            false,
+                            true,
+                            &mut out,
+                        ) {
+                            out.push(ExpansionEvent::Transition(s, state.cost, Some(t.clone())));
+                            bridged[slot] = true;
                         }
                     }
                 }
-                if !old.is_some_and(|t| t.active(c.down))
+                let active = slots
+                    .iter()
+                    .copied()
+                    .filter(|&slot| state.hands[slot].as_ref().is_some_and(|t| t.active(c.down)));
+                let active_count = active.clone().count();
+                let fresh = if !press_ok {
+                    None
+                } else if active_count == 0
                     && !c.share_only
-                    && !bridged
-                    && press_ok
                     && !(item.parent.is_some() && self.ms(c.down) > item.source_end)
                 {
-                    let mut new = self.singles[ci].clone();
-                    if self.opt("acceleration_weight") != 0. {
-                        if let Some(t) = old {
-                            new = self.touch(
-                                new.parts.clone(),
-                                new.bridges.clone(),
-                                new.down,
-                                new.path.clone(),
-                                new.over,
-                                Some(Arrival {
-                                    up: t.up(),
-                                    path: t.path[t.path.len().saturating_sub(2)..].to_vec(),
-                                }),
-                                None,
-                            );
+                    let recent = slots
+                        .iter()
+                        .copied()
+                        .rev()
+                        .filter(|&s| state.hands[s].is_some())
+                        .max_by_key(|&s| state.hands[s].as_ref().unwrap().up())
+                        .unwrap_or(hand);
+                    let slot = if self.multi("tap_interval_ms") != 0. {
+                        recent
+                    } else {
+                        hand
+                    };
+                    (!bridged[recent]).then_some((slot, recent, None, false))
+                } else if multifinger && active_count == 1 {
+                    let held_slot = active.clone().next().unwrap();
+                    let held = state.hands[held_slot].as_deref().unwrap();
+                    let slot = (held_slot + 2) % 4;
+                    let again =
+                        b(&self.input.multi, "second_finger_again")
+                            && matches!(item.kind.as_str(), "tap" | "sky")
+                            && state.hands[slot].as_deref().is_some_and(|last| {
+                                last.down > held.down
+                                    && last.parts.iter().all(|p| {
+                                        matches!(self.item(p).kind.as_str(), "tap" | "sky")
+                                    })
+                                    && held.parts.iter().any(|p| {
+                                        matches!(self.item(p).kind.as_str(), "hold" | "chain")
+                                    })
+                                    && (self.ms(c.down) - self.ms(last.down)) as f64
+                                        <= 1000. * self.opt("apart_memory_s")
+                                    && last.parts.iter().any(|p| {
+                                        dist(self.input.candidates[p.candidate].path[0], c.path[0])
+                                            <= self.multi("bridge_max_distance_m")
+                                    })
+                            });
+                    let within_reach = [c.down, (c.down + c.up - 1).div_euclid(2), c.up - 1]
+                        .into_iter()
+                        .all(|f| {
+                            !held.active(f)
+                                || dist(c.path[(f - c.down) as usize], held.xy(f))
+                                    <= self.multi("pair_max_m") + 0.06
+                        });
+                    ((again || c.dense) && !bridged[slot] && within_reach).then_some((
+                        slot,
+                        slot,
+                        Some(held),
+                        again,
+                    ))
+                } else {
+                    None
+                };
+                if let Some((slot, recent, partner, again)) = fresh {
+                    let contact = match partner {
+                        Some(held) => self.paired_press(ci, held),
+                        None => Some(self.singles[ci].clone()),
+                    };
+                    if let Some(mut new) = contact {
+                        if self.opt("acceleration_weight") != 0. {
+                            if let Some(t) = state.hands[recent].as_ref() {
+                                new = self.touch(
+                                    new.parts.clone(),
+                                    new.bridges.clone(),
+                                    new.down,
+                                    new.path.clone(),
+                                    new.over,
+                                    Some(Arrival {
+                                        up: t.up(),
+                                        path: t.path[t.path.len().saturating_sub(2)..].to_vec(),
+                                    }),
+                                    None,
+                                );
+                            }
                         }
-                    }
-                    if let Some(mut increment) = self.new_cost(state, hand, &new) {
-                        increment[0] = base[0];
-                        increment[3] = base[3];
-                        increment[7] = base[7];
-                        increment[8] = base[8];
-                        if let Some(s) = self.finish(
-                            state, ci, hand, new, None, increment, false, false, &mut out,
-                        ) {
-                            out.push(ExpansionEvent::Transition(s, state.cost, None));
+                        let adjusted = partner.filter(|held| {
+                            held.bridges.is_empty()
+                                && held
+                                    .parts
+                                    .iter()
+                                    .all(|p| matches!(self.item(p).kind.as_str(), "hold" | "chain"))
+                                && self.finger_overlap(&new, held).is_none()
+                        });
+                        let moved = adjusted.and_then(|held| {
+                            self.compose(held.parts.clone(), vec![], None, Some(&new))
+                                .filter(|after| after.uid != held.uid)
+                        });
+                        if adjusted.is_none() || moved.is_some() {
+                            let mut pricing_state;
+                            let pricing = if recent == slot {
+                                state
+                            } else {
+                                pricing_state = state.clone();
+                                pricing_state.hands[slot] = state.hands[recent].clone();
+                                &pricing_state
+                            };
+                            if let Some(mut increment) = self.new_cost(pricing, slot, &new) {
+                                for i in [0, 3, 7, 8] {
+                                    increment[i] = base[i];
+                                }
+                                increment[10] = f64::from(partner.is_some() && !again);
+                                if b(&self.input.multi, "geometry_features")
+                                    || self.multi("second_held_weight") != 0.
+                                {
+                                    increment[24] = f64::from(partner.is_some_and(|held| {
+                                        held.parts.iter().any(|p| {
+                                            matches!(self.item(p).kind.as_str(), "hold" | "chain")
+                                        })
+                                    }));
+                                }
+                                if let Some(s) = self.finish(
+                                    state, ci, slot, new, None, increment, moved, false, false,
+                                    &mut out,
+                                ) {
+                                    out.push(ExpansionEvent::Transition(s, state.cost, None));
+                                }
+                            }
                         }
                     }
                 }
                 if b(&self.input.multi, "share") && matches!(item.kind.as_str(), "chain" | "hold") {
-                    if let Some(t) = old {
-                        if t.active(c.down)
-                            && !(item.parent.is_some()
-                                && self.item(self.end(t)).parent == item.parent)
+                    for slot in active.clone() {
+                        let t = state.hands[slot].as_ref().unwrap();
+                        if !(item.parent.is_some() && self.item(self.end(t)).parent == item.parent)
                             && self.may_join(t, ci)
                             && self.may_share(t, ci)
                         {
-                            if let Some(new) = self.share(t, ci) {
+                            if let Some(new) =
+                                self.share(t, ci, state.hands[(slot + 2) % 4].as_deref())
+                            {
                                 if let Some(s) = self.finish(
                                     state,
                                     ci,
-                                    hand,
+                                    slot,
                                     new,
                                     Some(t),
                                     base,
+                                    None,
                                     true,
                                     false,
                                     &mut out,
@@ -1786,10 +2084,17 @@ impl Engine {
                                     out.push(ExpansionEvent::Transition(
                                         s,
                                         state.cost,
-                                        old.cloned(),
+                                        Some(t.clone()),
                                     ));
                                 }
                             }
+                        }
+                    }
+                }
+                if multifinger && active_count == 2 && press_ok && b(&self.input.multi, "share") {
+                    for slot in active {
+                        if let Some(event) = self.takeovers(state, slot, ci, base) {
+                            out.push(event);
                         }
                     }
                 }
@@ -1814,7 +2119,7 @@ impl Engine {
                                 .step(
                                     state.arms.as_ref().unwrap(),
                                     node.touch.as_ref().unwrap(),
-                                    node.hand,
+                                    node.slot % 2,
                                     node.extension,
                                 )
                                 .into_iter()
@@ -2021,6 +2326,25 @@ impl Engine {
                 let _ = touch.prefix.set(prefix);
                 None
             }
+            ExpansionEvent::Takeovers(states, before, giver) => {
+                let mut best = None;
+                let mut lowest = f64::INFINITY;
+                for state in states {
+                    let priced = self
+                        .apply_event(ExpansionEvent::Transition(
+                            state,
+                            before,
+                            Some(giver.clone()),
+                        ))
+                        .unwrap();
+                    let cost = self.weighted(&priced.node.as_ref().unwrap().increment);
+                    if cost < lowest {
+                        lowest = cost;
+                        best = Some(priced);
+                    }
+                }
+                best
+            }
             ExpansionEvent::Transition(mut state, before, previous) => {
                 let node = Arc::make_mut(state.node.as_mut().unwrap());
                 if let Some(touch) = &node.touch {
@@ -2033,13 +2357,44 @@ impl Engine {
                         node.increment[35] += now[2] - old[2] + now[4] - old[4];
                     }
                     if self.opt("note_center_weight") != 0. {
-                        node.increment[36] = now[3] - old[3];
+                        node.increment[36] += now[3] - old[3];
                     }
                     if b(&self.input.options, "prefer_arc_trace")
                         && self.opt("arc_trace_weight") != 0.
                     {
                         node.increment[6] += now[0] - old[0];
                         node.increment[33] = now[1] - old[1];
+                    }
+                    if let Some((after, before)) = &node.adjusted_partner {
+                        let a = self.measures(after);
+                        let old = self.measures(before);
+                        if self.opt("acceleration_weight") != 0. {
+                            node.increment[35] += a[2] - old[2] + a[4] - old[4];
+                        }
+                        if self.opt("note_center_weight") != 0. {
+                            node.increment[36] += a[3] - old[3];
+                        }
+                        if b(&self.input.options, "prefer_arc_trace")
+                            && self.opt("arc_trace_weight") != 0.
+                        {
+                            node.increment[6] += a[0] - old[0];
+                            node.increment[33] += a[1] - old[1];
+                        }
+                    }
+                    if let Some(giver) = &node.shortened {
+                        let measure = self.measures(giver);
+                        if self.opt("acceleration_weight") != 0. {
+                            node.increment[35] += measure[2] + measure[4];
+                        }
+                        if self.opt("note_center_weight") != 0. {
+                            node.increment[36] += measure[3];
+                        }
+                        if b(&self.input.options, "prefer_arc_trace")
+                            && self.opt("arc_trace_weight") != 0.
+                        {
+                            node.increment[6] += measure[0];
+                            node.increment[33] += measure[1];
+                        }
                     }
                     state.cost = plus(&before, &node.increment);
                 }
@@ -2313,8 +2668,10 @@ impl Engine {
                             state.node = Some(Arc::new(Node {
                                 previous: state.node.clone(),
                                 item,
-                                hand: 0,
+                                slot: 0,
                                 touch: None,
+                                adjusted_partner: None,
+                                shortened: None,
                                 extension: false,
                                 increment,
                             }));
@@ -2336,6 +2693,7 @@ impl Engine {
         // pair prices can be recomputed from immutable touch geometry.
         self.extensions.get_mut().unwrap().clear();
         self.shares.get_mut().unwrap().clear();
+        self.paired_presses.get_mut().unwrap().clear();
         self.pairs.get_mut().unwrap().clear();
         self.pruned += usize::from(pruned);
         self.visited += following.len();
@@ -2364,7 +2722,7 @@ impl Engine {
         let mut node = best.node.clone();
         let mut steps = vec![];
         while let Some(n) = node {
-            steps.push(serde_json::json!({"item":n.item,"hand":n.hand,"touch":n.touch,"extension":n.extension,"increment":n.increment.to_vec()}));
+            steps.push(serde_json::json!({"item":n.item,"hand":n.slot % 2,"digit":n.slot / 2,"touch":n.touch,"partner":n.adjusted_partner.as_ref().map(|(new, _)|new),"shortened":n.shortened,"extension":n.extension,"increment":n.increment.to_vec()}));
             node = n.previous.clone();
         }
         steps.reverse();
@@ -2377,7 +2735,7 @@ impl Engine {
             .iter()
             .map(|state| {
                 serde_json::json!({
-                    "hands":state.hands,"owned":state.owned,"runs":state.runs,"locks":state.locks,
+                    "hands":&state.hands[..if b(&self.input.multi, "second_finger") { 4 } else { 2 }],"owned":state.owned,"runs":state.runs,"locks":state.locks,
                     "cost":state.cost.to_vec(),"weighted":self.weighted(&state.cost)
                 })
             })

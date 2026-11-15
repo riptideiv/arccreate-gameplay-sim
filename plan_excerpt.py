@@ -167,9 +167,11 @@ def _create_plan(chart_path, start_ms, end_ms, settings=None, prefer_same_hand=F
                                 math.ceil((duration + chart.audio_offset_ms) * 60 / 1000)),
     }
     if multifinger:
-        # The upstream two-finger search does not yet represent arm crossing
-        # routes. Let auto select its Python backend for this mode.
+        # Arm crossing routes currently use one contact per hand. Multifinger
+        # scoring still uses the same Rust or Python contact search.
         multi.pop("arm_crossing_travel")
+        from multifinger import thumb_contact_span
+        multi["pair_min_m"], multi["pair_max_m"] = thumb_contact_span()
     if scoring:
         multi.update(tick_contacts=True, max_states=settings.get('search_width',256), meeting_swaps=False,
                      covered_holds=False, covered_arcs=False, steady_arcs=False, enveloped_arcs=False)
